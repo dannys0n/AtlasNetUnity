@@ -6,7 +6,6 @@ using AtlasNet.Messaging;
 
 public class Door : NetBehaviour
 {
-	private const ulong ToggleRpcId = 1;
 	private bool _isOpen;
 	void Start()
 	{
@@ -23,22 +22,7 @@ public class Door : NetBehaviour
 			return;
 		}
 
-		AtlasNetManager.MessageBus.Publish(
-				AtlasTopics.Server,
-				new ServerRpcMessage
-				{
-					NetId = NetObject.NetId,
-					RpcId = ToggleRpcId
-				}
-		);
-	}
-
-	public override void HandleServerRpc(ulong rpcId)
-	{
-		if (rpcId == ToggleRpcId)
-		{
-			ExecuteToggle();
-		}
+		SendServerRpc();
 	}
 
 	private void ExecuteToggle()

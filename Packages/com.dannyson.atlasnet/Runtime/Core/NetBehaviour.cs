@@ -1,5 +1,7 @@
-using UnityEngine;
+using AtlasNet.Messaging;
 using AtlasNet.Rpc;
+using System.Runtime.CompilerServices;
+using UnityEngine;
 
 namespace AtlasNet
 {
@@ -23,13 +25,49 @@ namespace AtlasNet
         /// <summary>Convenience: the local client id.</summary>
         public ulong LocalClientId => AtlasNetManager.LocalClientId;
 
-        /// <summary>
-        /// Dispatches a ServerRpc by id.
-        /// This will later be auto-generated.
-        /// </summary>
-        public virtual void HandleServerRpc(ulong rpcId)
+        protected virtual void Awake()
         {
-            // Default: do nothing
+            RpcRegistry.Register(GetType());
         }
-    }
+
+		    /// <summary>
+		    /// Dispatches a ServerRpc by id.
+		    /// </summary>
+		    public virtual void HandleServerRpc(ulong rpcId)
+		    {
+			      var method = RpcRegistry.Resolve(GetType(), rpcId);
+			      if (method == null)
+				      return;
+
+			      method.Invoke(this, null);
+		    }
+
+				/// <summary>
+				/// Emits a ServerRpc message for the calling method.
+				/// </summary>
+				protected void SendServerRpc([CallerMemberName] string methodName = null)
+				{
+						var method = GetType().GetMethod(
+								methodName,
+								System.Reflection.BindingFlags.Instance |
+								System.Reflection.BindingFlags.Public |
+								System.Reflection.BindingFlags.NonPublic);
+
+						if (method == null)
+								return;
+
+						var rpcId = RpcRegistry.GetRpcId(method);
+						if (rpcId == 0)
+								return;
+
+						AtlasNetManager.MessageBus.Publish(
+								AtlasTopics.Server,
+								new Rpc.Messages.ServerRpcMessage
+								{
+									NetId = NetObject.NetId,
+									RpcId = rpcId
+								}
+						);
+				}
+		}
 }
