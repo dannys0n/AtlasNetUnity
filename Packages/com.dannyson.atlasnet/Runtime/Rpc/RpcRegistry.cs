@@ -44,11 +44,12 @@ namespace AtlasNet.Rpc
 
 				var parameters = method.GetParameters();
 
-				// Build open instance invoke delegate
-				Action<NetBehaviour, object[]> invoke = (beh, args) =>
-				{
-					method.Invoke(beh, args);
-				};
+				// Compile fast invoke delegate ONCE
+				Action<NetBehaviour, object[]> invoke = CompileInvokeDelegate(
+						behaviourType,
+						method,
+						parameters.Length
+				);
 
 				table.Add(new ServerRpcDescriptor(
 						rpcId,
@@ -59,6 +60,7 @@ namespace AtlasNet.Rpc
 
 			_tables[behaviourType] = table;
 		}
+
 
 		public static bool TryGetDescriptor(
 		Type behaviourType,
@@ -78,6 +80,61 @@ namespace AtlasNet.Rpc
 		public static ulong GetRpcId(MethodInfo method)
 		{
 			return _reverseLookup.TryGetValue(method, out var id) ? id : 0;
+		}
+
+
+
+		private static Action<NetBehaviour, object[]> CompileInvokeDelegate(
+		Type behaviourType,
+		MethodInfo method,
+		int parameterCount)
+		{
+			/*
+			 * This builds a delegate equivalent to:
+			 *
+			 * (NetBehaviour beh, object[] args) =>
+			 *     ((ConcreteBehaviour)beh).Method(
+			 *         (T0)args[0],
+			 *         (T1)args[1],
+			 *         ...
+			 *     );
+			 */
+
+			var behParam = System.Linq.Expressions.Expression.Parameter(
+					typeof(NetBehaviour), "beh");
+
+			var argsParam = System.Linq.Expressions.Expression.Parameter(
+					typeof(object[]), "args");
+
+			var castedBeh = System.Linq.Expressions.Expression.Convert(
+					behParam, behaviourType);
+
+			var callArgs = new System.Linq.Expressions.Expression[parameterCount];
+			var parameters = method.GetParameters();
+
+			for (int i = 0; i < parameterCount; i++)
+			{
+				var indexExpr = System.Linq.Expressions.Expression.Constant(i);
+				var argAccess = System.Linq.Expressions.Expression.ArrayIndex(argsParam, indexExpr);
+				callArgs[i] = System.Linq.Expressions.Expression.Convert(
+						argAccess,
+						parameters[i].ParameterType
+				);
+			}
+
+			var callExpr = System.Linq.Expressions.Expression.Call(
+					castedBeh,
+					method,
+					callArgs
+			);
+
+			var lambda = System.Linq.Expressions.Expression.Lambda<Action<NetBehaviour, object[]>>(
+					callExpr,
+					behParam,
+					argsParam
+			);
+
+			return lambda.Compile();
 		}
 
 	}
