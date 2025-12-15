@@ -8,7 +8,7 @@ public class Door : NetBehaviour
 
 	void Start()
 	{
-		GetComponent<NetObject>().DebugSetIdentity(100, 1);
+		//GetComponent<NetObject>().DebugSetIdentity(100, 1);
 		ToggleServerRpc(3);
 		ToggleServerRpc(2);
 	}

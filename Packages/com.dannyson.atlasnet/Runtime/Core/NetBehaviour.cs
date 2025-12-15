@@ -40,36 +40,38 @@ namespace AtlasNet
 			      method.Invoke(this, null);
 		    }
 
-				/// <summary>
-				/// Emits a ServerRpc message with parameters.
-				/// </summary>
-				protected void SendServerRpc<T>(
-						T payload,
-						[System.Runtime.CompilerServices.CallerMemberName] string methodName = null
-				) where T : struct
-				{
-						var method = GetType().GetMethod(
-								methodName,
-								System.Reflection.BindingFlags.Instance |
-								System.Reflection.BindingFlags.Public |
-								System.Reflection.BindingFlags.NonPublic);
+		/// <summary>
+		/// Emits a ServerRpc message with parameters.
+		/// </summary>
+		protected void SendServerRpc<T>(
+				T payload,
+				[System.Runtime.CompilerServices.CallerMemberName] string methodName = null
+		) where T : struct
+		{
+			var method = GetType().GetMethod(
+					methodName,
+					System.Reflection.BindingFlags.Instance |
+					System.Reflection.BindingFlags.Public |
+					System.Reflection.BindingFlags.NonPublic);
 
-						if (method == null)
-								return;
+			if (method == null)
+				return;
 
-						var rpcId = RpcRegistry.GetRpcId(method);
-						if (rpcId == 0)
-								return;
+			var rpcId = RpcRegistry.GetRpcId(method);
+			if (rpcId == 0)
+				return;
 
-						AtlasNetManager.MessageBus.Publish(
-								Messaging.AtlasTopics.Server,
-								new Rpc.Messages.ServerRpcMessage<T>
-								{
-									NetId = NetObject.NetId,
-									RpcId = rpcId,
-									Payload = payload
-								}
-						);
-				}
+			var bytes = AtlasNet.Serialization.BlittableSerializer.ToBytes(payload);
+
+			AtlasNetManager.MessageBus.Publish(
+					Messaging.AtlasTopics.Server,
+					new Rpc.Messages.ServerRpcEnvelope
+					{
+						NetId = NetObject.NetId,
+						RpcId = rpcId,
+						PayloadBytes = bytes
+					}
+			);
 		}
+	}
 }

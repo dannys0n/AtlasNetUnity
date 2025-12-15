@@ -1,12 +1,16 @@
 namespace AtlasNet.Rpc.Messages
 {
-    /// <summary>
-    /// Generic ServerRpc message carrying parameters.
-    /// </summary>
-    public struct ServerRpcMessage<T> where T : struct
-    {
-        public ulong NetId;
-        public ulong RpcId;
-        public T Payload;
-    }
+	/// <summary>
+	/// Universal ServerRpc envelope carrying serialized payload bytes.
+	/// </summary>
+	public struct ServerRpcEnvelope
+	{
+		public ulong NetId;
+		public ulong RpcId;
+
+		/// <summary>
+		/// Serialized payload bytes (empty for no-arg RPC).
+		/// </summary>
+		public byte[] PayloadBytes;
+	}
 }

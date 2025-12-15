@@ -38,7 +38,34 @@ namespace AtlasNet.Rpc
 
 				        map[nextId] = method;
 				        _reverseLookup[method] = nextId;
-				        nextId++;
+
+								var parameters = method.GetParameters();
+								if (parameters.Length == 0)
+								{
+									// No-arg: treat payload bytes as null/empty.
+									// We'll just call via MethodInfo once for now OR you can add a separate no-arg registry later.
+								}
+								else if (parameters.Length == 1)
+								{
+									var payloadType = parameters[0].ParameterType;
+
+									// Create open instance delegate: (TBehaviour, TPayload) -> void
+									// We do this with reflection once at registration time.
+									var registerMethod = typeof(ServerRpcHandlerRegistry)
+											.GetMethod(nameof(ServerRpcHandlerRegistry.Register), BindingFlags.Public | BindingFlags.Static);
+
+									var genericRegister = registerMethod.MakeGenericMethod(behaviourType, payloadType);
+
+									// Build strongly typed delegate for handler method
+									// Signature must match Action<TBehaviour, TPayload>
+									var actionType = typeof(Action<,>).MakeGenericType(behaviourType, payloadType);
+									var del = Delegate.CreateDelegate(actionType, null, method);
+
+									genericRegister.Invoke(null, new object[] { nextId, del });
+								}
+
+
+								nextId++;
 			      }
 
 
