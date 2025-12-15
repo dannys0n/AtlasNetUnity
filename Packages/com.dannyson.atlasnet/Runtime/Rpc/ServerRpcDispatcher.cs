@@ -1,5 +1,4 @@
 using AtlasNet.Messaging;
-using AtlasNet.Rpc.Messages;
 using UnityEngine;
 
 namespace AtlasNet.Rpc
@@ -8,29 +7,37 @@ namespace AtlasNet.Rpc
     {
         public static void Initialize()
         {
-            AtlasNetManager.MessageBus.Subscribe<ServerRpcMessage>(
-                AtlasTopics.Server,
-                OnServerRpc
-            );
-        }
+			      AtlasNetManager.MessageBus.Subscribe<Rpc.Messages.ServerRpcMessage<int>>(
+					      AtlasTopics.Server,
+					      OnServerRpcInt
+			      );
 
-        private static void OnServerRpc(ServerRpcMessage msg)
-        {
-            var allObjects = Object.FindObjectsOfType<NetObject>();
-            foreach (var obj in allObjects)
-            {
-                if (obj.NetId != msg.NetId)
-                    continue;
+				}
 
-                var behaviours = obj.GetComponents<NetBehaviour>();
-                foreach (var beh in behaviours)
-                {
-                    beh.HandleServerRpc(msg.RpcId);
-                }
-                return;
-            }
+				private static void OnServerRpcInt(Rpc.Messages.ServerRpcMessage<int> msg)
+				{
+  					Dispatch(msg.NetId, msg.RpcId, msg.Payload);
+				}
 
-            Debug.LogWarning($"[AtlasNet] NetObject {msg.NetId} not found.");
-        }
+				private static void Dispatch<T>(ulong netId, ulong rpcId, T payload)
+				{
+						var allObjects = Object.FindObjectsOfType<NetObject>();
+						foreach (var obj in allObjects)
+						{
+								if (obj.NetId != netId)
+										continue;
+
+								var behaviours = obj.GetComponents<NetBehaviour>();
+								foreach (var beh in behaviours)
+								{
+										var method = RpcRegistry.Resolve(beh.GetType(), rpcId);
+										if (method == null)
+												continue;
+
+										method.Invoke(beh, new object[] { payload });
+										return;
+								}
+						}
+				}
     }
 }

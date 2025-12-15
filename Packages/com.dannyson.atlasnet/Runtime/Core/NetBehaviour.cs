@@ -1,6 +1,4 @@
-using AtlasNet.Messaging;
 using AtlasNet.Rpc;
-using System.Runtime.CompilerServices;
 using UnityEngine;
 
 namespace AtlasNet
@@ -43,9 +41,12 @@ namespace AtlasNet
 		    }
 
 				/// <summary>
-				/// Emits a ServerRpc message for the calling method.
+				/// Emits a ServerRpc message with parameters.
 				/// </summary>
-				protected void SendServerRpc([CallerMemberName] string methodName = null)
+				protected void SendServerRpc<T>(
+						T payload,
+						[System.Runtime.CompilerServices.CallerMemberName] string methodName = null
+				) where T : struct
 				{
 						var method = GetType().GetMethod(
 								methodName,
@@ -61,11 +62,12 @@ namespace AtlasNet
 								return;
 
 						AtlasNetManager.MessageBus.Publish(
-								AtlasTopics.Server,
-								new Rpc.Messages.ServerRpcMessage
+								Messaging.AtlasTopics.Server,
+								new Rpc.Messages.ServerRpcMessage<T>
 								{
 									NetId = NetObject.NetId,
-									RpcId = rpcId
+									RpcId = rpcId,
+									Payload = payload
 								}
 						);
 				}

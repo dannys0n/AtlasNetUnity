@@ -1,33 +1,33 @@
 using UnityEngine;
 using AtlasNet;
 using AtlasNet.Rpc;
-using AtlasNet.Rpc.Messages;
-using AtlasNet.Messaging;
 
 public class Door : NetBehaviour
 {
-	private bool _isOpen;
+	private int _openCount;
+
 	void Start()
 	{
 		GetComponent<NetObject>().DebugSetIdentity(100, 1);
-		ToggleServerRpc();
+		ToggleServerRpc(3);
+		ToggleServerRpc(2);
 	}
 
 	[ServerRpc]
-	public void ToggleServerRpc()
+	public void ToggleServerRpc(int amount)
 	{
 		if (IsServer)
 		{
-			ExecuteToggle();
+			ExecuteToggle(amount);
 			return;
 		}
 
-		SendServerRpc();
+		SendServerRpc(amount);
 	}
 
-	private void ExecuteToggle()
+	private void ExecuteToggle(int amount)
 	{
-		_isOpen = !_isOpen;
-		Debug.Log($"[AtlasNet] Door {NetObject.NetId} toggled. Open = {_isOpen}");
+		_openCount += amount;
+		Debug.Log($"[AtlasNet] Door {NetObject.NetId} open count = {_openCount}");
 	}
 }
