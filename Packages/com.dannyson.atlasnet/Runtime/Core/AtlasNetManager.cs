@@ -1,4 +1,6 @@
 using UnityEngine;
+using AtlasNet.Messaging;
+using AtlasNet.Rpc;
 
 namespace AtlasNet
 {
@@ -17,6 +19,9 @@ namespace AtlasNet
         /// <summary>Local client id (0 is fine for now; we'll formalize later).</summary>
         public static ulong LocalClientId { get; private set; }
 
+        /// <summary>Global message bus instance.</summary>
+        public static IAtlasMessageBus MessageBus { get; private set; }
+
         /// <summary>
         /// Starts AtlasNet in a simple Host mode (server + client in same process).
         /// This will be useful for our first test without a real transport.
@@ -26,6 +31,10 @@ namespace AtlasNet
             IsServer = true;
             IsClient = true;
             LocalClientId = 1;
+
+            MessageBus = new LocalMessageBus();
+            ServerRpcDispatcher.Initialize();
+
             Debug.Log("[AtlasNet] Host started.");
         }
 
@@ -35,6 +44,8 @@ namespace AtlasNet
             IsServer = false;
             IsClient = false;
             LocalClientId = 0;
+            MessageBus = null;
+
             Debug.Log("[AtlasNet] Shutdown.");
         }
     }

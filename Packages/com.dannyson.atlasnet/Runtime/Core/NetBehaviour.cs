@@ -1,4 +1,5 @@
 using UnityEngine;
+using AtlasNet.Rpc;
 
 namespace AtlasNet
 {
@@ -6,7 +7,7 @@ namespace AtlasNet
     /// Base class for network-aware MonoBehaviours.
     /// Similar to NGO's NetworkBehaviour. For now, it just exposes role flags and NetObject access.
     /// </summary>
-    public abstract class NetBehaviour : MonoBehaviour
+    public abstract class NetBehaviour : MonoBehaviour, IServerRpcHandler
     {
         private NetObject _netObject;
 
@@ -21,5 +22,14 @@ namespace AtlasNet
 
         /// <summary>Convenience: the local client id.</summary>
         public ulong LocalClientId => AtlasNetManager.LocalClientId;
+
+        /// <summary>
+        /// Dispatches a ServerRpc by id.
+        /// This will later be auto-generated.
+        /// </summary>
+        public virtual void HandleServerRpc(ulong rpcId)
+        {
+            // Default: do nothing
+        }
     }
 }
