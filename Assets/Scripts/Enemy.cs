@@ -27,6 +27,6 @@ public class Enemy : NetBehaviour
 			return;
 		}
 
-		SendServerRpc(payload);
+		SendServerRpc(new object[] { payload });
 	}
 }

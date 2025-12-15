@@ -1,34 +1,52 @@
 using System;
 using System.Collections.Generic;
-using AtlasNet.Serialization;
 
 namespace AtlasNet.Rpc
 {
 	/// <summary>
-	/// Maps (BehaviourType, RpcId) to a strongly-typed handler that can deserialize and invoke.
+	/// Maps (BehaviourType, RpcId) to a cached invocation delegate.
+	/// The registry does NOT deserialize payloads; it only invokes handlers.
 	/// </summary>
 	internal static class ServerRpcHandlerRegistry
 	{
-		private static readonly Dictionary<(Type type, ulong rpcId), Action<AtlasNet.NetBehaviour, byte[]>> _handlers = new();
+		/// <summary>
+		/// Key: (NetBehaviour concrete type, RpcId)
+		/// Value: invocation delegate taking (instance, args[])
+		/// </summary>
+		private static readonly Dictionary<(Type type, ulong rpcId), Action<NetBehaviour, object[]>> _handlers
+				= new();
 
-		public static void Register<TBehaviour, TPayload>(ulong rpcId, Action<TBehaviour, TPayload> handler)
-				where TBehaviour : AtlasNet.NetBehaviour
-				where TPayload : struct
+		/// <summary>
+		/// Registers a ServerRpc handler delegate.
+		/// This is called once during startup (reflection / codegen phase).
+		/// </summary>
+		public static void Register<TBehaviour>(
+				ulong rpcId,
+				Action<TBehaviour, object[]> handler)
+				where TBehaviour : NetBehaviour
 		{
-			_handlers[(typeof(TBehaviour), rpcId)] = (beh, bytes) =>
+			_handlers[(typeof(TBehaviour), rpcId)] = (beh, args) =>
 			{
-				var payload = BlittableSerializer.FromBytes<TPayload>(bytes);
-				handler((TBehaviour)beh, payload);
+				handler((TBehaviour)beh, args);
 			};
 		}
 
-		public static bool TryInvoke(Type behaviourType, ulong rpcId, AtlasNet.NetBehaviour instance, byte[] payloadBytes)
+		/// <summary>
+		/// Attempts to invoke a registered ServerRpc handler.
+		/// Returns true if a handler was found and executed.
+		/// </summary>
+		public static bool TryInvoke(
+				Type behaviourType,
+				ulong rpcId,
+				NetBehaviour instance,
+				object[] args)
 		{
 			if (_handlers.TryGetValue((behaviourType, rpcId), out var action))
 			{
-				action(instance, payloadBytes);
+				action(instance, args);
 				return true;
 			}
+
 			return false;
 		}
 	}

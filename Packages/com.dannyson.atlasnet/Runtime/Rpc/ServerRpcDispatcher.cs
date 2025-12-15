@@ -19,11 +19,9 @@ namespace AtlasNet.Rpc
 						Dispatch(msg);
 				}
 
-
 		private static void Dispatch(ServerRpcEnvelope msg)
 		{
-			// TEMP: scene scan. Later replaced with NetObject registry.
-			var objects = Object.FindObjectsOfType<NetObject>();
+			var objects = UnityEngine.Object.FindObjectsOfType<NetObject>();
 			foreach (var obj in objects)
 			{
 				if (obj.NetId != msg.NetId)
@@ -32,24 +30,29 @@ namespace AtlasNet.Rpc
 				var behaviours = obj.GetComponents<NetBehaviour>();
 				foreach (var beh in behaviours)
 				{
-					// Try fast-path delegate dispatch
-					if (ServerRpcHandlerRegistry.TryInvoke(
+					if (!RpcRegistry.TryGetDescriptor(
 							beh.GetType(),
 							msg.RpcId,
-							beh,
-							msg.PayloadBytes))
-					{
-						return;
-					}
-				}
+							out var descriptor))
+						continue;
 
-				Debug.LogWarning(
-						$"[AtlasNet] No ServerRpc handler found for RpcId {msg.RpcId} on NetObject {msg.NetId}");
-				return;
+					object[] args = null;
+
+					if (descriptor.Parameters.Length > 0)
+					{
+						args = ServerRpcPayloadPacker.Unpack(
+								msg.PayloadBytes,
+								descriptor.Parameters);
+					}
+
+					descriptor.Invoke(beh, args);
+					return;
+				}
 			}
 
-			Debug.LogWarning(
-					$"[AtlasNet] NetObject {msg.NetId} not found for ServerRpc {msg.RpcId}");
+			UnityEngine.Debug.LogWarning(
+					$"[AtlasNet] Failed to dispatch ServerRpc {msg.RpcId} for NetObject {msg.NetId}");
 		}
+
 	}
 }

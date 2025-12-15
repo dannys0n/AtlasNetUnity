@@ -4,95 +4,81 @@ using System.Reflection;
 
 namespace AtlasNet.Rpc
 {
-    /// <summary>
-    /// Central registry mapping RPC method IDs to MethodInfo.
-    /// This mirrors NGO's internal RPC tables.
-    /// </summary>
-    internal static class RpcRegistry
-    {
-        private static readonly Dictionary<Type, Dictionary<ulong, MethodInfo>> _registry
-            = new();
+  /// <summary>
+  /// Central registry mapping RPC method IDs to MethodInfo.
+  /// This mirrors NGO's internal RPC tables.
+  /// </summary>
+  internal static class RpcRegistry
+  {
+		private static readonly Dictionary<Type, ServerRpcTable> _tables = new();
 
-		    private static readonly Dictionary<MethodInfo, ulong> _reverseLookup
-		        = new();
+
+		private static readonly Dictionary<MethodInfo, ulong> _reverseLookup
+						= new();
 
 
 		/// <summary>
 		/// Registers all [ServerRpc] methods on a NetBehaviour type.
 		/// </summary>
 		public static void Register(Type behaviourType)
-        {
-            if (_registry.ContainsKey(behaviourType))
-                return;
+		{
+			if (_tables.ContainsKey(behaviourType))
+				return;
 
-            var map = new Dictionary<ulong, MethodInfo>();
-            var methods = behaviourType.GetMethods(
-                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+			var table = new ServerRpcTable();
 
-            ulong nextId = 1;
+			var methods = behaviourType.GetMethods(
+					BindingFlags.Instance |
+					BindingFlags.Public |
+					BindingFlags.NonPublic);
 
-			      foreach (var method in methods)
-			      {
-				        if (!Attribute.IsDefined(method, typeof(ServerRpcAttribute)))
-					          continue;
+			ulong nextId = 1;
 
-				        map[nextId] = method;
-				        _reverseLookup[method] = nextId;
+			foreach (var method in methods)
+			{
+				if (!Attribute.IsDefined(method, typeof(ServerRpcAttribute)))
+					continue;
 
-								var parameters = method.GetParameters();
-								if (parameters.Length == 0)
-								{
-									// No-arg: treat payload bytes as null/empty.
-									// We'll just call via MethodInfo once for now OR you can add a separate no-arg registry later.
-								}
-								else if (parameters.Length == 1)
-								{
-									var payloadType = parameters[0].ParameterType;
+				var rpcId = nextId++;
+				_reverseLookup[method] = rpcId;
 
-									// Create open instance delegate: (TBehaviour, TPayload) -> void
-									// We do this with reflection once at registration time.
-									var registerMethod = typeof(ServerRpcHandlerRegistry)
-											.GetMethod(nameof(ServerRpcHandlerRegistry.Register), BindingFlags.Public | BindingFlags.Static);
+				var parameters = method.GetParameters();
 
-									var genericRegister = registerMethod.MakeGenericMethod(behaviourType, payloadType);
+				// Build open instance invoke delegate
+				Action<NetBehaviour, object[]> invoke = (beh, args) =>
+				{
+					method.Invoke(beh, args);
+				};
 
-									// Build strongly typed delegate for handler method
-									// Signature must match Action<TBehaviour, TPayload>
-									var actionType = typeof(Action<,>).MakeGenericType(behaviourType, payloadType);
-									var del = Delegate.CreateDelegate(actionType, null, method);
+				table.Add(new ServerRpcDescriptor(
+						rpcId,
+						parameters,
+						invoke
+				));
+			}
 
-									genericRegister.Invoke(null, new object[] { nextId, del });
-								}
+			_tables[behaviourType] = table;
+		}
 
+		public static bool TryGetDescriptor(
+		Type behaviourType,
+		ulong rpcId,
+		out ServerRpcDescriptor descriptor)
+		{
+			if (_tables.TryGetValue(behaviourType, out var table))
+				return table.TryGet(rpcId, out descriptor);
 
-								nextId++;
-			      }
+			descriptor = null;
+			return false;
+		}
 
+		/// <summary>
+		/// Gets the RPC id for a specific ServerRpc method.
+		/// </summary>
+		public static ulong GetRpcId(MethodInfo method)
+		{
+			return _reverseLookup.TryGetValue(method, out var id) ? id : 0;
+		}
 
-			      _registry[behaviourType] = map;
-        }
-
-        /// <summary>
-        /// Resolves a method for a given behaviour type and RPC id.
-        /// </summary>
-        public static MethodInfo Resolve(Type behaviourType, ulong rpcId)
-        {
-            if (_registry.TryGetValue(behaviourType, out var map) &&
-                map.TryGetValue(rpcId, out var method))
-            {
-                return method;
-            }
-
-            return null;
-        }
-
-		    /// <summary>
-		    /// Gets the RPC id for a specific ServerRpc method.
-		    /// </summary>
-		    public static ulong GetRpcId(MethodInfo method)
-		    {
-			    return _reverseLookup.TryGetValue(method, out var id) ? id : 0;
-		    }
-
-	  }
+	}
 }

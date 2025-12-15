@@ -22,7 +22,7 @@ public class Door : NetBehaviour
 			return;
 		}
 
-		SendServerRpc(amount);
+		SendServerRpc(new object[] { amount });
 	}
 
 	private void ExecuteToggle(int amount)

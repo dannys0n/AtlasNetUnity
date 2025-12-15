@@ -7,7 +7,7 @@ namespace AtlasNet
     /// Base class for network-aware MonoBehaviours.
     /// Similar to NGO's NetworkBehaviour. For now, it just exposes role flags and NetObject access.
     /// </summary>
-    public abstract class NetBehaviour : MonoBehaviour, IServerRpcHandler
+    public abstract class NetBehaviour : MonoBehaviour
     {
         private NetObject _netObject;
 
@@ -28,25 +28,12 @@ namespace AtlasNet
             RpcRegistry.Register(GetType());
         }
 
-		    /// <summary>
-		    /// Dispatches a ServerRpc by id.
-		    /// </summary>
-		    public virtual void HandleServerRpc(ulong rpcId)
-		    {
-			      var method = RpcRegistry.Resolve(GetType(), rpcId);
-			      if (method == null)
-				      return;
-
-			      method.Invoke(this, null);
-		    }
-
 		/// <summary>
 		/// Emits a ServerRpc message with parameters.
 		/// </summary>
-		protected void SendServerRpc<T>(
-				T payload,
-				[System.Runtime.CompilerServices.CallerMemberName] string methodName = null
-		) where T : struct
+		protected void SendServerRpc(
+				object[] args,
+				[System.Runtime.CompilerServices.CallerMemberName] string methodName = null)
 		{
 			var method = GetType().GetMethod(
 					methodName,
@@ -61,7 +48,8 @@ namespace AtlasNet
 			if (rpcId == 0)
 				return;
 
-			var bytes = AtlasNet.Serialization.BlittableSerializer.ToBytes(payload);
+			var parameters = method.GetParameters();
+			var payloadBytes = Rpc.ServerRpcPayloadPacker.Pack(args, parameters);
 
 			AtlasNetManager.MessageBus.Publish(
 					Messaging.AtlasTopics.Server,
@@ -69,7 +57,7 @@ namespace AtlasNet
 					{
 						NetId = NetObject.NetId,
 						RpcId = rpcId,
-						PayloadBytes = bytes
+						PayloadBytes = payloadBytes
 					}
 			);
 		}
