@@ -1,5 +1,7 @@
 # AtlasNet — Local Dummy-Backend Prototype and Demo Plan
 
+> **Status: deferred two-worker handoff plan.** This is not the first demo's build order or completion checklist. The current demo uses one local Unity server and clients; see [AGENTS.md](../AGENTS.md) for its scope and milestones.
+
 ## 1. Objective
 
 Build the smallest local environment that convincingly demonstrates AtlasNet's Unity developer experience and mobile simulation authority.

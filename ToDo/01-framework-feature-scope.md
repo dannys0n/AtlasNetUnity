@@ -1,5 +1,7 @@
 # AtlasNet Unity Framework — Feature Scope and Essentials
 
+> **Status: future design reference, not the current demo scope.** This document preserves the broader multi-worker vision. Its "first prototype" priorities and handoff success criteria are superseded by the current three-milestone plan in [AGENTS.md](../AGENTS.md).
+
 ## 1. Purpose
 
 AtlasNet is a Unity networking framework for persistent worlds whose authoritative simulation can move between multiple server workers.

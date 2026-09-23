@@ -1,5 +1,7 @@
 # AtlasNet — Proposed Unity Developer API
 
+> **Status: API design sketches, not fixed implementation requirements.** Use [AGENTS.md](../AGENTS.md) for the current demo scope. Names, signatures, authority checks, and handoff-facing examples below must be validated against working Unity code before becoming public API.
+
 ## 1. API Design Goals
 
 The public API should feel unsurprising to an NGO or FishNet developer while preserving AtlasNet's distributed authority model.
