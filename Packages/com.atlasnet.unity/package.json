@@ -1,0 +1,15 @@
+{
+  "name": "com.atlasnet.unity",
+  "displayName": "AtlasNet Unity",
+  "version": "0.1.0",
+  "unity": "6000.0",
+  "description": "A small entity-oriented Unity networking API with a local TCP adapter for the first demo.",
+  "author": { "name": "AtlasNet" },
+  "samples": [
+    {
+      "displayName": "Simple Authority Demo",
+      "description": "Client and server movement authority examples.",
+      "path": "Samples~/SimpleAuthority"
+    }
+  ]
+}

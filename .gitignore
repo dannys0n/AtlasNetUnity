@@ -75,6 +75,7 @@ crashlytics-build.properties
 /[Aa]ssets/[Ss]treamingAssets/aa/*
 
 # AtlasNet consumer project and local validation output
+/Consumer/
 /Consumer/Library/
 /Consumer/Temp/
 /Consumer/Obj/

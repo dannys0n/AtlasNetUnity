@@ -1,0 +1,9 @@
+{
+  "name": "AtlasNetDemo.Editor.Tests",
+  "rootNamespace": "AtlasNetDemo.Tests",
+  "references": ["AtlasNet.Unity"],
+  "includePlatforms": ["Editor"],
+  "optionalUnityReferences": ["TestAssemblies"],
+  "autoReferenced": false,
+  "defineConstraints": ["UNITY_INCLUDE_TESTS"]
+}
