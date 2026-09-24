@@ -14,11 +14,18 @@ public sealed class SimpleClientMovement : NetworkBehaviour
         if (!IsOwner) return;
         Vector2 input = new Vector2(Input.GetAxisRaw("Horizontal"), Input.GetAxisRaw("Vertical"));
         input = Vector2.ClampMagnitude(input, 1);
-        if (controller.isGrounded && verticalSpeed < 0) verticalSpeed = -1f;
-        if (controller.isGrounded && Input.GetButtonDown("Jump")) verticalSpeed = jumpSpeed;
+
+        if (controller.isGrounded && verticalSpeed < 0) 
+            verticalSpeed = -1f;
+        
+        if (controller.isGrounded && Input.GetButtonDown("Jump")) 
+            verticalSpeed = jumpSpeed;
+        
         verticalSpeed += Physics.gravity.y * Time.deltaTime;
+        
         Vector3 movement = (transform.right * input.x + transform.forward * input.y) * speed;
         movement.y = verticalSpeed;
+        
         controller.Move(movement * Time.deltaTime);
     }
 }

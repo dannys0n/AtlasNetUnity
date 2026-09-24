@@ -4,7 +4,9 @@
       "version": "file:com.atlasnet.unity",
       "depth": 0,
       "source": "embedded",
-      "dependencies": {}
+      "dependencies": {
+        "com.unity.nuget.mono-cecil": "1.11.6"
+      }
     },
     "com.unity.ai.navigation": {
       "version": "2.0.14",
@@ -86,7 +88,7 @@
     },
     "com.unity.nuget.mono-cecil": {
       "version": "1.11.6",
-      "depth": 3,
+      "depth": 1,
       "source": "registry",
       "dependencies": {},
       "url": "https://packages.unity.com"

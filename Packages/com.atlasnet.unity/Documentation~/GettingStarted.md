@@ -24,28 +24,40 @@ The `ScaleDemo` scene adds 300 registered cubes, of which 50 move. Idle transfor
 
 ## What gameplay code looks like
 
-`NetworkObject` holds a stable runtime `AtlasNet.EntityId`, a separate prefab ID, and a controlling `SessionId`. Attach `NetworkBehaviour` components on the same GameObject as `NetworkObject`. Register spawnable prefabs with matching string IDs on each scene's `NetworkManager`.
+`NetworkObject` holds a stable runtime `AtlasNet.EntityId`, a separate prefab ID, and a controlling `SessionId`. Attach `NetworkBehaviour` components on the same GameObject as `NetworkObject`. Create a **Network Prefabs List** asset through **Create > AtlasNet > Network Prefabs List**, add the root `NetworkObject` prefabs to it, and assign one or more of these assets to **Network Prefabs Lists** on `NetworkManager`. A list can be shared by multiple managers. Assign **Player Prefab** separately to spawn one player for each joined session; that prefab must also appear in an assigned list. Each prefab needs a unique ID on its `NetworkObject`; gameplay code can spawn a registered prefab by reference instead of repeating that ID string. If no Player Prefab is assigned, automatic player creation is disabled. By default, players spawn at the prefab's position; the sample sets `PlayerSpawnPosition` to spread them apart.
 
 ```csharp
 public sealed class ExampleAction : NetworkBehaviour
 {
-    private NetworkVariable<int> count;
+    private readonly NetworkVariable<int> count = new NetworkVariable<int>(0);
 
-    public override void OnNetworkSpawn() => count = RegisterVariable(1, 0);
-
-    public void RequestAction() => AuthorityRpc(1);
-
-    protected override void OnRpc(ushort method, NetReader payload, SessionId sender)
+    public void RequestAction()
     {
-        if (method != 1 || !HasSimulationAuthority) return;
-        count.Set(count.Value + 1);  // Persistent server-written state.
-        ObserversRpc(2);             // Transient event to observers.
-        TargetRpc(sender, 3);        // Transient event to one session.
+        if (IsOwner) ApplyActionRpc();
     }
+
+    [Rpc(SendTo.Authority)]
+    private void ApplyActionRpc()
+    {
+        count.Value++; // Persistent authority-written state.
+        ShowEffectRpc();
+        AcknowledgeRpc(count.Value);
+    }
+
+    [Rpc(SendTo.Observers)] private void ShowEffectRpc() { /* transient visual */ }
+    [Rpc(SendTo.Owner)] private void AcknowledgeRpc(int count) { /* controlling client */ }
 }
 ```
 
-RPC calls are explicit methods, not magic attributes. The manager serializes a method ID and payload, validates an authority call against the entity's controlling session, and dispatches on the destination instance. `AuthorityRpc` permits the controlling session, `ObserversRpc` sends from the server to observers, and `TargetRpc` sends from the server to one session. These use ordered reliable TCP in the local adapter. `NetworkVariable<T>` is server-written and included in the spawn snapshot for late observers. Supported demo value types are `int`, `float`, `bool`, `string`, `Vector3`, and `Quaternion`.
+The `[Rpc(SendTo.X)]` attribute identifies the destination. Its method name must end in `Rpc`, as in NGO. Call an attributed method directly; the package's Editor IL post-processor changes that call into a send during compilation. The method body runs on local delivery or when the RPC is received. AtlasNet discovers handlers when the object spawns, derives stable method IDs from their signatures, serializes supported arguments, checks the destination and sender, then invokes the handler on the receiving instance. `SendTo.Authority` goes from the controlling client to the entity's current simulation authority (the server in this demo); local authority may invoke it too. `SendTo.Observers` goes from the server to observing clients; `SendTo.Owner` goes to the controlling client. `SendTo.Everyone` executes locally and reaches the server and observing clients. A client may invoke it if `InvokePermission` is `Owner` (for its own object) or `Everyone` (for an observed object); it defaults to `Everyone`, as in NGO. The server relays client-originated calls without echoing them to the sender. Use `InvokePermission = RpcInvokePermission.Owner` for owner-only visual events. For an arbitrary observing session, use `[Rpc(SendTo.SpecifiedInParams)] private void NotifyRpc(SessionId target, int value)` and call `NotifyRpc(session, value)`. An authority handler may take a final `SessionId` populated with the sender; callers must supply a placeholder value for that parameter. Avoid overloading RPC handler names.
+
+`IsOwner` tells client-side input and camera code whether it controls this object. `HasAuthority` tells simulation code whether it may write canonical gameplay state. These are different even in the local demo: a client can own its avatar while the server has authority over its persistent variables. `IsServer`, `IsClient`, and `IsHost` describe the process role, not the writer of a particular entity. `NetworkBehaviour` also exposes `NetworkManager` and `IsSpawned` for familiar access. The local adapter uses ordered reliable TCP. RPC arguments currently support `int`, `float`, `bool`, `string`, `Vector2`, `Vector3`, and `Quaternion`.
+
+`NetworkVariable<T>` fields register automatically when the behaviour spawns; declare and initialize them on the behaviour. By default, the server writes and everyone reads. For owner-written aim or weapon selection, use `new NetworkVariable<Quaternion>(Quaternion.identity, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner)`. The server validates the controlling session, retains the current value, and relays it to other observers. `ReadPermission.Owner` limits snapshots and later updates to the owner and server. Current values are included in spawn snapshots for permitted late observers before `OnNetworkSpawn`. Subscribe to `OnValueChanged(previous, current)` for later updates; `Changed` remains an alias. Supported value types are `int`, `float`, `bool`, `string`, `Vector3`, and `Quaternion`. `Set(...)` and the `Value` setter are equivalent. The sample scenes use prefab references in their spawners; prefab IDs remain internal registration keys.
+
+`NetworkTransform` can interpolate received position and rotation on remote clients over one network tick; it never smooths the local owner or server simulation. `NetworkAnimator` can reference a child `Animator` and synchronizes changed bool, int, and float parameters plus current layer states, with a full state snapshot for late join. Choose Server or Owner as its writer. Use `NetworkAnimator.SetTrigger(name)` for transient triggers; plain `Animator.SetTrigger` cannot be sampled reliably. This first animator helper has not yet been tested against the imported shooter animations or complex transitions.
+
+The IL post-processor currently supports instance `void` RPC methods on non-generic `NetworkBehaviour` types, with no `try`/`catch` in the RPC body. Unsupported signatures produce a compile error. The receive dispatcher still uses reflection and has not yet been validated in an IL2CPP build; generated dispatch or explicit preservation rules may be needed before claiming AOT/player-build support. This change does not add prediction, handoff, or worker routing.
 
 `UnityEngine` also defines an `EntityId` in this editor version, so qualify this package's type as `AtlasNet.EntityId` in code that imports both namespaces.
 
@@ -54,5 +66,7 @@ RPC calls are explicit methods, not magic attributes. The manager serializes a m
 The local TCP adapter only supports one Unity server on localhost. It has no reconnect/resume, production transport tuning, encryption, prediction, rollback, lag compensation, distributed physics, cross-worker ghosts, worker routing, or authority handoff. The stable entity/session IDs, independent transform channel writers, and entity-directed RPCs are intentional seams for a future AtlasNet adapter. They do **not** prove that later handoff or multi-worker semantics are implemented.
 
 Optional dynamic `Rigidbody` synchronization is deferred. The examples use `CharacterController`, and neither scene demonstrates distributed collision or predicted physics.
+
+The familiar core components are `NetworkManager`, `NetworkObject`, `NetworkBehaviour`, `NetworkTransform`, a first `NetworkAnimator`, and `NetworkPrefabsList`. AtlasNet does not yet provide NGO's scene synchronization, prefab overrides, or `NetworkRigidbody`. Canonical dynamic spawning currently uses `NetworkManager.Spawn(prefab, position, rotation, owner)` rather than `Instantiate(prefab)` followed by `NetworkObject.Spawn()`. `NetworkTransform` has separate position and rotation writers because input ownership is not the same as simulation authority; this difference is intentional.
 
 Before claiming the demo complete, exercise a non-host client in both authority scenes, the three RPC destinations, late join, spawn/despawn, the scale scene, and a package install in a separate clean project. EditMode asset checks alone cannot verify Play Mode behavior.

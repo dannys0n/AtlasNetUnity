@@ -3,10 +3,11 @@ using UnityEngine;
 
 namespace AtlasNet
 {
+    [AddComponentMenu("AtlasNet/Network Object")]
     [DisallowMultipleComponent]
     public sealed class NetworkObject : MonoBehaviour
     {
-        [SerializeField] private string prefabId;
+        [SerializeField, Tooltip("Stable prefab registration key; distinct from the runtime EntityId.")] private string prefabId;
         private NetworkBehaviour[] behaviours;
         public string PrefabId => prefabId;
         public EntityId EntityId { get; private set; }
@@ -14,10 +15,10 @@ namespace AtlasNet
         public NetworkManager Manager { get; private set; }
         public bool IsSpawned => Manager != null;
         public bool IsOwner => IsSpawned && Manager.IsClient && OwnerSession == Manager.LocalSession;
-        public bool HasSimulationAuthority => IsSpawned && Manager.CanSimulate(this);
+        public bool HasAuthority => IsSpawned && Manager.CanSimulate(this);
         internal NetworkBehaviour[] Behaviours => behaviours;
 
-        internal void Initialize(NetworkManager manager, EntityId id, SessionId owner)
+        internal void Initialize(NetworkManager manager, EntityId id, SessionId owner, bool deferSpawnCallbacks = false)
         {
             if (IsSpawned) throw new InvalidOperationException("NetworkObject was already spawned");
             Manager = manager;
@@ -27,6 +28,12 @@ namespace AtlasNet
             if (behaviours.Length > byte.MaxValue)
                 throw new InvalidOperationException("Too many NetworkBehaviours on one object");
             for (int i = 0; i < behaviours.Length; i++) behaviours[i].Initialize(this, (byte)i);
+            if (!deferSpawnCallbacks) CompleteSpawn();
+        }
+
+        internal void CompleteSpawn()
+        {
+            foreach (var behaviour in behaviours) behaviour.OnNetworkSpawn();
         }
 
         internal void Shutdown()
@@ -42,7 +49,7 @@ namespace AtlasNet
             Manager.Despawn(this);
         }
 
-        internal void WriteSnapshot(NetWriter writer)
+        internal void WriteSnapshot(NetWriter writer, SessionId reader)
         {
             writer.Write((byte)behaviours.Length);
             foreach (var behaviour in behaviours)
@@ -50,7 +57,7 @@ namespace AtlasNet
                 writer.Write(behaviour.GetType().FullName);
                 using (var data = new NetWriter())
                 {
-                    behaviour.WriteSnapshot(data);
+                    behaviour.WriteSnapshot(data, reader, true);
                     writer.WriteBytes(data.ToArray());
                 }
             }

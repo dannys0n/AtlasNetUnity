@@ -1,0 +1,17 @@
+{
+  "name": "Unity.AtlasNet.CodeGen",
+  "rootNamespace": "AtlasNet.CodeGen",
+  "references": ["AtlasNet.Unity"],
+  "includePlatforms": ["Editor"],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": true,
+  "precompiledReferences": [
+    "Mono.Cecil.dll",
+    "Mono.Cecil.Pdb.dll"
+  ],
+  "autoReferenced": false,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}

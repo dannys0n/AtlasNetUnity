@@ -10,7 +10,7 @@ public sealed class ScaleMotion : NetworkBehaviour
     public override void OnNetworkSpawn() => origin = transform.position;
     public override void OnNetworkTick()
     {
-        if (HasSimulationAuthority && moving)
+        if (HasAuthority && moving)
             transform.position = origin + Vector3.up * (0.5f + Mathf.Sin(Time.time * 2f + origin.x) * 0.5f);
     }
 }

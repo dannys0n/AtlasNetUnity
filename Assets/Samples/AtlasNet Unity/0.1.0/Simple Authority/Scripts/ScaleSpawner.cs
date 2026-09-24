@@ -4,7 +4,7 @@ using UnityEngine;
 public sealed class ScaleSpawner : MonoBehaviour
 {
     [SerializeField] private NetworkManager manager;
-    [SerializeField] private string prefabId = "scale-cube";
+    [SerializeField] private NetworkObject prefab;
     [SerializeField] private int count = 300;
     private bool spawned;
 
@@ -18,7 +18,7 @@ public sealed class ScaleSpawner : MonoBehaviour
         for (int i = 0; i < count; i++)
         {
             Vector3 position = new Vector3((i % 20) * 1.3f - 13, 1, (i / 20) * 1.3f - 9);
-            var obj = manager.Spawn(prefabId, position, Quaternion.identity);
+            var obj = manager.Spawn(prefab, position, Quaternion.identity);
             obj.GetComponent<ScaleMotion>().SetMoving(i % 6 == 0);
         }
     }

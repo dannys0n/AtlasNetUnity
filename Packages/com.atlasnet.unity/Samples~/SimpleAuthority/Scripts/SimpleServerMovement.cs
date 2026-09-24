@@ -4,7 +4,6 @@ using UnityEngine;
 /// <summary>Client sends only input intent. The server moves the controller once per network tick; no prediction.</summary>
 public sealed class SimpleServerMovement : NetworkBehaviour
 {
-    private const ushort InputMethod = 1;
     [SerializeField] private CharacterController controller;
     [SerializeField] private float speed = 5f;
     [SerializeField] private float jumpSpeed = 5f;
@@ -29,23 +28,17 @@ public sealed class SimpleServerMovement : NetworkBehaviour
             float currentYaw = yaw;
             bool jump = jumpQueued;
             jumpQueued = false;
-            AuthorityRpc(InputMethod, writer =>
-            {
-                writer.Write(current.x);
-                writer.Write(current.y);
-                writer.Write(currentYaw);
-                writer.Write(jump);
-            });
+            ReceiveInputRpc(current, currentYaw, jump);
         }
-        if (HasSimulationAuthority) Simulate();
+        if (HasAuthority) Simulate();
     }
 
-    protected override void OnRpc(ushort method, NetReader reader, SessionId sender)
+    [Rpc(SendTo.Authority)]
+    private void ReceiveInputRpc(Vector2 move, float facing, bool jump)
     {
-        if (method != InputMethod || !HasSimulationAuthority) return;
-        input = Vector2.ClampMagnitude(new Vector2(reader.ReadFloat(), reader.ReadFloat()), 1);
-        yaw = reader.ReadFloat();
-        jumpQueued |= reader.ReadBool();
+        input = Vector2.ClampMagnitude(move, 1);
+        yaw = facing;
+        jumpQueued |= jump;
     }
 
     private void Simulate()

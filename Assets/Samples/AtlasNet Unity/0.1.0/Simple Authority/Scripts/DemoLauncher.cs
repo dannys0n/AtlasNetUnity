@@ -7,7 +7,7 @@ using UnityEngine.SceneManagement;
 public sealed class DemoLauncher : MonoBehaviour
 {
     [SerializeField] private NetworkManager manager;
-    [SerializeField] private string playerPrefabId = "simple-client-player";
+    [SerializeField, HideInInspector] private NetworkObject playerPrefab; // Older imported samples stored this here.
     private string error;
     private NetworkObject extra;
     private bool reportedOwner;
@@ -20,6 +20,7 @@ public sealed class DemoLauncher : MonoBehaviour
     {
         Application.runInBackground = true;
         if (manager == null) manager = GetComponent<NetworkManager>();
+        manager.PlayerSpawnPosition = session => new Vector3((session.Value - 1) * 2.5f, 1, 0);
     }
 
     private void OnEnable() => manager.SessionJoined += OnSessionJoined;
@@ -48,9 +49,8 @@ public sealed class DemoLauncher : MonoBehaviour
     private void OnSessionJoined(SessionId session)
     {
         Debug.Log($"AtlasNet session {session} joined; local role {(manager.IsServer ? "server" : "client")}");
-        if (!manager.IsServer) return;
-        float x = (session.Value - 1) * 2.5f;
-        manager.Spawn(playerPrefabId, new Vector3(x, 1, 0), Quaternion.identity, session);
+        if (manager.IsServer && manager.PlayerPrefab == null && playerPrefab != null)
+            manager.Spawn(playerPrefab, manager.PlayerSpawnPosition(session), playerPrefab.transform.rotation, session);
     }
 
     private void StartSafely(Action action)
@@ -85,7 +85,9 @@ public sealed class DemoLauncher : MonoBehaviour
 
     private void SpawnExtra()
     {
-        if (extra == null) extra = manager.Spawn(playerPrefabId, new Vector3(0, 1, 5), Quaternion.identity);
+        if (extra == null)
+            extra = manager.Spawn(manager.PlayerPrefab != null ? manager.PlayerPrefab : playerPrefab,
+                new Vector3(0, 1, 5), Quaternion.identity);
     }
 
     private void DespawnExtra()
@@ -111,7 +113,7 @@ public sealed class DemoLauncher : MonoBehaviour
             if (localPlayer != null && localPlayer.IsSpawned)
             {
                 GUILayout.Label($"Player: {localPlayer.EntityId}   Prefab: {localPlayer.PrefabId}");
-                GUILayout.Label($"Input session: {localPlayer.OwnerSession}   Simulation: {(localPlayer.HasSimulationAuthority ? "local" : "server")}");
+                GUILayout.Label($"Input session: {localPlayer.OwnerSession}   Simulation: {(localPlayer.HasAuthority ? "local" : "server")}");
                 var movement = localPlayer.GetComponent<NetworkTransform>();
                 if (movement != null)
                     GUILayout.Label($"Transform writers: position {movement.PositionWriter}, rotation {movement.RotationWriter}");

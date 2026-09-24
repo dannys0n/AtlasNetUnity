@@ -1,6 +1,6 @@
 # AtlasNet — Proposed Unity Developer API
 
-> **Status: API design sketches, not fixed implementation requirements.** Use [AGENTS.md](../AGENTS.md) for the current demo scope. Names, signatures, authority checks, and handoff-facing examples below must be validated against working Unity code before becoming public API.
+> **Status: API design sketches, not fixed implementation requirements.** Use [AGENTS.md](../AGENTS.md) for the current demo scope. The current package intentionally uses NGO-like `IsOwner`, `HasAuthority`, and `[Rpc(SendTo.X)]`; older `HasInputAuthority` / `HasSimulationAuthority` / separate RPC attribute sketches below are exploratory, not the current API. Names, signatures, authority checks, and handoff-facing examples must be validated against working Unity code before becoming public API.
 
 ## 1. API Design Goals
 

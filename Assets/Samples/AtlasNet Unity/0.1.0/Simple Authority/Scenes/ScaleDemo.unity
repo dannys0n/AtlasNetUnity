@@ -165,11 +165,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a1000000000000000000000000000002, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  prefabs:
-  - id: simple-server-player
-    prefab: {fileID: 1006, guid: b2000000000000000000000000000002, type: 3}
-  - id: scale-cube
-    prefab: {fileID: 4005, guid: b2000000000000000000000000000003, type: 3}
+  playerPrefab: {fileID: 1006, guid: b2000000000000000000000000000002, type: 3}
+  networkPrefabsLists:
+  - {fileID: 11400000, guid: 4903ef5f457848a3bb3e8a4ba4f30232, type: 2}
+  - {fileID: 11400000, guid: 18936fcf22e04eeaa653af361fee1b6f, type: 2}
   tickRate: 30
   port: 7777
   localAddress: 127.0.0.1
@@ -186,7 +185,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   manager: {fileID: 5003}
-  playerPrefabId: simple-server-player
 --- !u!114 &5005
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -200,7 +198,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   manager: {fileID: 5003}
-  prefabId: scale-cube
+  prefab: {fileID: 4005, guid: b2000000000000000000000000000003, type: 3}
   count: 300
 --- !u!1 &6001
 GameObject:

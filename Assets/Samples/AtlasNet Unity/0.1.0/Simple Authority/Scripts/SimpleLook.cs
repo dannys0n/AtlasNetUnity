@@ -4,6 +4,8 @@ using UnityEngine;
 /// <summary>Mouse aim always runs on the controlling client, including in the server-movement scene.</summary>
 public sealed class SimpleLook : NetworkBehaviour
 {
+    private readonly NetworkVariable<Quaternion> lookPitch = new NetworkVariable<Quaternion>(
+        Quaternion.identity, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
     [SerializeField] private Transform pitchPivot;
     [SerializeField] private Camera playerCamera;
     [SerializeField] private Renderer bodyRenderer;
@@ -25,10 +27,22 @@ public sealed class SimpleLook : NetworkBehaviour
 
     private void Update()
     {
-        if (!IsOwner) return;
-        if (Input.GetKeyDown(KeyCode.Escape)) Cursor.lockState = CursorLockMode.None;
+        if (!IsSpawned) return;
+        if (!IsOwner)
+        {
+            pitchPivot.localRotation = lookPitch.Value;
+            return;
+        }
+        if (Input.GetKeyDown(KeyCode.Escape)) 
+            Cursor.lockState = CursorLockMode.None;
+        
         transform.Rotate(0, Input.GetAxisRaw("Mouse X") * sensitivity, 0);
         pitch = Mathf.Clamp(pitch - Input.GetAxisRaw("Mouse Y") * sensitivity, -85f, 85f);
         pitchPivot.localRotation = Quaternion.Euler(pitch, 0, 0);
+    }
+
+    public override void OnNetworkTick()
+    {
+        if (IsOwner) lookPitch.Value = pitchPivot.localRotation;
     }
 }
