@@ -7,9 +7,20 @@ namespace AtlasNet
     [DisallowMultipleComponent]
     public sealed class NetworkObject : MonoBehaviour
     {
-        [SerializeField, Tooltip("Stable prefab registration key; distinct from the runtime EntityId.")] private string prefabId;
+        // Generated from the prefab asset's Unity identity in the editor. This is a
+        // lookup key shared by builds, not the runtime identity of a spawned entity.
+        [SerializeField, HideInInspector] private string prefabId;
         private NetworkBehaviour[] behaviours;
-        public string PrefabId => prefabId;
+        public string PrefabId
+        {
+            get
+            {
+#if UNITY_EDITOR
+                RefreshPrefabId();
+#endif
+                return prefabId;
+            }
+        }
         public EntityId EntityId { get; private set; }
         public SessionId OwnerSession { get; private set; }
         public NetworkManager Manager { get; private set; }
@@ -17,6 +28,23 @@ namespace AtlasNet
         public bool IsOwner => IsSpawned && Manager.IsClient && OwnerSession == Manager.LocalSession;
         public bool HasAuthority => IsSpawned && Manager.CanSimulate(this);
         internal NetworkBehaviour[] Behaviours => behaviours;
+
+#if UNITY_EDITOR
+        private void OnValidate() => RefreshPrefabId();
+
+        private void RefreshPrefabId()
+        {
+            // Prefab instances inherit their source key; scene objects are not
+            // registered spawnable prefabs. Only the asset gets a generated key.
+            if (!UnityEditor.PrefabUtility.IsPartOfPrefabAsset(this)) return;
+            var globalId = UnityEditor.GlobalObjectId.GetGlobalObjectIdSlow(this);
+            if (globalId.identifierType == 0) return; // Asset not saved yet.
+            string generated = globalId.ToString();
+            if (prefabId == generated) return;
+            prefabId = generated;
+            UnityEditor.EditorUtility.SetDirty(this);
+        }
+#endif
 
         internal void Initialize(NetworkManager manager, EntityId id, SessionId owner, bool deferSpawnCallbacks = false)
         {

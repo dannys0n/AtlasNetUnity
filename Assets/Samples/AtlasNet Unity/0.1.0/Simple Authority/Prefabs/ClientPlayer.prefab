@@ -135,7 +135,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a1000000000000000000000000000001, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  prefabId: simple-client-player
+  prefabId: GlobalObjectId_V1-1-b2000000000000000000000000000001-1006-0
 --- !u!114 &1007
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -196,6 +196,7 @@ MonoBehaviour:
   syncRotation: 1
   positionWriter: 1
   rotationWriter: 1
+  interpolate: 1
 --- !u!114 &1011
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -213,6 +214,7 @@ MonoBehaviour:
   syncRotation: 1
   positionWriter: 0
   rotationWriter: 1
+  interpolate: 1
 --- !u!1 &2001
 GameObject:
   m_ObjectHideFlags: 0

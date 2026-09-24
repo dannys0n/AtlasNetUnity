@@ -48,10 +48,10 @@ namespace AtlasNetDemo.Tests
             Assert.AreEqual(RpcInvokePermission.Owner, rpc.InvokePermission);
         }
 
-        [TestCase("ClientAuthority.unity", "simple-client-player", TransformWriter.Owner)]
-        [TestCase("ServerAuthority.unity", "simple-server-player", TransformWriter.Server)]
-        [TestCase("ScaleDemo.unity", "simple-server-player", TransformWriter.Server)]
-        public void SceneRegistryAndPlayerWiring(string sceneName, string playerId, TransformWriter expectedPositionWriter)
+        [TestCase("ClientAuthority.unity", TransformWriter.Owner)]
+        [TestCase("ServerAuthority.unity", TransformWriter.Server)]
+        [TestCase("ScaleDemo.unity", TransformWriter.Server)]
+        public void SceneRegistryAndPlayerWiring(string sceneName, TransformWriter expectedPositionWriter)
         {
             EditorSceneManager.OpenScene(Sample + "Scenes/" + sceneName);
             var manager = Object.FindAnyObjectByType<NetworkManager>();
@@ -62,7 +62,7 @@ namespace AtlasNetDemo.Tests
             var entries = managerData.FindProperty("networkPrefabsLists");
             var player = managerData.FindProperty("playerPrefab").objectReferenceValue as NetworkObject;
             Assert.IsNotNull(player);
-            Assert.AreEqual(playerId, player.PrefabId);
+            Assert.AreEqual(GlobalObjectId.GetGlobalObjectIdSlow(player).ToString(), player.PrefabId);
             Assert.AreSame(player, manager.PlayerPrefab);
             Assert.AreEqual(sceneName == "ScaleDemo.unity" ? 2 : 1, entries.arraySize);
             var playerList = entries.GetArrayElementAtIndex(0).objectReferenceValue as NetworkPrefabsList;
@@ -91,7 +91,7 @@ namespace AtlasNetDemo.Tests
             Assert.AreEqual(1, scaleList.Prefabs.Count);
             var prefab = scaleList.Prefabs[0];
             Assert.IsNotNull(prefab);
-            Assert.AreEqual("scale-cube", prefab.PrefabId);
+            Assert.AreEqual(GlobalObjectId.GetGlobalObjectIdSlow(prefab).ToString(), prefab.PrefabId);
             Assert.IsNotNull(manager.GetComponent("ScaleSpawner"));
             var spawner = manager.GetComponent("ScaleSpawner");
             Assert.AreSame(prefab, new SerializedObject(spawner).FindProperty("prefab").objectReferenceValue);

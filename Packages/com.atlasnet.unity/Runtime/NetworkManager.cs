@@ -82,7 +82,7 @@ namespace AtlasNet
                         if (prefab == null)
                             throw new InvalidOperationException($"AtlasNet Network Prefabs List '{list.name}' contains a missing NetworkObject prefab");
                         if (string.IsNullOrWhiteSpace(prefab.PrefabId))
-                            throw new InvalidOperationException($"AtlasNet prefab '{prefab.name}' in list '{list.name}' needs a NetworkObject prefab ID");
+                            throw new InvalidOperationException($"AtlasNet prefab '{prefab.name}' in list '{list.name}' has no generated Prefab ID. Reimport or resave its prefab asset");
                         if (registry.TryGetValue(prefab.PrefabId, out var existing))
                         {
                             if (existing == prefab) continue;

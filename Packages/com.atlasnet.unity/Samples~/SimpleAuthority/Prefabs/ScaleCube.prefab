@@ -73,7 +73,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a1000000000000000000000000000001, type: 3}
   m_Name:
   m_EditorClassIdentifier:
-  prefabId: scale-cube
 --- !u!114 &4006
 MonoBehaviour:
   m_ObjectHideFlags: 0
