@@ -19,7 +19,7 @@ On 2026-09-24, the updated runtime and imported sample C# compiled, and an isola
 
 The subsequent NGO-style Player Prefab and spawn-snapshot ordering changes compiled the runtime, packaged and imported sample scripts, and EditMode test assembly. The EditMode and Play Mode checks above have **not** been rerun against these changes. Prefab registration was later migrated from inline manager entries to `NetworkPrefabsList` assets; those older scene-wiring results do not validate the migrated assets.
 
-Still needs an interactive Multiplayer Play Mode pass: move, look, and jump as a non-host client in **both** authority scenes; watch movement and aim from another client; test the P/O spawn/despawn controls; and verify the camera/cursor feel. Headless processes cannot validate visual smoothness or live input. Optional dynamic Rigidbody synchronization and prediction are not in this demo.
+Still needs an interactive Multiplayer Play Mode pass: move, look, and jump as a non-host client in **both** authority scenes; watch movement and aim from another client; test the P/O spawn/despawn controls; and verify the camera/cursor feel. Headless processes cannot validate visual smoothness or live input. `PhysicsDemo` is the dedicated Rigidbody scene with its own `PhysicsPlayer`: verify the cubes fall, react to host R, and can be pushed by both host and joined-client movement while both views agree. Rigidbody prediction is not in this demo.
 
 ## Current framework pass (2026-09-24)
 
@@ -28,3 +28,7 @@ Added owner-written `NetworkVariable` permissions and per-recipient snapshots, o
 ## Prefab-list migration (2026-09-24)
 
 `NetworkManager` now reads one or more `NetworkPrefabsList` ScriptableObject assets instead of inline prefab entries. The packaged and imported ClientAuthority, ServerAuthority, and ScaleDemo scenes reference list assets; ScaleDemo shares the server-player list and adds a cube list. The player prefab must be in an assigned list. Runtime, sample, and EditMode test assemblies compile; the standalone codec/transport check passes. These checks do **not** prove that Unity imported the new assets or that the migrated scenes run. Run the EditMode asset tests and a Multiplayer Play Mode spawn/late-join smoke test once the Unity editor can validate this change.
+
+## Rigidbody first pass (2026-09-24)
+
+Added a server-authoritative `NetworkRigidbody` companion to `NetworkTransform` and an EditMode test for its setup guard and kinematic client-copy behavior. A dedicated `PhysicsDemo` scene now registers and spawns three Rigidbody cubes; host R applies another impulse. The runtime, sample-script, and EditMode test assemblies compile with zero warnings/errors (the not-yet-regenerated sample-script IDE project needed a temporary source entry, which was removed afterward). Serialized prefab and scene component references were checked for duplicate or missing local file IDs. The Unity editor is open, so the EditMode tests and an interactive host/client physics test have **not** been run.

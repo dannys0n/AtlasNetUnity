@@ -18,8 +18,9 @@ GameObject:
   - component: {fileID: 1009}
   - component: {fileID: 1010}
   - component: {fileID: 1011}
+  - component: {fileID: 1012}
   m_Layer: 0
-  m_Name: ServerPlayer
+  m_Name: PhysicsPlayer
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -135,7 +136,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a1000000000000000000000000000001, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  prefabId: GlobalObjectId_V1-1-b2000000000000000000000000000002-1006-0
+  prefabId: GlobalObjectId_V1-1-331214b13f1b4c3ba26ea793e83a715f-1006-0
 --- !u!114 &1007
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -215,6 +216,20 @@ MonoBehaviour:
   positionWriter: 0
   rotationWriter: 1
   interpolate: 1
+--- !u!114 &1012
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1001}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a0c59af827de49d68f5d0ebed6f998ce, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  networkObject: {fileID: 1006}
+  pushForce: 30
 --- !u!1 &2001
 GameObject:
   m_ObjectHideFlags: 0
@@ -226,7 +241,7 @@ GameObject:
   - component: {fileID: 2002}
   - component: {fileID: 2003}
   - component: {fileID: 2004}
-  - component: {fileID: 7611159865477275415}
+  - component: {fileID: 4969530243172670446}
   m_Layer: 0
   m_Name: AimPivot
   m_TagString: Untagged
@@ -309,7 +324,7 @@ AudioListener:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 2001}
   m_Enabled: 1
---- !u!114 &7611159865477275415
+--- !u!114 &4969530243172670446
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}

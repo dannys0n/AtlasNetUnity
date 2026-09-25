@@ -26,6 +26,9 @@ namespace AtlasNet
 
         public TransformWriter PositionWriter => positionWriter;
         public TransformWriter RotationWriter => rotationWriter;
+        internal bool SyncPosition => syncPosition;
+        internal bool SyncRotation => syncRotation;
+        internal Transform Target => target != null ? target : transform;
 
         public override void OnNetworkSpawn()
         {
