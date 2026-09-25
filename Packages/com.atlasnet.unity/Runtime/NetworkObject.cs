@@ -11,6 +11,7 @@ namespace AtlasNet
         // lookup key shared by builds, not the runtime identity of a spawned entity.
         [SerializeField, HideInInspector] private string prefabId;
         private NetworkBehaviour[] behaviours;
+        private bool completedSpawn;
         public string PrefabId
         {
             get
@@ -23,6 +24,10 @@ namespace AtlasNet
         }
         public EntityId EntityId { get; private set; }
         public SessionId OwnerSession { get; private set; }
+        /// <summary>Local development worker currently simulating this entity. Zero is the first server.</summary>
+        public ulong SimulationWorker { get; private set; }
+        /// <summary>Increases on every committed simulation-authority transfer.</summary>
+        public uint AuthorityEpoch { get; private set; }
         public NetworkManager Manager { get; private set; }
         public bool IsSpawned => Manager != null;
         public bool IsOwner => IsSpawned && Manager.IsClient && OwnerSession == Manager.LocalSession;
@@ -61,13 +66,61 @@ namespace AtlasNet
 
         internal void CompleteSpawn()
         {
+            completedSpawn = true;
             foreach (var behaviour in behaviours) behaviour.OnNetworkSpawn();
+        }
+
+        internal void SetSimulationAuthority(ulong worker, uint epoch)
+        {
+            if (epoch < AuthorityEpoch) throw new InvalidOperationException($"Stale authority epoch for entity {EntityId}");
+            bool changed = SimulationWorker != worker || AuthorityEpoch != epoch;
+            SimulationWorker = worker;
+            AuthorityEpoch = epoch;
+            if (changed && completedSpawn)
+                NotifySimulationAuthorityChanged();
+        }
+
+        internal void NotifySimulationAuthorityChanged()
+        {
+            if (completedSpawn)
+                foreach (var behaviour in behaviours) behaviour.OnSimulationAuthorityChanged();
+        }
+
+        internal void WriteHandoff(NetWriter writer)
+        {
+            writer.Write(transform.position);
+            writer.Write(transform.rotation);
+            WriteSnapshot(writer, OwnerSession);
+            foreach (var behaviour in behaviours)
+            {
+                using (var state = new NetWriter())
+                {
+                    behaviour.WriteHandoff(state);
+                    writer.WriteBytes(state.ToArray());
+                }
+            }
+        }
+
+        internal void ReadHandoff(NetReader reader)
+        {
+            transform.SetPositionAndRotation(reader.ReadVector3(), reader.ReadQuaternion());
+            ReadSnapshot(reader);
+            foreach (var behaviour in behaviours)
+            {
+                using (var state = new NetReader(reader.ReadBytes()))
+                {
+                    behaviour.ReadHandoff(state);
+                    if (state.HasRemaining)
+                        throw new InvalidOperationException($"Extra handoff state for {behaviour.GetType().Name}");
+                }
+            }
         }
 
         internal void Shutdown()
         {
             if (behaviours != null)
                 foreach (var behaviour in behaviours) behaviour.OnNetworkDespawn();
+            completedSpawn = false;
             Manager = null;
         }
 

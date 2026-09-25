@@ -44,6 +44,7 @@ public sealed class DemoLauncher : MonoBehaviour
         if (Array.IndexOf(args, "-atlas-host") >= 0) StartSafely(manager.StartHost);
         else if (Array.IndexOf(args, "-atlas-server") >= 0) StartSafely(manager.StartServer);
         else if (Array.IndexOf(args, "-atlas-client") >= 0) StartSafely(manager.StartClient);
+        else if (Array.IndexOf(args, "-atlas-worker") >= 0) StartSafely(manager.StartWorker);
     }
 
     private void OnSessionJoined(SessionId session)
@@ -73,14 +74,17 @@ public sealed class DemoLauncher : MonoBehaviour
                 break;
             }
         }
-        if (!manager.IsServer) return;
+        if (!manager.IsServer || manager.IsWorker) return;
         if (logMetrics && Time.unscaledTime >= nextMetrics)
         {
             nextMetrics = Time.unscaledTime + 5f;
             Debug.Log($"AtlasNet metrics: entities={manager.SpawnedCount} observers={manager.ObserverCopies} tickMs={manager.LastTickMilliseconds:F3} allocated={AllocationText()} bytesLastTick={manager.BytesSentLastTick}");
         }
-        if (Input.GetKeyDown(KeyCode.P)) SpawnExtra();
-        if (Input.GetKeyDown(KeyCode.O)) DespawnExtra();
+        if (manager.PlayerPrefab != null || playerPrefab != null)
+        {
+            if (Input.GetKeyDown(KeyCode.P)) SpawnExtra();
+            if (Input.GetKeyDown(KeyCode.O)) DespawnExtra();
+        }
     }
 
     private void SpawnExtra()
@@ -98,30 +102,56 @@ public sealed class DemoLauncher : MonoBehaviour
 
     private void OnGUI()
     {
-        GUILayout.BeginArea(new Rect(10, 10, 400, 300), GUI.skin.box);
+        GUILayout.BeginArea(new Rect(10, 10, 420, 480), GUI.skin.box);
         GUILayout.Label("AtlasNet local demo");
         if (!manager.IsRunning)
         {
-            if (GUILayout.Button("Start Host")) StartSafely(manager.StartHost);
-            if (GUILayout.Button("Start Server Only")) StartSafely(manager.StartServer);
+            if (SceneManager.GetActiveScene().name == "ScaleDemo")
+            {
+                if (GUILayout.Button("Start World (Server)")) StartSafely(manager.StartServer);
+            }
+            else
+            {
+                if (GUILayout.Button("Start Host")) StartSafely(manager.StartHost);
+                if (GUILayout.Button("Start Server Only")) StartSafely(manager.StartServer);
+            }
             if (GUILayout.Button("Join as Client")) StartSafely(manager.StartClient);
+            if (GUILayout.Button("Join as Worker")) StartSafely(manager.StartWorker);
         }
         else
         {
-            GUILayout.Label($"Role: {(manager.IsServer ? (manager.IsClient ? "Host" : "Server") : "Client")}");
+            GUILayout.Label($"Role: {(manager.IsWorker ? "Worker" : manager.IsServer ? (manager.IsClient ? "Host" : "Server") : "Client")}");
             GUILayout.Label($"Session: {manager.LocalSession}   Tick: {manager.Tick}");
+            GUILayout.Label($"Worker: {manager.LocalWorkerId}   Workers: {manager.WorkerCount}");
+            if (SceneManager.GetActiveScene().name == "ScaleDemo")
+            {
+                GUILayout.Label($"Region handoffs: {(manager.AutomaticLocalHandoffs ? "automatic" : "off")}");
+                GUILayout.Label($"Debug region vertices: {manager.LocalRegion.Count}");
+            }
             if (localPlayer != null && localPlayer.IsSpawned)
             {
                 GUILayout.Label($"Player: {localPlayer.EntityId}   Prefab: {localPlayer.PrefabId}");
-                GUILayout.Label($"Input session: {localPlayer.OwnerSession}   Simulation: {(localPlayer.HasAuthority ? "local" : "server")}");
+                var interest = localPlayer.GetComponent<NetworkInterestSource>();
+                if (interest != null) GUILayout.Label($"Player interest radius: {interest.Radius:F1} (exit +{interest.ExitPadding:F1})");
+                GUILayout.Label($"Input session: {localPlayer.OwnerSession}   Simulation worker: {localPlayer.SimulationWorker}   Epoch: {localPlayer.AuthorityEpoch}");
                 var movement = localPlayer.GetComponent<NetworkTransform>();
                 if (movement != null)
                     GUILayout.Label($"Transform writers: position {movement.PositionWriter}, rotation {movement.RotationWriter}");
             }
             GUILayout.Label($"Entities: {manager.SpawnedCount}   Observers: {manager.ObserverCopies}");
+            GUILayout.Label($"Simulating here: {manager.LocalAuthorityCount}   Ghosts: {manager.GhostCount}");
+            if (SceneManager.GetActiveScene().name == "ScaleDemo" && manager.IsServer)
+                GUILayout.Label($"Interested ghost visuals: {InterestedGhosts()}");
+            foreach (var obj in manager.SpawnedObjects)
+                if (obj != null && obj.AuthorityEpoch > 0)
+                {
+                    GUILayout.Label($"Handoff entity {obj.EntityId}: worker {obj.SimulationWorker}, epoch {obj.AuthorityEpoch}");
+                    break;
+                }
             GUILayout.Label($"Tick: {manager.LastTickMilliseconds:F2} ms   Alloc: {AllocationText()}");
             GUILayout.Label($"Sent: {manager.BytesSentLastTick} B/tick   Peers: {manager.RemoteClientCount}");
-            if (manager.IsServer)
+            GUILayout.Label($"Pending handoffs: {manager.PendingHandoffCount}");
+            if (manager.IsServer && !manager.IsWorker && (manager.PlayerPrefab != null || playerPrefab != null))
             {
                 if (GUILayout.Button("Spawn extra (P)")) SpawnExtra();
                 if (GUILayout.Button("Despawn extra (O)")) DespawnExtra();
@@ -134,4 +164,13 @@ public sealed class DemoLauncher : MonoBehaviour
 
     private string AllocationText() => manager.AllocatedBytesLastTick < 0
         ? "unavailable" : $"{manager.AllocatedBytesLastTick} B";
+
+    private int InterestedGhosts()
+    {
+        int count = 0;
+        foreach (var obj in manager.SpawnedObjects)
+            if (obj != null && !obj.HasAuthority && manager.ShouldRenderWorkerCopyForDebug(obj)) count++;
+        return count;
+    }
+
 }

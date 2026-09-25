@@ -15,7 +15,14 @@ namespace AtlasNet.Editor
             EditorGUILayout.PropertyField(serializedObject.FindProperty("tickRate"), new GUIContent("Tick Rate"));
             EditorGUILayout.PropertyField(serializedObject.FindProperty("localAddress"), new GUIContent("Local Address"));
             EditorGUILayout.PropertyField(serializedObject.FindProperty("port"), new GUIContent("Port"));
-            EditorGUILayout.HelpBox("Local TCP transport. Worker routing and transport selection are not available yet.", MessageType.None);
+            EditorGUILayout.HelpBox("Local TCP development mode. The first server coordinates clients and optional Unity workers; production AtlasNet transport selection is not connected yet.", MessageType.None);
+
+            EditorGUILayout.Space();
+            EditorGUILayout.LabelField("Local Worker Regions", EditorStyles.boldLabel);
+            EditorGUILayout.PropertyField(serializedObject.FindProperty("automaticLocalHandoffs"), new GUIContent("Automatic Handoffs"));
+            EditorGUILayout.PropertyField(serializedObject.FindProperty("localWorldMin"), new GUIContent("World Minimum X/Z"));
+            EditorGUILayout.PropertyField(serializedObject.FindProperty("localWorldMax"), new GUIContent("World Maximum X/Z"));
+            EditorGUILayout.PropertyField(serializedObject.FindProperty("localBoundaryMargin"), new GUIContent("Boundary Margin"));
 
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("Prefab Settings", EditorStyles.boldLabel);
@@ -38,10 +45,15 @@ namespace AtlasNet.Editor
             EditorGUILayout.LabelField("Runtime", EditorStyles.boldLabel);
             using (new EditorGUI.DisabledScope(true))
             {
-                EditorGUILayout.TextField("Role", manager.IsHost ? "Host" : manager.IsServer ? "Server" : manager.IsClient ? "Client" : "Stopped");
+                EditorGUILayout.TextField("Role", manager.IsWorker ? "Worker" : manager.IsHost ? "Host" : manager.IsServer ? "Server" : manager.IsClient ? "Client" : "Stopped");
                 EditorGUILayout.LongField("Network Tick", manager.Tick);
                 EditorGUILayout.IntField("Spawned Objects", manager.SpawnedCount);
                 EditorGUILayout.IntField("Remote Clients", manager.RemoteClientCount);
+                EditorGUILayout.TextField("Local Worker ID", manager.LocalWorkerId.ToString());
+                EditorGUILayout.IntField("Workers", manager.WorkerCount);
+                EditorGUILayout.IntField("Simulating Here", manager.LocalAuthorityCount);
+                EditorGUILayout.IntField("Ghosts", manager.GhostCount);
+                EditorGUILayout.IntField("Pending Handoffs", manager.PendingHandoffCount);
             }
             if (manager.IsRunning)
             {
@@ -54,6 +66,7 @@ namespace AtlasNet.Editor
                     if (GUILayout.Button("Start Host")) manager.StartHost();
                     if (GUILayout.Button("Start Server")) manager.StartServer();
                     if (GUILayout.Button("Start Client")) manager.StartClient();
+                    if (GUILayout.Button("Join Worker")) manager.StartWorker();
                 }
             }
         }
@@ -96,6 +109,8 @@ namespace AtlasNet.Editor
                 EditorGUILayout.Toggle("Is Spawned", networkObject.IsSpawned);
                 EditorGUILayout.TextField("Entity ID", networkObject.IsSpawned ? networkObject.EntityId.ToString() : "—");
                 EditorGUILayout.TextField("Owner Session", networkObject.IsSpawned ? networkObject.OwnerSession.ToString() : "—");
+                EditorGUILayout.TextField("Simulation Worker", networkObject.IsSpawned ? networkObject.SimulationWorker.ToString() : "—");
+                EditorGUILayout.LongField("Authority Epoch", networkObject.IsSpawned ? networkObject.AuthorityEpoch : 0);
                 EditorGUILayout.Toggle("Is Owner", networkObject.IsOwner);
                 EditorGUILayout.Toggle("Has Simulation Authority", networkObject.HasAuthority);
                 EditorGUILayout.ObjectField("Network Manager", networkObject.Manager, typeof(NetworkManager), true);

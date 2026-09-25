@@ -118,6 +118,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a2000000000000000000000000000006, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  authorityMaterial: {fileID: 2100000, guid: de91743c7a774812b64191daf71589b4, type: 2}
+  ghostMaterial: {fileID: 2100000, guid: 93d4fc33342a4d57ab857bad1646f774, type: 2}
 --- !u!114 &4007
 MonoBehaviour:
   m_ObjectHideFlags: 0

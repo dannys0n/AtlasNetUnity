@@ -5,21 +5,20 @@ public sealed class ScaleSpawner : MonoBehaviour
 {
     [SerializeField] private NetworkManager manager;
     [SerializeField] private NetworkObject prefab;
-    [SerializeField] private int count = 300;
+    [SerializeField] private int count = 50;
     private bool spawned;
 
-    private void OnEnable() => manager.SessionJoined += OnSessionJoined;
-    private void OnDisable() => manager.SessionJoined -= OnSessionJoined;
-
-    private void OnSessionJoined(SessionId session)
+    private void Update()
     {
-        if (!manager.IsServer || spawned) return;
+        if (!manager.IsRunning) { spawned = false; return; }
+        if (!manager.IsServer || manager.IsWorker || spawned) return;
         spawned = true;
         for (int i = 0; i < count; i++)
         {
-            Vector3 position = new Vector3((i % 20) * 1.3f - 13, 1, (i / 20) * 1.3f - 9);
+            int column = i % 10, row = i / 10;
+            Vector3 position = new Vector3(column * 2.8f - 12.6f, 1, row * 5f - 10f);
             var obj = manager.Spawn(prefab, position, Quaternion.identity);
-            obj.GetComponent<ScaleMotion>().SetMoving(i % 6 == 0);
+            obj.GetComponent<ScaleMotion>().SetMoving(true);
         }
     }
 }

@@ -95,12 +95,29 @@ namespace AtlasNetDemo.Tests
             Assert.AreEqual(GlobalObjectId.GetGlobalObjectIdSlow(player).ToString(), player.PrefabId);
             Assert.AreSame(player, manager.PlayerPrefab);
             Assert.AreEqual(sceneName == "ScaleDemo.unity" || sceneName == "PhysicsDemo.unity" ? 2 : 1, entries.arraySize);
-            var playerList = entries.GetArrayElementAtIndex(0).objectReferenceValue as NetworkPrefabsList;
+            bool scale = sceneName == "ScaleDemo.unity";
+            var playerList = entries.GetArrayElementAtIndex(scale ? 1 : 0).objectReferenceValue as NetworkPrefabsList;
             Assert.IsNotNull(playerList);
             CollectionAssert.Contains(playerList.Prefabs, player);
-            Assert.IsNotNull(player.GetComponent<CharacterController>());
-            Assert.IsNotNull(player.GetComponentInChildren<Camera>(true));
-            Assert.AreEqual(5, player.GetComponents<NetworkBehaviour>().Length);
+            if (scale)
+            {
+                Assert.IsNotNull(player.GetComponent<NetworkInterestSource>());
+                Assert.IsNotNull(player.GetComponent("ScalePlayerMovement"));
+                var overlay = player.GetComponent("ScaleInterestOverlay");
+                Assert.IsNotNull(overlay);
+                var overlayData = new SerializedObject(overlay);
+                Assert.AreSame(player, overlayData.FindProperty("player").objectReferenceValue);
+                Assert.AreSame(player.GetComponent<NetworkInterestSource>(),
+                    overlayData.FindProperty("interest").objectReferenceValue);
+                Assert.IsNotNull(overlayData.FindProperty("fillMaterial").objectReferenceValue);
+                Assert.AreEqual(2, player.GetComponents<NetworkBehaviour>().Length);
+            }
+            else
+            {
+                Assert.IsNotNull(player.GetComponent<CharacterController>());
+                Assert.IsNotNull(player.GetComponentInChildren<Camera>(true));
+                Assert.AreEqual(5, player.GetComponents<NetworkBehaviour>().Length);
+            }
             Assert.AreEqual(expectedPositionWriter, player.GetComponent<NetworkTransform>().PositionWriter);
             Assert.AreEqual(sceneName == "PhysicsDemo.unity", player.GetComponent("PhysicsPlayerPush") != null);
 
@@ -119,10 +136,11 @@ namespace AtlasNetDemo.Tests
             Assert.AreEqual(2, entries.arraySize);
             var scaleList = entries.GetArrayElementAtIndex(1).objectReferenceValue as NetworkPrefabsList;
             Assert.IsNotNull(scaleList);
-            Assert.AreEqual(1, scaleList.Prefabs.Count);
+            Assert.AreEqual(2, scaleList.Prefabs.Count);
             var prefab = scaleList.Prefabs[0];
             Assert.IsNotNull(prefab);
             Assert.AreEqual(GlobalObjectId.GetGlobalObjectIdSlow(prefab).ToString(), prefab.PrefabId);
+            Assert.IsNotNull(scaleList.Prefabs[1].GetComponent<NetworkInterestSource>());
             Assert.IsNotNull(manager.GetComponent("ScaleSpawner"));
             var spawner = manager.GetComponent("ScaleSpawner");
             Assert.AreSame(prefab, new SerializedObject(spawner).FindProperty("prefab").objectReferenceValue);

@@ -12,7 +12,7 @@ public sealed class PhysicsSpawner : MonoBehaviour
 
     private void Update()
     {
-        if (!manager.IsServer)
+        if (!manager.IsServer || manager.IsWorker)
         {
             spawned = false;
             bodies.Clear();

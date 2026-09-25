@@ -195,8 +195,15 @@ namespace AtlasNet
         public virtual void OnNetworkSpawn() { }
         public virtual void OnNetworkDespawn() { }
         public virtual void OnNetworkTick() { }
+        /// <summary>Called after a committed worker-authority change for an existing entity.</summary>
+        public virtual void OnSimulationAuthorityChanged() { }
         protected virtual void WriteExtraSnapshot(NetWriter writer) { }
         protected virtual void ReadExtraSnapshot(NetReader reader) { }
+        /// <summary>Optional simulation-only state transferred between local workers, not sent to observers.</summary>
+        protected virtual void WriteHandoffState(NetWriter writer) { }
+        protected virtual void ReadHandoffState(NetReader reader) { }
+        internal void WriteHandoff(NetWriter writer) => WriteHandoffState(writer);
+        internal void ReadHandoff(NetReader reader) => ReadHandoffState(reader);
 
         internal void ReceiveRpc(uint method, byte[] payload, SessionId sender, RpcDestination destination, SessionId target)
         {
@@ -288,6 +295,13 @@ namespace AtlasNet
             if (!rpcMethods.TryGetValue(id, out var method))
                 throw new InvalidOperationException($"Unknown RPC {id} on {GetType().Name}");
             return method.GetCustomAttribute<RpcAttribute>().InvokePermission;
+        }
+
+        internal RpcDestination GetRpcDestination(uint id)
+        {
+            if (!rpcMethods.TryGetValue(id, out var method))
+                throw new InvalidOperationException($"Unknown RPC {id} on {GetType().Name}");
+            return RpcMethods.DestinationOf(RpcMethods.TargetOf(method).Value);
         }
     }
 

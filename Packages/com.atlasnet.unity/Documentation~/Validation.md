@@ -11,7 +11,7 @@ Checked with Unity 6000.6.2f1 on Windows on 2026-09-23. The checks below exercis
 | Client-authority host plus non-host client | Both sessions joined and the client's player spawned in both processes |
 | Server-authority host plus non-host client | Client player spawned; authority request, persistent value, observers event, and targeted response arrived |
 | Late join after the persistent value changed | A third client received the current value (`1`) in its spawn snapshot |
-| Scale scene, host plus non-host client | 300 cubes plus two players, 302 remote observer copies; sampled server ticks about 1.0–1.3 ms and 1,350 aggregate bytes sent on moving ticks |
+| Earlier scale scene, host plus non-host client (before local workers/checkerboard) | 300 cubes plus two players, 302 remote observer copies; sampled server ticks about 1.0–1.3 ms and 1,350 aggregate bytes sent on moving ticks. These are historical measurements, not results for the current ScaleDemo. |
 
 The standalone run's managed-allocation counter was unavailable, so the overlay reports `unavailable` rather than a misleading zero. These scale readings are a single local smoke test, not a benchmark or entity-capacity guarantee.
 
@@ -27,7 +27,15 @@ Added owner-written `NetworkVariable` permissions and per-recipient snapshots, o
 
 ## Prefab-list migration (2026-09-24)
 
-`NetworkManager` now reads one or more `NetworkPrefabsList` ScriptableObject assets instead of inline prefab entries. The packaged and imported ClientAuthority, ServerAuthority, and ScaleDemo scenes reference list assets; ScaleDemo shares the server-player list and adds a cube list. The player prefab must be in an assigned list. Runtime, sample, and EditMode test assemblies compile; the standalone codec/transport check passes. These checks do **not** prove that Unity imported the new assets or that the migrated scenes run. Run the EditMode asset tests and a Multiplayer Play Mode spawn/late-join smoke test once the Unity editor can validate this change.
+`NetworkManager` now reads one or more `NetworkPrefabsList` ScriptableObject assets instead of inline prefab entries. The packaged and imported ClientAuthority, ServerAuthority, and ScaleDemo scenes reference list assets. ScaleDemo now registers its own `ScaleInterestPlayer` alongside `ScaleCube`; it no longer shares the server-player prefab. The player prefab must be in an assigned list. Earlier runtime, sample, and EditMode test assemblies compiled, and the standalone codec/transport check passed. Those earlier checks do **not** prove that Unity imported the current assets or that the scenes run. Run the EditMode asset tests and a Multiplayer Play Mode spawn/late-join smoke test once the Unity editor can validate this change.
+
+## Player-radius worker interest (2026-09-25)
+
+The scale scene now uses a server-moved top-down player with an editable `NetworkInterestSource` radius. Worker ghosts are selected from that player's radius rather than a fixed boundary band; region overlap is only a candidate lookup. The coordinator still owns the full canonical directory and performs the local cull. The C# runtime and sample compile plus the standalone codec, TCP, and Voronoi checks passed using an alternate build-output directory after OneDrive denied access to the prior validation output files. The updated Unity EditMode asset tests and interactive multi-window movement, handoff, region-overlay, and ghost-residency tests have **not** been run.
+
+The client-only translucent interest disk was added afterward. Its sample script compiles and its prefab/material references were checked statically, but its appearance and alignment in Unity Play Mode remain unverified.
+
+Client observer delivery now keeps all entities authored by the player's current worker, while `NetworkInterestSource` radius filters entities authored by other workers; ordinary demos retain full-world observers. The standalone runtime/sample compile and codec, TCP, and Voronoi checks pass. Unity Play Mode still needs a late-join and boundary-crossing check to confirm same-worker entities remain subscribed at any distance, cross-worker spawn/hide behavior, and observer updates after re-entry or player handoff.
 
 ## Rigidbody first pass (2026-09-24)
 

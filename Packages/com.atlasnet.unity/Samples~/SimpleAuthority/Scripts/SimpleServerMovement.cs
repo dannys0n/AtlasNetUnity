@@ -53,4 +53,21 @@ public sealed class SimpleServerMovement : NetworkBehaviour
         movement.y = verticalSpeed;
         controller.Move(movement * delta);
     }
+
+    protected override void WriteHandoffState(NetWriter writer)
+    {
+        writer.Write(input.x);
+        writer.Write(input.y);
+        writer.Write(yaw);
+        writer.Write(jumpQueued);
+        writer.Write(verticalSpeed);
+    }
+
+    protected override void ReadHandoffState(NetReader reader)
+    {
+        input = new Vector2(reader.ReadFloat(), reader.ReadFloat());
+        yaw = reader.ReadFloat();
+        jumpQueued = reader.ReadBool();
+        verticalSpeed = reader.ReadFloat();
+    }
 }
