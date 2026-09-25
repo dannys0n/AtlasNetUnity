@@ -116,6 +116,20 @@ namespace AtlasNet
             }
         }
 
+        internal void WriteOwnerState(NetWriter writer)
+        {
+            writer.Write((byte)behaviours.Length);
+            foreach (var behaviour in behaviours) behaviour.WriteOwnerState(writer);
+        }
+
+        internal void ReadOwnerState(NetReader reader)
+        {
+            int count = reader.ReadByte();
+            if (count != behaviours.Length)
+                throw new InvalidOperationException($"Owner-state behaviour count differs for entity {EntityId}");
+            foreach (var behaviour in behaviours) behaviour.ReadOwnerState(reader);
+        }
+
         internal void Shutdown()
         {
             if (behaviours != null)

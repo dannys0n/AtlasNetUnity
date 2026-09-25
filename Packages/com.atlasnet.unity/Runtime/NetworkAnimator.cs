@@ -118,6 +118,21 @@ namespace AtlasNet
             CacheCurrent();
         }
 
+        internal override void WriteExtraOwnerState(NetWriter output)
+        {
+            bool ownerWritten = writer == AnimatorWriter.Owner;
+            output.Write(ownerWritten);
+            if (ownerWritten) WriteExtraSnapshot(output);
+        }
+
+        internal override void ReadExtraOwnerState(NetReader reader)
+        {
+            bool ownerWritten = reader.ReadBool();
+            if (ownerWritten != (writer == AnimatorWriter.Owner))
+                throw new InvalidOperationException("Animator writer differs across workers");
+            if (ownerWritten) ReadExtraSnapshot(reader);
+        }
+
         internal bool AcceptOwnerState(SessionId sender, byte[] payload)
         {
             if (writer != AnimatorWriter.Owner || sender.Value == 0 || sender != OwnerSession) return false;

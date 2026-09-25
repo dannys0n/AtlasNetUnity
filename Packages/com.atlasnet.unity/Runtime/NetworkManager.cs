@@ -17,7 +17,7 @@ namespace AtlasNet
             WorkerVariable = 18, WorkerOutboundRpc = 19, AuthorityChange = 20,
             WorkerExportRequest = 21, WorkerExport = 22, WorkerAbort = 23, WorkerAnimator = 24,
             WorkerRegion = 25, WorkerRegionRequest = 26 }
-        private const ushort LocalProtocolVersion = 5;
+        private const ushort LocalProtocolVersion = 6;
         [SerializeField, InspectorName("Player Prefab")] private NetworkObject playerPrefab;
         [SerializeField, InspectorName("Network Prefabs Lists")] private NetworkPrefabsList[] networkPrefabsLists;
         [SerializeField, Range(10, 120)] private int tickRate = 30;

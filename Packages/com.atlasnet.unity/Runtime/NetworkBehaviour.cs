@@ -199,6 +199,10 @@ namespace AtlasNet
         public virtual void OnSimulationAuthorityChanged() { }
         protected virtual void WriteExtraSnapshot(NetWriter writer) { }
         protected virtual void ReadExtraSnapshot(NetReader reader) { }
+        // Reapply client-written channels after a worker handoff snapshot. Server-written
+        // simulation state still comes from the source worker's handoff snapshot.
+        internal virtual void WriteExtraOwnerState(NetWriter writer) { }
+        internal virtual void ReadExtraOwnerState(NetReader reader) { }
         /// <summary>Optional simulation-only state transferred between local workers, not sent to observers.</summary>
         protected virtual void WriteHandoffState(NetWriter writer) { }
         protected virtual void ReadHandoffState(NetReader reader) { }
@@ -269,6 +273,57 @@ namespace AtlasNet
                 using (var valueReader = new NetReader(payload)) variable.Read(valueReader);
             }
             ReadExtraSnapshot(reader);
+        }
+
+        internal void WriteOwnerState(NetWriter writer)
+        {
+            ushort count = 0;
+            foreach (var variable in variables.Values)
+                if (variable.WritePermission == NetworkVariableWritePermission.Owner) count++;
+            writer.Write(count);
+            foreach (var pair in variables)
+            {
+                if (pair.Value.WritePermission != NetworkVariableWritePermission.Owner) continue;
+                writer.Write(pair.Key);
+                using (var value = new NetWriter())
+                {
+                    pair.Value.Write(value);
+                    writer.WriteBytes(value.ToArray());
+                }
+            }
+            using (var extra = new NetWriter())
+            {
+                WriteExtraOwnerState(extra);
+                writer.WriteBytes(extra.ToArray());
+            }
+        }
+
+        internal void ReadOwnerState(NetReader reader)
+        {
+            int count = reader.ReadUShort();
+            int expected = 0;
+            foreach (var variable in variables.Values)
+                if (variable.WritePermission == NetworkVariableWritePermission.Owner) expected++;
+            if (count != expected)
+                throw new InvalidOperationException($"Owner variable count differs for {GetType().Name}");
+            for (int i = 0; i < count; i++)
+            {
+                ushort id = reader.ReadUShort();
+                byte[] payload = reader.ReadBytes();
+                if (!variables.TryGetValue(id, out var variable) ||
+                    variable.WritePermission != NetworkVariableWritePermission.Owner)
+                    throw new InvalidOperationException($"Invalid owner variable {id} on {GetType().Name}");
+                using (var value = new NetReader(payload))
+                {
+                    variable.Read(value);
+                    if (value.HasRemaining) throw new InvalidOperationException($"Extra owner variable data for {GetType().Name}.{id}");
+                }
+            }
+            using (var extra = new NetReader(reader.ReadBytes()))
+            {
+                ReadExtraOwnerState(extra);
+                if (extra.HasRemaining) throw new InvalidOperationException($"Extra owner state for {GetType().Name}");
+            }
         }
 
         internal void ReadVariable(ushort id, byte[] payload)

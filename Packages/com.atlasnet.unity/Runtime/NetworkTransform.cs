@@ -125,5 +125,39 @@ namespace AtlasNet
             rotationFrom = rotationTo = lastRotation;
             positionBlend = rotationBlend = 1f;
         }
+
+        internal override void WriteExtraOwnerState(NetWriter writer)
+        {
+            byte flags = 0;
+            if (syncPosition && positionWriter == TransformWriter.Owner) flags |= 1;
+            if (syncRotation && rotationWriter == TransformWriter.Owner) flags |= 2;
+            writer.Write(flags);
+            if ((flags & 1) != 0) writer.Write(Target.position);
+            if ((flags & 2) != 0) writer.Write(Target.rotation);
+        }
+
+        internal override void ReadExtraOwnerState(NetReader reader)
+        {
+            byte flags = reader.ReadByte();
+            byte expected = 0;
+            if (syncPosition && positionWriter == TransformWriter.Owner) expected |= 1;
+            if (syncRotation && rotationWriter == TransformWriter.Owner) expected |= 2;
+            if (flags != expected) throw new System.InvalidOperationException("Owner transform channels differ across workers");
+            if (target == null) target = transform;
+            if ((flags & 1) != 0)
+            {
+                target.position = reader.ReadVector3();
+                lastPosition = target.position;
+                positionFrom = positionTo = lastPosition;
+                positionBlend = 1f;
+            }
+            if ((flags & 2) != 0)
+            {
+                target.rotation = reader.ReadQuaternion();
+                lastRotation = target.rotation;
+                rotationFrom = rotationTo = lastRotation;
+                rotationBlend = 1f;
+            }
+        }
     }
 }

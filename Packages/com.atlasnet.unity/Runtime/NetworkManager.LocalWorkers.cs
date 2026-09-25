@@ -436,6 +436,25 @@ namespace AtlasNet
             Debug.Log($"AtlasNet preparing handoff of {obj.EntityId} to worker {destinationWorker}, epoch {nextEpoch}");
         }
 
+        private static byte[] CaptureOwnerState(NetworkObject obj)
+        {
+            using (var state = new NetWriter())
+            {
+                obj.WriteOwnerState(state);
+                return state.ToArray();
+            }
+        }
+
+        private static void ApplyOwnerState(NetworkObject obj, byte[] state)
+        {
+            using (var reader = new NetReader(state))
+            {
+                obj.ReadOwnerState(reader);
+                if (reader.HasRemaining)
+                    throw new InvalidOperationException($"Extra owner state for entity {obj.EntityId}");
+            }
+        }
+
         private void ReceiveWorkerPrepare(NetReader reader)
         {
             EntityId id = reader.ReadEntityId();
@@ -504,11 +523,15 @@ namespace AtlasNet
                 throw new InvalidOperationException($"Invalid handoff export from worker {sender} for entity {id}");
             if (destination == 0)
             {
+                // The worker's snapshot may predate owner updates already accepted by
+                // the coordinator. Transfer simulation state without rewinding those channels.
+                byte[] latestOwnerState = CaptureOwnerState(obj);
                 using (var snapshot = new NetReader(state))
                 {
                     obj.ReadHandoff(snapshot);
                     if (snapshot.HasRemaining) throw new InvalidOperationException($"Extra handoff state for {id}");
                 }
+                ApplyOwnerState(obj, latestOwnerState);
                 CommitHandoff(obj, pending);
             }
             else
@@ -551,6 +574,9 @@ namespace AtlasNet
                 commit.Write(id);
                 commit.Write(pending.Destination.Value);
                 commit.Write(epoch);
+                bool hasOwnerState = obj.OwnerSession.Value != 0;
+                commit.Write(hasOwnerState);
+                if (hasOwnerState) commit.WriteBytes(CaptureOwnerState(obj));
                 SendToWorkers(id, commit.ToArray());
             }
             FlushAuthorityRpcs(obj, pending.Destination.Value);
@@ -583,7 +609,8 @@ namespace AtlasNet
                 if (started >= 4) break;
                 if (obj == null || pendingHandoffs.ContainsKey(obj.EntityId) ||
                     obj.GetComponent<NetworkTransform>() is not NetworkTransform movement ||
-                    movement.PositionWriter != TransformWriter.Server) continue;
+                    !movement.SyncPosition || movement.Target != obj.transform ||
+                    (movement.PositionWriter == TransformWriter.Owner && obj.OwnerSession.Value == 0)) continue;
                 if (lastHandoffTick.TryGetValue(obj.EntityId, out uint last) && Tick - last < tickRate * 2) continue;
                 ulong destination = localWorld.OwnerAt(obj.transform.position.x, obj.transform.position.z);
                 if (destination == obj.SimulationWorker ||
@@ -620,7 +647,15 @@ namespace AtlasNet
             EntityId id = reader.ReadEntityId();
             ulong worker = reader.ReadULong();
             uint epoch = reader.ReadUInt();
+            bool hasOwnerState = reader.ReadBool();
+            byte[] ownerState = hasOwnerState ? reader.ReadBytes() : null;
             if (!spawned.TryGetValue(id, out var obj)) throw new InvalidOperationException($"Unknown committed entity {id}");
+            if (reader.HasRemaining || epoch <= obj.AuthorityEpoch ||
+                hasOwnerState != (obj.OwnerSession.Value != 0))
+                throw new InvalidOperationException($"Invalid worker commit state for entity {id}");
+            // Apply the coordinator's latest owner channels while this is still a ghost,
+            // before the new simulation authority is exposed to gameplay callbacks.
+            if (hasOwnerState) ApplyOwnerState(obj, ownerState);
             pendingHandoffs.Remove(id);
             obj.SetSimulationAuthority(worker, epoch);
         }
