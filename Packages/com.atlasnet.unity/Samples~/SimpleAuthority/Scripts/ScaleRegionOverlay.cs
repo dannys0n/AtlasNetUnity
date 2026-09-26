@@ -1,7 +1,7 @@
 using AtlasNet;
 using UnityEngine;
 
-/// <summary>Draws this server's local Voronoi cell over the scale-demo floor.</summary>
+/// <summary>Draws this server's local Voronoi cell over a local-backend demo floor.</summary>
 public sealed class ScaleRegionOverlay : MonoBehaviour
 {
     [SerializeField] private NetworkManager manager;

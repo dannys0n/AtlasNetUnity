@@ -7,6 +7,7 @@ using UnityEngine.SceneManagement;
 public sealed class DemoLauncher : MonoBehaviour
 {
     [SerializeField] private NetworkManager manager;
+    [SerializeField] private Camera overviewCamera;
     [SerializeField, HideInInspector] private NetworkObject playerPrefab; // Older imported samples stored this here.
     private string error;
     private NetworkObject extra;
@@ -20,9 +21,10 @@ public sealed class DemoLauncher : MonoBehaviour
     {
         Application.runInBackground = true;
         if (manager == null) manager = GetComponent<NetworkManager>();
-        bool crossServer = SceneManager.GetActiveScene().name.EndsWith("CrossServer", StringComparison.Ordinal);
+        bool crossServer = SceneManager.GetActiveScene().name.EndsWith("CrossServer", StringComparison.Ordinal) ||
+            SceneManager.GetActiveScene().name == "PhysicsDemo";
         manager.PlayerSpawnPosition = crossServer
-            ? session => session.Value == 1 ? new Vector3(2, 1, 2) : new Vector3(-6, 1, -6)
+            ? session => (session.Value & 1) == 1 ? new Vector3(2, 1, 2) : new Vector3(-6, 1, -6)
             : session => new Vector3((session.Value - 1) * 2.5f, 1, 0);
     }
 
@@ -65,6 +67,13 @@ public sealed class DemoLauncher : MonoBehaviour
 
     private void Update()
     {
+        if (overviewCamera != null)
+        {
+            bool overview = !manager.IsRunning || manager.IsServer;
+            overviewCamera.enabled = overview;
+            if (overviewCamera.TryGetComponent<AudioListener>(out var listener))
+                listener.enabled = overview && manager.IsRunning;
+        }
         if (!reportedOwner && manager.IsClient)
         {
             foreach (var obj in manager.SpawnedObjects)
@@ -143,7 +152,7 @@ public sealed class DemoLauncher : MonoBehaviour
             }
             GUILayout.Label($"Entities: {manager.SpawnedCount}   Observers: {manager.ObserverCopies}");
             GUILayout.Label($"Simulating here: {manager.LocalAuthorityCount}   Ghosts: {manager.GhostCount}");
-            if (SceneManager.GetActiveScene().name == "ScaleDemo" && manager.IsServer)
+            if (manager.AutomaticLocalHandoffs && manager.IsServer)
                 GUILayout.Label($"Interested ghost visuals: {InterestedGhosts()}");
             foreach (var obj in manager.SpawnedObjects)
                 if (obj != null && obj.AuthorityEpoch > 0)

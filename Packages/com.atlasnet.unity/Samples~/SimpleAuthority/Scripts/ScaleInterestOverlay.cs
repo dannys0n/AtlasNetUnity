@@ -1,19 +1,22 @@
 using AtlasNet;
 using UnityEngine;
 
-/// <summary>Shows the owning client's entry radius on the scale-demo floor.</summary>
+/// <summary>Shows a player's local-demo interest radius for the owner and optionally its server.</summary>
 public sealed class ScaleInterestOverlay : MonoBehaviour
 {
     [SerializeField] private NetworkObject player;
     [SerializeField] private NetworkInterestSource interest;
     [SerializeField] private Material fillMaterial;
+    [SerializeField] private bool showOnAuthorityServer;
 
     private GameObject disc;
     private Mesh discMesh;
 
     private void LateUpdate()
     {
-        if (player == null || interest == null || !player.IsOwner || interest.Radius <= 0f)
+        bool show = player != null && interest != null && interest.Radius > 0f &&
+            (player.IsOwner || (showOnAuthorityServer && player.HasAuthority && player.Manager.IsServer));
+        if (!show)
         {
             if (disc != null) disc.SetActive(false);
             return;

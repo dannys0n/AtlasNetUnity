@@ -19,6 +19,7 @@ GameObject:
   - component: {fileID: 1010}
   - component: {fileID: 1011}
   - component: {fileID: 1012}
+  - component: {fileID: 1013}
   m_Layer: 0
   m_Name: ServerCrossServerPlayer
   m_TagString: Untagged
@@ -136,7 +137,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a1000000000000000000000000000001, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  prefabId: GlobalObjectId_V1-1-b2000000000000000000000000000002-1006-0
+  prefabId: GlobalObjectId_V1-1-b2000000000000000000000000000006-1006-0
 --- !u!114 &1007
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -153,6 +154,9 @@ MonoBehaviour:
   playerCamera: {fileID: 2003}
   bodyRenderer: {fileID: 1004}
   sensitivity: 2
+  serverOverview: 1
+  serverAuthorityMaterial: {fileID: 2100000, guid: de91743c7a774812b64191daf71589b4, type: 2}
+  serverGhostMaterial: {fileID: 2100000, guid: 93d4fc33342a4d57ab857bad1646f774, type: 2}
 --- !u!114 &1008
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -229,6 +233,22 @@ MonoBehaviour:
   m_EditorClassIdentifier:
   radius: 12
   exitPadding: 2
+--- !u!114 &1013
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1001}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a2000000000000000000000000000009, type: 3}
+  m_Name:
+  m_EditorClassIdentifier:
+  player: {fileID: 1006}
+  interest: {fileID: 1012}
+  fillMaterial: {fileID: 2100000, guid: 8917440dc60a4c70b28cb58007e239a4, type: 2}
+  showOnAuthorityServer: 1
   interpolate: 1
 --- !u!1 &2001
 GameObject:

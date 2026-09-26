@@ -141,23 +141,7 @@ namespace AtlasNet
 
         private bool ShouldClientHold(SessionId session, NetworkObject obj, bool alreadyResident)
         {
-            if (obj.OwnerSession == session) return true;
-            foreach (var source in spawned.Values)
-            {
-                if (source.OwnerSession != session) continue;
-                var interest = source.GetComponent<NetworkInterestSource>();
-                if (interest == null) continue;
-                // A client receives its authoring worker's full entity stream. Radius
-                // interest only determines which other workers' entities are observed.
-                if (obj.SimulationWorker == source.SimulationWorker) return true;
-                if (!interest.isActiveAndEnabled) continue;
-                float radius = interest.Radius + (alreadyResident ? interest.ExitPadding : 0f);
-                Vector3 center = source.transform.position;
-                Vector3 target = obj.transform.position;
-                float dx = target.x - center.x, dz = target.z - center.z;
-                if (dx * dx + dz * dz <= radius * radius) return true;
-            }
-            return false;
+            return LocalWorldPolicy.ShouldClientHold(session, obj, alreadyResident, spawned.Values);
         }
 
         private void RefreshClientInterest(SessionId session)
@@ -219,29 +203,10 @@ namespace AtlasNet
 
         private bool ShouldWorkerHold(SessionId worker, NetworkObject obj, bool alreadyResident)
         {
-            if (obj.SimulationWorker == worker.Value) return true;
-            if (pendingHandoffs.TryGetValue(obj.EntityId, out var pending) &&
-                (pending.Source == worker || pending.Destination == worker)) return true;
-            if (localWorld == null) return false;
-            foreach (var source in spawned.Values)
-            {
-                if (source == obj || source.OwnerSession.Value == 0 ||
-                    source.SimulationWorker != worker.Value) continue;
-                var interest = source.GetComponent<NetworkInterestSource>();
-                if (interest == null || !interest.isActiveAndEnabled) continue;
-                float radius = interest.Radius + (alreadyResident ? interest.ExitPadding : 0f);
-                Vector3 center = source.transform.position;
-                // The region check finds candidate owners. A pending transfer can briefly
-                // leave an entity outside its recorded owner's region, so keep that case.
-                if (!localWorld.IsWithinInterest(obj.SimulationWorker, center.x, center.z, radius) &&
-                    !pendingHandoffs.ContainsKey(obj.EntityId) &&
-                    localWorld.OwnerAt(obj.transform.position.x, obj.transform.position.z) == obj.SimulationWorker)
-                    continue;
-                Vector3 target = obj.transform.position;
-                float dx = target.x - center.x, dz = target.z - center.z;
-                if (dx * dx + dz * dz <= radius * radius) return true;
-            }
-            return false;
+            bool handoffPending = pendingHandoffs.TryGetValue(obj.EntityId, out var pending);
+            bool workerInvolved = handoffPending && (pending.Source == worker || pending.Destination == worker);
+            return LocalWorldPolicy.ShouldWorkerHold(worker, obj, alreadyResident, spawned.Values,
+                localWorld, handoffPending, workerInvolved);
         }
 
         private void EnsureWorkerResident(SessionId worker, NetworkObject obj)
@@ -354,30 +319,7 @@ namespace AtlasNet
 
         private void ReceiveWorkerSpawn(NetReader reader)
         {
-            EntityId id = reader.ReadEntityId();
-            string prefabId = reader.ReadString();
-            SessionId owner = reader.ReadSessionId();
-            Vector3 position = reader.ReadVector3();
-            Quaternion rotation = reader.ReadQuaternion();
-            ulong authority = reader.ReadULong();
-            uint epoch = reader.ReadUInt();
-            if (spawned.ContainsKey(id)) throw new InvalidOperationException($"Duplicate worker entity {id}");
-            if (!registry.TryGetValue(prefabId, out var prefab))
-                throw new InvalidOperationException($"Worker lacks registered prefab '{prefabId}' for entity {id}");
-            var obj = Instantiate(prefab, position, rotation);
-            try
-            {
-                obj.Initialize(this, id, owner, deferSpawnCallbacks: true);
-                obj.SetSimulationAuthority(authority, epoch);
-                obj.ReadSnapshot(reader);
-                obj.CompleteSpawn();
-                spawned.Add(id, obj);
-            }
-            catch
-            {
-                Destroy(obj.gameObject);
-                throw;
-            }
+            ReceiveReplicaSpawn(reader, "Worker");
         }
 
         private void ReceiveWorkerSpawnRequest(SessionId sender, NetReader reader)
@@ -666,15 +608,10 @@ namespace AtlasNet
             foreach (var obj in spawned.Values)
             {
                 if (started >= 4) break;
-                if (obj == null || pendingHandoffs.ContainsKey(obj.EntityId) ||
-                    obj.GetComponent<NetworkTransform>() is not NetworkTransform movement ||
-                    !movement.SyncPosition || movement.Target != obj.transform ||
-                    (movement.PositionWriter == TransformWriter.Owner && obj.OwnerSession.Value == 0)) continue;
+                if (obj == null || pendingHandoffs.ContainsKey(obj.EntityId)) continue;
                 if (lastHandoffTick.TryGetValue(obj.EntityId, out uint last) && Tick - last < tickRate * 2) continue;
-                ulong destination = localWorld.OwnerAt(obj.transform.position.x, obj.transform.position.z);
-                if (destination == obj.SimulationWorker ||
-                    !localWorld.ShouldMove(obj.SimulationWorker, obj.transform.position.x, obj.transform.position.z, localBoundaryMargin))
-                    continue;
+                if (!LocalWorldPolicy.TryHandoffDestination(obj, localWorld, localBoundaryMargin,
+                    out ulong destination)) continue;
                 HandoffToWorker(obj, destination);
                 started++;
             }

@@ -1,41 +1,37 @@
-using System.Collections.Generic;
 using AtlasNet;
 using UnityEngine;
 
-/// <summary>Spawns a few server-owned physics cubes. Press R on the host to kick them.</summary>
+/// <summary>Spawns a few physics cubes. Press R in a server window to kick its authoritative cubes.</summary>
 public sealed class PhysicsSpawner : MonoBehaviour
 {
     [SerializeField] private NetworkManager manager;
     [SerializeField] private NetworkObject prefab;
-    private readonly List<Rigidbody> bodies = new List<Rigidbody>();
     private bool spawned;
 
     private void Update()
     {
-        if (!manager.IsServer || manager.IsWorker)
+        if (!manager.IsServer)
         {
             spawned = false;
-            bodies.Clear();
             return;
         }
 
-        if (!spawned)
+        if (!manager.IsWorker && !spawned)
         {
             spawned = true;
-            for (int i = 0; i < 3; i++)
-            {
-                var position = new Vector3(0, 2.5f + i * 1.2f, 4);
-                var cube = manager.Spawn(prefab, position, Quaternion.identity);
-                bodies.Add(cube.GetComponent<Rigidbody>());
-            }
+            manager.Spawn(prefab, new Vector3(-4, 2.5f, -3), Quaternion.identity);
+            manager.Spawn(prefab, new Vector3(0, 3.7f, 4), Quaternion.identity);
+            manager.Spawn(prefab, new Vector3(4, 4.9f, 4), Quaternion.identity);
         }
 
-        if (Input.GetKeyDown(KeyCode.R))
-            for (int i = 0; i < bodies.Count; i++)
-            {
-                if (bodies[i] == null) continue;
-                bodies[i].AddForce(new Vector3(i - 1, 1.5f, 0.5f).normalized * 4f, ForceMode.Impulse);
-                bodies[i].AddTorque(Vector3.up * 2f, ForceMode.Impulse);
-            }
+        if (!Input.GetKeyDown(KeyCode.R)) return;
+        foreach (var obj in manager.SpawnedObjects)
+        {
+            if (obj == null || !obj.HasAuthority || obj.PrefabId != prefab.PrefabId) continue;
+            var body = obj.GetComponent<Rigidbody>();
+            if (body == null || body.isKinematic) continue;
+            body.AddForce(new Vector3(1, 1.5f, 0.5f).normalized * 4f, ForceMode.Impulse);
+            body.AddTorque(Vector3.up * 2f, ForceMode.Impulse);
+        }
     }
 }

@@ -77,8 +77,8 @@ namespace AtlasNetDemo.Tests
             }
         }
 
-        [TestCase("ClientAuthority.unity", TransformWriter.Owner)]
-        [TestCase("ServerAuthority.unity", TransformWriter.Server)]
+        [TestCase("ClientCrossServer.unity", TransformWriter.Owner)]
+        [TestCase("ServerCrossServer.unity", TransformWriter.Server)]
         [TestCase("ScaleDemo.unity", TransformWriter.Server)]
         [TestCase("PhysicsDemo.unity", TransformWriter.Server)]
         public void SceneRegistryAndPlayerWiring(string sceneName, TransformWriter expectedPositionWriter)
@@ -94,9 +94,9 @@ namespace AtlasNetDemo.Tests
             Assert.IsNotNull(player);
             Assert.AreEqual(GlobalObjectId.GetGlobalObjectIdSlow(player).ToString(), player.PrefabId);
             Assert.AreSame(player, manager.PlayerPrefab);
-            Assert.AreEqual(sceneName == "ScaleDemo.unity" || sceneName == "PhysicsDemo.unity" ? 2 : 1, entries.arraySize);
+            Assert.AreEqual(sceneName == "PhysicsDemo.unity" ? 2 : 1, entries.arraySize);
             bool scale = sceneName == "ScaleDemo.unity";
-            var playerList = entries.GetArrayElementAtIndex(scale ? 1 : 0).objectReferenceValue as NetworkPrefabsList;
+            var playerList = entries.GetArrayElementAtIndex(0).objectReferenceValue as NetworkPrefabsList;
             Assert.IsNotNull(playerList);
             CollectionAssert.Contains(playerList.Prefabs, player);
             if (scale)
@@ -114,12 +114,15 @@ namespace AtlasNetDemo.Tests
             }
             else
             {
-                Assert.IsNotNull(player.GetComponent<CharacterController>());
+                if (sceneName == "PhysicsDemo.unity")
+                    Assert.IsNotNull(player.GetComponent<Rigidbody>());
+                else
+                    Assert.IsNotNull(player.GetComponent<CharacterController>());
                 Assert.IsNotNull(player.GetComponentInChildren<Camera>(true));
                 Assert.AreEqual(5, player.GetComponents<NetworkBehaviour>().Length);
+                Assert.IsNotNull(player.GetComponent<NetworkInterestSource>());
             }
             Assert.AreEqual(expectedPositionWriter, player.GetComponent<NetworkTransform>().PositionWriter);
-            Assert.AreEqual(sceneName == "PhysicsDemo.unity", player.GetComponent("PhysicsPlayerPush") != null);
 
             var launcher = manager.GetComponent("DemoLauncher");
             Assert.IsNotNull(launcher);
@@ -133,8 +136,8 @@ namespace AtlasNetDemo.Tests
             EditorSceneManager.OpenScene(Sample + "Scenes/ScaleDemo.unity");
             var manager = Object.FindAnyObjectByType<NetworkManager>();
             var entries = new SerializedObject(manager).FindProperty("networkPrefabsLists");
-            Assert.AreEqual(2, entries.arraySize);
-            var scaleList = entries.GetArrayElementAtIndex(1).objectReferenceValue as NetworkPrefabsList;
+            Assert.AreEqual(1, entries.arraySize);
+            var scaleList = entries.GetArrayElementAtIndex(0).objectReferenceValue as NetworkPrefabsList;
             Assert.IsNotNull(scaleList);
             Assert.AreEqual(2, scaleList.Prefabs.Count);
             var prefab = scaleList.Prefabs[0];
@@ -156,9 +159,28 @@ namespace AtlasNetDemo.Tests
             Assert.AreEqual(2, entries.arraySize);
             var player = managerData.FindProperty("playerPrefab").objectReferenceValue as NetworkObject;
             Assert.AreEqual("PhysicsPlayer", player.name);
-            var push = player.GetComponent("PhysicsPlayerPush");
-            Assert.IsNotNull(push);
-            Assert.AreSame(player, new SerializedObject(push).FindProperty("networkObject").objectReferenceValue);
+            Assert.IsTrue(manager.AutomaticLocalHandoffs);
+            Assert.IsNull(player.GetComponent<CharacterController>());
+            Assert.IsNotNull(player.GetComponent<CapsuleCollider>());
+            var playerBody = player.GetComponent<Rigidbody>();
+            Assert.IsNotNull(playerBody);
+            Assert.IsFalse(playerBody.isKinematic);
+            Assert.AreEqual(RigidbodyConstraints.FreezeRotation, playerBody.constraints);
+            Assert.IsNotNull(player.GetComponent<NetworkRigidbody>());
+            var movement = player.GetComponent("PhysicsPlayerMovement");
+            Assert.IsNotNull(movement);
+            var movementData = new SerializedObject(movement);
+            Assert.AreSame(playerBody, movementData.FindProperty("body").objectReferenceValue);
+            Assert.IsNotNull(movementData.FindProperty("aimPivot").objectReferenceValue);
+            Assert.AreEqual(1, player.GetComponents<NetworkTransform>().Length);
+            Assert.AreEqual(TransformWriter.Server, player.GetComponent<NetworkTransform>().RotationWriter);
+            var look = player.GetComponent("SimpleLook");
+            Assert.IsTrue(new SerializedObject(look).FindProperty("yawOnPivot").boolValue);
+            Assert.IsNotNull(manager.GetComponent("ScaleRegionOverlay"));
+            var launcher = manager.GetComponent("DemoLauncher");
+            var overview = new SerializedObject(launcher).FindProperty("overviewCamera").objectReferenceValue as Camera;
+            Assert.IsNotNull(overview);
+            Assert.IsTrue(overview.orthographic);
             var physicsList = entries.GetArrayElementAtIndex(1).objectReferenceValue as NetworkPrefabsList;
             Assert.IsNotNull(physicsList);
             Assert.AreEqual(1, physicsList.Prefabs.Count);
@@ -211,7 +233,7 @@ namespace AtlasNetDemo.Tests
             try
             {
                 var manager = gameObject.AddComponent<NetworkManager>();
-                var player = AssetDatabase.LoadAssetAtPath<NetworkObject>(Sample + "Prefabs/ClientPlayer.prefab");
+                var player = AssetDatabase.LoadAssetAtPath<NetworkObject>(Sample + "Prefabs/ClientCrossServerPlayer.prefab");
                 Assert.IsNotNull(player);
                 var data = new SerializedObject(manager);
                 data.FindProperty("playerPrefab").objectReferenceValue = player;

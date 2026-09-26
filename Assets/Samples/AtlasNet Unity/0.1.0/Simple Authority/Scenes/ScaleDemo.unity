@@ -170,7 +170,6 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   playerPrefab: {fileID: 7005, guid: b2000000000000000000000000000004, type: 3}
   networkPrefabsLists:
-  - {fileID: 11400000, guid: 4903ef5f457848a3bb3e8a4ba4f30232, type: 2}
   - {fileID: 11400000, guid: 18936fcf22e04eeaa653af361fee1b6f, type: 2}
   tickRate: 30
   port: 7777

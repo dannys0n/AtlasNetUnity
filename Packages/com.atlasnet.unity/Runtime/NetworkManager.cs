@@ -721,6 +721,12 @@ namespace AtlasNet
         }
 
         private void ReceiveSpawn(NetReader reader)
+            => ReceiveReplicaSpawn(reader, "Client");
+
+        // Both local client and worker packets feed the same replica lifecycle.
+        // A future backend adapter can supply this information without exposing
+        // its ingress or node-to-node packet format to NetworkObject.
+        private void ReceiveReplicaSpawn(NetReader reader, string recipient)
         {
             EntityId id = reader.ReadEntityId();
             string prefabId = reader.ReadString();
@@ -729,9 +735,9 @@ namespace AtlasNet
             Quaternion rotation = reader.ReadQuaternion();
             ulong authorityWorker = reader.ReadULong();
             uint authorityEpoch = reader.ReadUInt();
-            if (spawned.ContainsKey(id)) throw new InvalidOperationException($"Duplicate entity {id}");
+            if (spawned.ContainsKey(id)) throw new InvalidOperationException($"Duplicate {recipient.ToLowerInvariant()} entity {id}");
             if (!registry.TryGetValue(prefabId, out var prefab))
-                throw new InvalidOperationException($"Server spawned unregistered prefab '{prefabId}'. Register the same ID on every client.");
+                throw new InvalidOperationException($"{recipient} lacks registered prefab '{prefabId}' for entity {id}. Register the same prefab ID on every instance.");
             var obj = Instantiate(prefab, position, rotation);
             try
             {

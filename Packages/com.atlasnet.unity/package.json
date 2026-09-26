@@ -3,7 +3,7 @@
   "displayName": "AtlasNet Unity",
   "version": "0.1.0",
   "unity": "6000.0",
-  "description": "A small entity-oriented Unity networking API with a local TCP adapter for the first demo.",
+  "description": "An entity-oriented Unity networking API with a local multi-worker backend for development demos.",
   "author": { "name": "AtlasNet" },
   "dependencies": {
     "com.unity.nuget.mono-cecil": "1.11.6"
@@ -11,7 +11,7 @@
   "samples": [
     {
       "displayName": "Simple Authority Demo",
-      "description": "Client and server movement authority examples.",
+      "description": "Client/server authority, local worker handoff, scale, and physics examples.",
       "path": "Samples~/SimpleAuthority"
     }
   ]
