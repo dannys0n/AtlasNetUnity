@@ -49,4 +49,4 @@ MonoBehaviour:
   toggleKey: 289
   cameraHeight: 4.2
   serverSize: 18
-  clientSize: 12
+  overlayHeight: 0.12

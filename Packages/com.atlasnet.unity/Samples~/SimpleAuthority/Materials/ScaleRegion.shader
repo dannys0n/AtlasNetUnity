@@ -9,6 +9,7 @@ Shader "AtlasNet/Sample Region Fill"
             Tags { "LightMode" = "SRPDefaultUnlit" }
             Blend SrcAlpha OneMinusSrcAlpha
             ZWrite Off
+            ZTest Always
             Cull Off
             HLSLPROGRAM
             #pragma vertex Vert
@@ -27,6 +28,32 @@ Shader "AtlasNet/Sample Region Fill"
             }
             half4 Frag(Output input) : SV_Target { return _Color; }
             ENDHLSL
+        }
+    }
+    SubShader
+    {
+        Tags { "Queue" = "Transparent" "RenderType" = "Transparent" }
+        Pass
+        {
+            Blend SrcAlpha OneMinusSrcAlpha
+            ZWrite Off
+            ZTest Always
+            Cull Off
+            CGPROGRAM
+            #pragma vertex Vert
+            #pragma fragment Frag
+            #include "UnityCG.cginc"
+            fixed4 _Color;
+            struct Input { float4 vertex : POSITION; };
+            struct Output { float4 positionCS : SV_POSITION; };
+            Output Vert(Input input)
+            {
+                Output output;
+                output.positionCS = UnityObjectToClipPos(input.vertex);
+                return output;
+            }
+            fixed4 Frag(Output input) : SV_Target { return _Color; }
+            ENDCG
         }
     }
 }

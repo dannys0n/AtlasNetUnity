@@ -10,7 +10,7 @@ public sealed class LocalDebugView : MonoBehaviour
     [SerializeField] private KeyCode toggleKey = KeyCode.F8;
     [SerializeField] private float cameraHeight = 4.2f;
     [SerializeField] private float serverSize = 18f;
-    [SerializeField] private float clientSize = 12f;
+    [SerializeField] private float overlayHeight = 0.12f;
 
     private readonly Dictionary<NetworkObject, GameObject> interestDiscs = new Dictionary<NetworkObject, GameObject>();
     private readonly Dictionary<NetworkObject, GameObject> serverMarkers = new Dictionary<NetworkObject, GameObject>();
@@ -27,19 +27,14 @@ public sealed class LocalDebugView : MonoBehaviour
     private bool shownClientRegion;
     private bool clientVisible;
     private bool serverRegionRequested;
+    private bool serverViewInitialized;
+    private bool serverRegionCentered;
+    private Vector2 serverViewCenter;
+    private float serverZoom;
+    private Vector3 lastMousePosition;
 
     private void Awake()
     {
-        overview = GetComponent<Camera>();
-        if (overview == null) overview = gameObject.AddComponent<Camera>();
-        overview.enabled = false;
-        overview.orthographic = true;
-        overview.clearFlags = CameraClearFlags.SolidColor;
-        overview.backgroundColor = new Color(0.08f, 0.1f, 0.13f);
-        overview.nearClipPlane = 0.01f;
-        overview.farClipPlane = 100f;
-        overview.depth = 100f; // Draw after the shooter's first-person cameras without disabling them.
-        transform.rotation = Quaternion.Euler(90f, 0f, 0f);
         discMesh = CreateDiscMesh();
         if (regionFill != null)
         {
@@ -57,6 +52,8 @@ public sealed class LocalDebugView : MonoBehaviour
         {
             SetVisible(false);
             serverRegionRequested = false;
+            serverViewInitialized = false;
+            serverRegionCentered = false;
             subscribedPlayer = null;
             return;
         }
@@ -83,11 +80,8 @@ public sealed class LocalDebugView : MonoBehaviour
             if (manager.SetClientDebugRegionEnabled(ownedPlayer, true)) subscribedPlayer = ownedPlayer;
         }
 
-        overview.enabled = true;
-        overview.orthographicSize = server ? serverSize : clientSize;
-        Vector2 center = server ? RegionCenter(manager.LocalRegion) :
-            new Vector2(ownedPlayer.transform.position.x, ownedPlayer.transform.position.z);
-        transform.position = new Vector3(center.x, cameraHeight, center.y);
+        if (server) UpdateServerCamera();
+        else if (overview != null) overview.enabled = false;
 
         bool clientRegion = !server;
         int version = clientRegion ? manager.ClientDebugRegionVersion : manager.LocalRegionVersion;
@@ -102,8 +96,49 @@ public sealed class LocalDebugView : MonoBehaviour
                 ? clientRegion ? manager.ClientDebugRegion : manager.LocalRegion
                 : null);
         }
+        if (regionSurface != null) regionSurface.SetActive(true);
         UpdateDiscs(server, ownedPlayer);
         UpdateMarkers(server);
+    }
+
+    private void UpdateServerCamera()
+    {
+        if (overview == null)
+        {
+            overview = gameObject.AddComponent<Camera>();
+            overview.orthographic = true;
+            overview.clearFlags = CameraClearFlags.SolidColor;
+            overview.backgroundColor = new Color(0.08f, 0.1f, 0.13f);
+            overview.nearClipPlane = 0.01f;
+            overview.farClipPlane = 100f;
+            overview.depth = 100f;
+            transform.rotation = Quaternion.Euler(90f, 0f, 0f);
+        }
+        if (!serverViewInitialized)
+        {
+            serverViewCenter = RegionCenter(manager.LocalRegion);
+            serverZoom = serverSize;
+            serverViewInitialized = true;
+        }
+        if (!serverRegionCentered && manager.LocalRegion.Count >= 3)
+        {
+            serverViewCenter = RegionCenter(manager.LocalRegion);
+            serverRegionCentered = true;
+        }
+
+        // Middle-drag pans the map; the wheel zooms. Never snap back to the region center.
+        Vector3 mousePosition = Input.mousePosition;
+        if (Input.GetMouseButton(2) && !Input.GetMouseButtonDown(2))
+        {
+            Vector3 delta = mousePosition - lastMousePosition;
+            float worldPerPixel = 2f * serverZoom / Mathf.Max(1, Screen.height);
+            serverViewCenter -= new Vector2(delta.x, delta.y) * worldPerPixel;
+        }
+        lastMousePosition = mousePosition;
+        serverZoom = Mathf.Clamp(serverZoom - Input.mouseScrollDelta.y * 2f, 4f, 60f);
+        transform.position = new Vector3(serverViewCenter.x, cameraHeight, serverViewCenter.y);
+        overview.orthographicSize = serverZoom;
+        overview.enabled = true;
     }
 
     private NetworkObject FindOwnedPlayer()
@@ -139,7 +174,7 @@ public sealed class LocalDebugView : MonoBehaviour
         var vertices = new Vector3[outline.Count];
         var triangles = new int[(outline.Count - 2) * 3];
         for (int i = 0; i < outline.Count; i++)
-            vertices[i] = new Vector3(outline[i].x, cameraHeight - 0.3f, outline[i].y);
+            vertices[i] = new Vector3(outline[i].x, overlayHeight, outline[i].y);
         for (int i = 0; i < outline.Count - 2; i++)
         {
             triangles[i * 3] = 0;
@@ -159,8 +194,15 @@ public sealed class LocalDebugView : MonoBehaviour
     {
         stale.Clear();
         foreach (var pair in interestDiscs)
-            if (pair.Key == null || !(server ? pair.Key.HasAuthority : pair.Key == ownedPlayer))
+        {
+            if (pair.Key == null || !(server ? manager.ShouldRenderWorkerCopyForDebug(pair.Key) : pair.Key == ownedPlayer))
+            {
                 stale.Add(pair.Key);
+                continue;
+            }
+            var interest = pair.Key.GetComponent<NetworkInterestSource>();
+            if (interest == null || interest.Radius <= 0f) stale.Add(pair.Key);
+        }
         foreach (NetworkObject obj in stale)
         {
             if (interestDiscs[obj] != null) Destroy(interestDiscs[obj]);
@@ -169,7 +211,7 @@ public sealed class LocalDebugView : MonoBehaviour
         if (interestFill == null) return;
         foreach (NetworkObject obj in manager.SpawnedObjects)
         {
-            if (obj == null || !(server ? obj.HasAuthority : obj == ownedPlayer)) continue;
+            if (obj == null || !(server ? manager.ShouldRenderWorkerCopyForDebug(obj) : obj == ownedPlayer)) continue;
             var interest = obj.GetComponent<NetworkInterestSource>();
             if (interest == null || interest.Radius <= 0f) continue;
             if (!interestDiscs.TryGetValue(obj, out var disc))
@@ -180,7 +222,7 @@ public sealed class LocalDebugView : MonoBehaviour
                 interestDiscs.Add(obj, disc);
             }
             disc.SetActive(true);
-            disc.transform.position = new Vector3(obj.transform.position.x, cameraHeight - 0.25f, obj.transform.position.z);
+            disc.transform.position = new Vector3(obj.transform.position.x, overlayHeight + 0.03f, obj.transform.position.z);
             disc.transform.localScale = new Vector3(interest.Radius, 1f, interest.Radius);
         }
     }
