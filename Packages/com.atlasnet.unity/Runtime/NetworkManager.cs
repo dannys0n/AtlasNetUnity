@@ -17,8 +17,8 @@ namespace AtlasNet
             WorkerVariable = 18, WorkerOutboundRpc = 19, AuthorityChange = 20,
             WorkerExportRequest = 21, WorkerExport = 22, WorkerAbort = 23, WorkerAnimator = 24,
             WorkerRegion = 25, WorkerRegionRequest = 26, WorkerSpawnRequest = 27, WorkerDespawnRequest = 28,
-            WorkerInteractionRpc = 29 }
-        private const ushort LocalProtocolVersion = 7;
+            WorkerInteractionRpc = 29, ClientDebugRegionRequest = 30, ClientDebugRegion = 31 }
+        private const ushort LocalProtocolVersion = 8;
         [SerializeField, InspectorName("Player Prefab")] private NetworkObject playerPrefab;
         [SerializeField, InspectorName("Network Prefabs Lists")] private NetworkPrefabsList[] networkPrefabsLists;
         [SerializeField, Range(10, 120)] private int tickRate = 30;
@@ -172,8 +172,10 @@ namespace AtlasNet
             lastHandoffTick.Clear();
             localWorld = null;
             debugRegionSubscribers.Clear();
+            clientDebugRegionSubscribers.Clear();
             debugRegionRequested = false;
             SetLocalRegion(Array.Empty<Vector2>());
+            ClearClientDebugRegion();
             isWorker = false;
             localWorkerId = 0;
             IsServer = false;
@@ -405,6 +407,7 @@ namespace AtlasNet
             }
             clientSessions.Remove(session);
             clientResidents.Remove(session);
+            clientDebugRegionSubscribers.Remove(session);
             if (IsServer)
             {
                 SessionLeft?.Invoke(session);
@@ -675,6 +678,12 @@ namespace AtlasNet
                             break;
                         case Packet.WorkerRegionRequest:
                             if (IsServer && !isWorker) ReceiveWorkerRegionRequest(sender, reader);
+                            break;
+                        case Packet.ClientDebugRegionRequest:
+                            if (IsServer && !isWorker) ReceiveClientDebugRegionRequest(sender, reader);
+                            break;
+                        case Packet.ClientDebugRegion:
+                            if (!IsServer) ReceiveClientDebugRegion(reader);
                             break;
                         case Packet.WorkerSpawnRequest:
                             if (IsServer && !isWorker) ReceiveWorkerSpawnRequest(sender, reader);

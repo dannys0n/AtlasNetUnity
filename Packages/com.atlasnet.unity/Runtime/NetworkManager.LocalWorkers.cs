@@ -42,6 +42,13 @@ namespace AtlasNet
         private int localRegionVersion;
         private bool debugRegionRequested;
         private readonly HashSet<SessionId> debugRegionSubscribers = new HashSet<SessionId>();
+        private readonly Dictionary<SessionId, EntityId> clientDebugRegionSubscribers =
+            new Dictionary<SessionId, EntityId>();
+        private Vector2[] clientDebugRegion = Array.Empty<Vector2>();
+        private EntityId clientDebugRegionEntity;
+        private ulong clientDebugRegionWorker;
+        private uint clientDebugRegionEpoch;
+        private int clientDebugRegionVersion;
 
         public bool IsWorker => isWorker;
         public ulong LocalWorkerId => localWorkerId;
@@ -50,6 +57,28 @@ namespace AtlasNet
         /// <summary>Optional debug-only X/Z outline of this server's shard. Empty until requested or if unavailable.</summary>
         public IReadOnlyList<Vector2> LocalRegion => localRegion;
         public int LocalRegionVersion => localRegionVersion;
+        /// <summary>Optional debug outline for the owned player's current worker on a joined client.</summary>
+        public IReadOnlyList<Vector2> ClientDebugRegion => clientDebugRegion;
+        public EntityId ClientDebugRegionEntity => clientDebugRegionEntity;
+        public ulong ClientDebugRegionWorker => clientDebugRegionWorker;
+        public uint ClientDebugRegionEpoch => clientDebugRegionEpoch;
+        public int ClientDebugRegionVersion => clientDebugRegionVersion;
+        /// <summary>Subscribe to the owned player's current region for local visualization only.</summary>
+        public bool SetClientDebugRegionEnabled(NetworkObject ownedPlayer, bool enabled)
+        {
+            if (!IsRunning || !IsClient || IsServer) return false;
+            if (enabled && (ownedPlayer == null || ownedPlayer.Manager != this || !ownedPlayer.IsOwner))
+                return false;
+            using (var packet = new NetWriter())
+            {
+                packet.Write((byte)Packet.ClientDebugRegionRequest);
+                packet.Write(enabled);
+                if (enabled) packet.Write(ownedPlayer.EntityId);
+                transport.SendToServer(packet.ToArray());
+            }
+            if (!enabled) ClearClientDebugRegion();
+            return true;
+        }
         /// <summary>Request diagnostic region geometry; never use it to decide gameplay authority.</summary>
         public bool RequestLocalRegionForDebug()
         {
@@ -262,6 +291,75 @@ namespace AtlasNet
             if (localWorld is not IAuthorityRegionDebug) return;
             if (debugRegionRequested) UpdateCoordinatorDebugRegion();
             foreach (var worker in debugRegionSubscribers) SendDebugRegion(worker);
+            foreach (var pair in clientDebugRegionSubscribers)
+                if (spawned.TryGetValue(pair.Value, out var player)) SendClientDebugRegion(pair.Key, player);
+        }
+
+        private void SendClientDebugRegion(SessionId client, NetworkObject player)
+        {
+            if (!clientSessions.Contains(client) || player.OwnerSession != client) return;
+            Vector2[] polygon = Array.Empty<Vector2>();
+            if (localWorld is IAuthorityRegionDebug regions)
+                regions.TryGetRegion(player.SimulationWorker, out polygon);
+            polygon ??= Array.Empty<Vector2>();
+            using (var packet = new NetWriter())
+            {
+                packet.Write((byte)Packet.ClientDebugRegion);
+                packet.Write(player.EntityId);
+                packet.Write(player.SimulationWorker);
+                packet.Write(player.AuthorityEpoch);
+                packet.Write(polygon.Length);
+                foreach (var vertex in polygon)
+                {
+                    packet.Write(vertex.x);
+                    packet.Write(vertex.y);
+                }
+                transport.SendTo(client, packet.ToArray());
+            }
+        }
+
+        private void ReceiveClientDebugRegionRequest(SessionId sender, NetReader reader)
+        {
+            if (!clientSessions.Contains(sender)) throw new InvalidOperationException("Unknown client debug-region subscriber");
+            bool enabled = reader.ReadBool();
+            if (!enabled)
+            {
+                if (reader.HasRemaining) throw new InvalidOperationException("Extra client debug-region request data");
+                clientDebugRegionSubscribers.Remove(sender);
+                return;
+            }
+            EntityId id = reader.ReadEntityId();
+            if (reader.HasRemaining || !spawned.TryGetValue(id, out var player) || player.OwnerSession != sender)
+                throw new InvalidOperationException("Client may only request its owned entity's debug region");
+            clientDebugRegionSubscribers[sender] = id;
+            SendClientDebugRegion(sender, player);
+        }
+
+        private void ReceiveClientDebugRegion(NetReader reader)
+        {
+            EntityId id = reader.ReadEntityId();
+            ulong worker = reader.ReadULong();
+            uint epoch = reader.ReadUInt();
+            int count = reader.ReadInt();
+            if (count < 0 || count > 1024) throw new InvalidOperationException("Invalid client debug-region outline");
+            var polygon = new Vector2[count];
+            for (int i = 0; i < count; i++) polygon[i] = new Vector2(reader.ReadFloat(), reader.ReadFloat());
+            if (reader.HasRemaining) throw new InvalidOperationException("Extra client debug-region data");
+            if (!spawned.TryGetValue(id, out var player) || !player.IsOwner || epoch < player.AuthorityEpoch) return;
+            clientDebugRegionEntity = id;
+            clientDebugRegionWorker = worker;
+            clientDebugRegionEpoch = epoch;
+            clientDebugRegion = polygon;
+            clientDebugRegionVersion++;
+        }
+
+        private void ClearClientDebugRegion()
+        {
+            clientDebugRegion = Array.Empty<Vector2>();
+            clientDebugRegionEntity = default;
+            clientDebugRegionWorker = 0;
+            clientDebugRegionEpoch = 0;
+            clientDebugRegionVersion++;
         }
 
         private void SendDebugRegion(SessionId worker)
@@ -569,6 +667,8 @@ namespace AtlasNet
             byte[] authorityChange = MakeAuthorityChange(obj);
             foreach (var client in clientSessions)
                 if (IsObserver(id, client)) transport.SendTo(client, authorityChange);
+            if (clientDebugRegionSubscribers.TryGetValue(obj.OwnerSession, out var requested) && requested == id)
+                SendClientDebugRegion(obj.OwnerSession, obj);
             using (var commit = new NetWriter())
             {
                 commit.Write((byte)Packet.WorkerCommit);
