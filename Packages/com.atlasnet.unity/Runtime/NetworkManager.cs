@@ -16,8 +16,9 @@ namespace AtlasNet
             WorkerPrepared = 14, WorkerCommit = 15, WorkerTransform = 16, WorkerAuthorityRpc = 17,
             WorkerVariable = 18, WorkerOutboundRpc = 19, AuthorityChange = 20,
             WorkerExportRequest = 21, WorkerExport = 22, WorkerAbort = 23, WorkerAnimator = 24,
-            WorkerRegion = 25, WorkerRegionRequest = 26 }
-        private const ushort LocalProtocolVersion = 6;
+            WorkerRegion = 25, WorkerRegionRequest = 26, WorkerSpawnRequest = 27, WorkerDespawnRequest = 28,
+            WorkerInteractionRpc = 29 }
+        private const ushort LocalProtocolVersion = 7;
         [SerializeField, InspectorName("Player Prefab")] private NetworkObject playerPrefab;
         [SerializeField, InspectorName("Network Prefabs Lists")] private NetworkPrefabsList[] networkPrefabsLists;
         [SerializeField, Range(10, 120)] private int tickRate = 30;
@@ -215,11 +216,18 @@ namespace AtlasNet
         public NetworkObject Spawn(string prefabId, Vector3 position, Quaternion rotation, SessionId owner = default)
         {
             if (!IsServer || isWorker) throw new InvalidOperationException("Only the first server can canonically spawn an object in local mode");
+            return SpawnCanonical(prefabId, position, rotation, owner, 0);
+        }
+
+        private NetworkObject SpawnCanonical(string prefabId, Vector3 position, Quaternion rotation, SessionId owner, ulong simulationWorker)
+        {
             if (!registry.TryGetValue(prefabId, out var prefab))
                 throw new InvalidOperationException($"Prefab ID '{prefabId}' is not registered on NetworkManager");
             var obj = Instantiate(prefab, position, rotation);
             var id = new EntityId(nextEntity++);
-            obj.Initialize(this, id, owner);
+            obj.Initialize(this, id, owner, deferSpawnCallbacks: true);
+            obj.SetSimulationAuthority(simulationWorker, 0);
+            obj.CompleteSpawn();
             spawned.Add(id, obj);
             AddSpawnToWorkerInterest(obj);
             AddSpawnToClientInterest(obj);
@@ -235,9 +243,48 @@ namespace AtlasNet
             return Spawn(prefab.PrefabId, position, rotation, owner);
         }
 
+        /// <summary>Ask the local coordinator to spawn a registered object on this entity's simulation worker.
+        /// Worker requests complete asynchronously; use OnNetworkSpawn on the new object.</summary>
+        public void RequestSpawn(NetworkObject source, NetworkObject prefab, Vector3 position, Quaternion rotation, SessionId owner = default)
+        {
+            if (!IsServer || source == null || source.Manager != this || !source.HasAuthority)
+                throw new InvalidOperationException("Only a spawned authority can request a spawn");
+            if (prefab == null || !registry.TryGetValue(prefab.PrefabId, out var registered) || registered != prefab)
+                throw new InvalidOperationException("Requested prefab is not registered on this NetworkManager");
+            if (!isWorker)
+            {
+                SpawnCanonical(prefab.PrefabId, position, rotation, owner, 0);
+                return;
+            }
+            using (var writer = new NetWriter())
+            {
+                writer.Write((byte)Packet.WorkerSpawnRequest);
+                writer.Write(source.EntityId);
+                writer.Write(source.AuthorityEpoch);
+                writer.Write(prefab.PrefabId);
+                writer.Write(position);
+                writer.Write(rotation);
+                writer.Write(owner);
+                transport.SendToServer(writer.ToArray());
+            }
+        }
+
         public void Despawn(NetworkObject obj)
         {
-            if (!IsServer || isWorker) throw new InvalidOperationException("Only the first server can canonically despawn an object in local mode");
+            if (isWorker)
+            {
+                if (obj == null || obj.Manager != this || !obj.HasAuthority)
+                    throw new InvalidOperationException("Only the authoritative worker can request despawn");
+                using (var writer = new NetWriter())
+                {
+                    writer.Write((byte)Packet.WorkerDespawnRequest);
+                    writer.Write(obj.EntityId);
+                    writer.Write(obj.AuthorityEpoch);
+                    transport.SendToServer(writer.ToArray());
+                }
+                return;
+            }
+            if (!IsServer) throw new InvalidOperationException("Only a server can despawn an object");
             if (obj == null || obj.Manager != this || !spawned.ContainsKey(obj.EntityId))
                 throw new InvalidOperationException("Object is not spawned by this manager");
             EntityId id = obj.EntityId;
@@ -476,6 +523,37 @@ namespace AtlasNet
             }
         }
 
+        internal void SendAuthorityInteraction(NetworkObject source, NetworkBehaviour target, uint method, Action<NetWriter> write)
+        {
+            if (!IsServer || source == null || !source.HasAuthority || source.Manager != this ||
+                target == null || target.NetworkObject == null || target.NetworkObject.Manager != this ||
+                target.GetRpcDestination(method) != RpcDestination.Authority ||
+                target.GetRpcPermission(method) != RpcInvokePermission.Server)
+                throw new InvalidOperationException("Invalid server entity interaction");
+            using (var payload = new NetWriter())
+            {
+                write(payload);
+                byte[] bytes = payload.ToArray();
+                if (target.HasAuthority)
+                    target.ReceiveRpc(method, bytes, default, RpcDestination.Authority, default);
+                else if (isWorker)
+                {
+                    using (var packet = new NetWriter())
+                    {
+                        packet.Write((byte)Packet.WorkerInteractionRpc);
+                        packet.Write(source.EntityId);
+                        packet.Write(source.AuthorityEpoch);
+                        packet.Write(target.NetworkObject.EntityId);
+                        packet.Write(target.BehaviourIndex);
+                        packet.Write(method);
+                        packet.WriteBytes(bytes);
+                        transport.SendToServer(packet.ToArray());
+                    }
+                }
+                else ForwardAuthorityRpc(target, method, bytes, default);
+            }
+        }
+
         internal void SendTransform(NetworkTransform component, byte flags, Vector3 position, Quaternion rotation)
         {
             if (isWorker)
@@ -597,6 +675,15 @@ namespace AtlasNet
                             break;
                         case Packet.WorkerRegionRequest:
                             if (IsServer && !isWorker) ReceiveWorkerRegionRequest(sender, reader);
+                            break;
+                        case Packet.WorkerSpawnRequest:
+                            if (IsServer && !isWorker) ReceiveWorkerSpawnRequest(sender, reader);
+                            break;
+                        case Packet.WorkerDespawnRequest:
+                            if (IsServer && !isWorker) ReceiveWorkerDespawnRequest(sender, reader);
+                            break;
+                        case Packet.WorkerInteractionRpc:
+                            if (IsServer && !isWorker) ReceiveWorkerInteractionRpc(sender, reader);
                             break;
                         case Packet.Welcome:
                             if (IsServer) break;
@@ -742,7 +829,8 @@ namespace AtlasNet
             {
                 bool ownerCall = sender.Value != 0 && behaviour.OwnerSession == sender;
                 RpcInvokePermission permission = behaviour.GetRpcPermission(method);
-                bool allowed = (destination == RpcDestination.Authority && ownerCall) ||
+                bool allowed = (destination == RpcDestination.Authority && ownerCall &&
+                     permission != RpcInvokePermission.Server) ||
                     (destination == RpcDestination.Everyone && IsObserver(id, sender) &&
                      (permission == RpcInvokePermission.Everyone ||
                       (permission == RpcInvokePermission.Owner && ownerCall)));

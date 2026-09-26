@@ -20,7 +20,10 @@ public sealed class DemoLauncher : MonoBehaviour
     {
         Application.runInBackground = true;
         if (manager == null) manager = GetComponent<NetworkManager>();
-        manager.PlayerSpawnPosition = session => new Vector3((session.Value - 1) * 2.5f, 1, 0);
+        bool crossServer = SceneManager.GetActiveScene().name.EndsWith("CrossServer", StringComparison.Ordinal);
+        manager.PlayerSpawnPosition = crossServer
+            ? session => session.Value == 1 ? new Vector3(2, 1, 2) : new Vector3(-6, 1, -6)
+            : session => new Vector3((session.Value - 1) * 2.5f, 1, 0);
     }
 
     private void OnEnable() => manager.SessionJoined += OnSessionJoined;
@@ -123,7 +126,7 @@ public sealed class DemoLauncher : MonoBehaviour
             GUILayout.Label($"Role: {(manager.IsWorker ? "Worker" : manager.IsServer ? (manager.IsClient ? "Host" : "Server") : "Client")}");
             GUILayout.Label($"Session: {manager.LocalSession}   Tick: {manager.Tick}");
             GUILayout.Label($"Worker: {manager.LocalWorkerId}   Workers: {manager.WorkerCount}");
-            if (SceneManager.GetActiveScene().name == "ScaleDemo")
+            if (manager.AutomaticLocalHandoffs)
             {
                 GUILayout.Label($"Region handoffs: {(manager.AutomaticLocalHandoffs ? "automatic" : "off")}");
                 GUILayout.Label($"Debug region vertices: {manager.LocalRegion.Count}");

@@ -380,6 +380,65 @@ namespace AtlasNet
             }
         }
 
+        private void ReceiveWorkerSpawnRequest(SessionId sender, NetReader reader)
+        {
+            EntityId sourceId = reader.ReadEntityId();
+            uint epoch = reader.ReadUInt();
+            string prefabId = reader.ReadString();
+            Vector3 position = reader.ReadVector3();
+            Quaternion rotation = reader.ReadQuaternion();
+            SessionId owner = reader.ReadSessionId();
+            if (reader.HasRemaining || !workerSessions.Contains(sender) ||
+                !spawned.TryGetValue(sourceId, out var source) ||
+                source.SimulationWorker != sender.Value || source.AuthorityEpoch != epoch ||
+                pendingHandoffs.ContainsKey(sourceId))
+                throw new InvalidOperationException("Stale or unauthorized worker spawn request");
+            if (owner.Value != 0 && !clientSessions.Contains(owner) && (!IsClient || owner != LocalSession))
+                throw new InvalidOperationException("Worker requested an unknown owner session");
+            if (float.IsNaN(position.x) || float.IsInfinity(position.x) ||
+                float.IsNaN(position.y) || float.IsInfinity(position.y) ||
+                float.IsNaN(position.z) || float.IsInfinity(position.z) ||
+                float.IsNaN(rotation.x) || float.IsInfinity(rotation.x) ||
+                float.IsNaN(rotation.y) || float.IsInfinity(rotation.y) ||
+                float.IsNaN(rotation.z) || float.IsInfinity(rotation.z) ||
+                float.IsNaN(rotation.w) || float.IsInfinity(rotation.w))
+                throw new InvalidOperationException("Invalid worker spawn pose");
+            SpawnCanonical(prefabId, position, rotation, owner, sender.Value);
+        }
+
+        private void ReceiveWorkerDespawnRequest(SessionId sender, NetReader reader)
+        {
+            EntityId id = reader.ReadEntityId();
+            uint epoch = reader.ReadUInt();
+            if (reader.HasRemaining || !workerSessions.Contains(sender) ||
+                !spawned.TryGetValue(id, out var obj) ||
+                obj.SimulationWorker != sender.Value || obj.AuthorityEpoch != epoch ||
+                pendingHandoffs.ContainsKey(id))
+                throw new InvalidOperationException("Stale or unauthorized worker despawn request");
+            Despawn(obj);
+        }
+
+        private void ReceiveWorkerInteractionRpc(SessionId sender, NetReader reader)
+        {
+            EntityId sourceId = reader.ReadEntityId();
+            uint sourceEpoch = reader.ReadUInt();
+            EntityId targetId = reader.ReadEntityId();
+            byte index = reader.ReadByte();
+            uint method = reader.ReadUInt();
+            byte[] payload = reader.ReadBytes();
+            if (reader.HasRemaining || !workerSessions.Contains(sender) ||
+                !spawned.TryGetValue(sourceId, out var source) ||
+                source.SimulationWorker != sender.Value || source.AuthorityEpoch != sourceEpoch ||
+                pendingHandoffs.ContainsKey(sourceId) ||
+                !workerResidents.TryGetValue(sender, out var residents) || !residents.Contains(targetId) ||
+                FindBehaviour(targetId, index) is not NetworkBehaviour target ||
+                target.GetRpcDestination(method) != RpcDestination.Authority ||
+                target.GetRpcPermission(method) != RpcInvokePermission.Server)
+                throw new InvalidOperationException("Stale or unauthorized worker entity interaction");
+            if (target.HasAuthority) target.ReceiveRpc(method, payload, default, RpcDestination.Authority, default);
+            else ForwardAuthorityRpc(target, method, payload, default);
+        }
+
         /// <summary>Called by local spatial orchestration; gameplay does not choose workers.</summary>
         internal void HandoffToWorker(NetworkObject obj, ulong destinationWorker)
         {

@@ -156,6 +156,33 @@ namespace AtlasNet
         protected void SendRpc(string method, params object[] arguments) => SendNamedRpc(default, method, arguments, false);
         protected void SendRpc(SessionId target, string method, params object[] arguments) => SendNamedRpc(target, method, arguments, true);
 
+        /// <summary>Send a server-only authority RPC on this entity from another authoritative entity.
+        /// Useful when an authoritative projectile intersects a replica owned by a different worker.</summary>
+        protected void SendAuthorityFrom(NetworkObject source, string name, params object[] arguments)
+        {
+            if (!IsSpawned || source == null || !source.HasAuthority || !NetworkManager.IsServer)
+                throw new InvalidOperationException("A server-authoritative source is required for an entity interaction");
+            MethodInfo match = null;
+            foreach (var method in rpcMethods.Values)
+                if (method.Name == name)
+                {
+                    if (match != null) throw new InvalidOperationException($"Overloaded RPC name {name} is ambiguous");
+                    match = method;
+                }
+            if (match == null || RpcMethods.TargetOf(match) != SendTo.Authority ||
+                match.GetCustomAttribute<RpcAttribute>().InvokePermission != RpcInvokePermission.Server)
+                throw new InvalidOperationException($"{name} must be a server-only authority RPC");
+            if (arguments == null) arguments = Array.Empty<object>();
+            var parameters = match.GetParameters();
+            int count = parameters.Length - (parameters.Length > 0 &&
+                parameters[parameters.Length - 1].ParameterType == typeof(SessionId) ? 1 : 0);
+            if (arguments.Length != count) throw new ArgumentException($"{name} expects {count} RPC arguments");
+            NetworkManager.SendAuthorityInteraction(source, this, RpcMethods.IdOf(match), writer =>
+            {
+                for (int i = 0; i < count; i++) RpcMethods.Write(writer, parameters[i].ParameterType, arguments[i]);
+            });
+        }
+
         private void SendNamedRpc(SessionId target, string name, object[] arguments, bool hasExplicitTarget)
         {
             if (NetworkObject == null || !NetworkObject.IsSpawned)
