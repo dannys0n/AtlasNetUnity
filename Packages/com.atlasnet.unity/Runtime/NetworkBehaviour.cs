@@ -372,6 +372,10 @@ namespace AtlasNet
             return variable;
         }
 
+        internal IEnumerable<KeyValuePair<ushort, INetworkVariable>> VariableSchema => variables;
+
+        internal IEnumerable<KeyValuePair<uint, MethodInfo>> RpcSchema => rpcMethods;
+
         internal RpcInvokePermission GetRpcPermission(uint id)
         {
             if (!rpcMethods.TryGetValue(id, out var method))

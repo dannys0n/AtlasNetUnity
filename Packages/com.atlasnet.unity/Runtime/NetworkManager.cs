@@ -17,8 +17,8 @@ namespace AtlasNet
             WorkerVariable = 18, WorkerOutboundRpc = 19, AuthorityChange = 20,
             WorkerExportRequest = 21, WorkerExport = 22, WorkerAbort = 23, WorkerAnimator = 24,
             WorkerRegion = 25, WorkerRegionRequest = 26, WorkerSpawnRequest = 27, WorkerDespawnRequest = 28,
-            WorkerInteractionRpc = 29, ClientDebugRegionRequest = 30, ClientDebugRegion = 31 }
-        private const ushort LocalProtocolVersion = 8;
+            WorkerInteractionRpc = 29, ClientDebugRegionRequest = 30, ClientDebugRegion = 31, WorkerState = 32 }
+        private const ushort LocalProtocolVersion = 9;
         [SerializeField, InspectorName("Player Prefab")] private NetworkObject playerPrefab;
         [SerializeField, InspectorName("Network Prefabs Lists")] private NetworkPrefabsList[] networkPrefabsLists;
         [SerializeField, Range(10, 120)] private int tickRate = 30;
@@ -50,8 +50,12 @@ namespace AtlasNet
         public NetworkObject PlayerPrefab => playerPrefab;
         /// <summary>Optional spawn placement for automatically created players. Defaults to the prefab's position.</summary>
         public Func<SessionId, Vector3> PlayerSpawnPosition { get; set; }
+        /// <summary>Unity replicas currently resident in this process, not the world-wide entity count.</summary>
         public int SpawnedCount => spawned.Count;
+        /// <summary>Unity replicas currently resident in this process.</summary>
         public IEnumerable<NetworkObject> SpawnedObjects => spawned.Values;
+        /// <summary>Directory entries known to the local coordinator; other instances report local replicas.</summary>
+        public int TrackedEntityCount => IsServer && !isWorker ? directory.Count : spawned.Count;
         public int RemoteClientCount => IsServer && !isWorker ? clientSessions.Count : 0;
         public int ObserverCopies
         {
@@ -59,7 +63,7 @@ namespace AtlasNet
             {
                 if (!IsServer || transport == null) return 0;
                 int total = 0;
-                foreach (var id in spawned.Keys)
+                foreach (var id in directory.Keys)
                     foreach (var session in clientSessions)
                         if (IsObserver(id, session)) total++;
                 return total;
@@ -162,6 +166,7 @@ namespace AtlasNet
                 if (obj != null) Destroy(obj.gameObject);
             }
             spawned.Clear();
+            directory.Clear();
             hidden.Clear();
             clientSessions.Clear();
             clientResidents.Clear();
@@ -204,9 +209,17 @@ namespace AtlasNet
                 foreach (var obj in tickObjects)
                     if (obj != null && obj.IsSpawned)
                         foreach (var behaviour in obj.Behaviours) behaviour.OnNetworkTick();
+                if (isWorker) SendWorkerSnapshots();
+                else if (IsServer)
+                    foreach (var obj in tickObjects)
+                        if (obj != null && obj.IsSpawned &&
+                            (obj.HasAuthority || pendingHandoffs.ContainsKey(obj.EntityId)) &&
+                            directory.TryGetValue(obj.EntityId, out var record))
+                            record.Capture(obj);
                 RefreshWorkerInterest();
                 CheckAutomaticHandoffs();
                 RefreshClientInterest();
+                RefreshCoordinatorResidency();
                 LastTickMilliseconds = (Stopwatch.GetTimestamp() - before) * 1000.0 / Stopwatch.Frequency;
                 AllocatedBytesLastTick = allocationCounterSupported
                     ? GC.GetAllocatedBytesForCurrentThread() - allocatedBefore : -1;
@@ -231,6 +244,7 @@ namespace AtlasNet
             obj.SetSimulationAuthority(simulationWorker, 0);
             obj.CompleteSpawn();
             spawned.Add(id, obj);
+            RegisterCanonical(obj);
             AddSpawnToWorkerInterest(obj);
             AddSpawnToClientInterest(obj);
             return obj;
@@ -289,7 +303,13 @@ namespace AtlasNet
             if (!IsServer) throw new InvalidOperationException("Only a server can despawn an object");
             if (obj == null || obj.Manager != this || !spawned.ContainsKey(obj.EntityId))
                 throw new InvalidOperationException("Object is not spawned by this manager");
-            EntityId id = obj.EntityId;
+            DespawnCanonical(obj.EntityId);
+        }
+
+        private void DespawnCanonical(EntityId id)
+        {
+            if (!directory.ContainsKey(id)) throw new InvalidOperationException($"Unknown entity {id}");
+            spawned.TryGetValue(id, out var obj);
             using (var writer = new NetWriter())
             {
                 writer.Write((byte)Packet.Despawn);
@@ -297,14 +317,19 @@ namespace AtlasNet
                 SendToObservers(id, writer.ToArray());
             }
             spawned.Remove(id);
+            directory.Remove(id);
             hidden.Remove(id);
             foreach (var residents in clientResidents.Values) residents.Remove(id);
             pendingHandoffs.Remove(id);
             queuedAuthorityRpcs.Remove(id);
             lastHandoffTick.Remove(id);
             RemoveFromWorkerInterest(id);
-            obj.Shutdown();
-            Destroy(obj.gameObject);
+            if (obj != null)
+            {
+                obj.Shutdown();
+                obj.gameObject.SetActive(false);
+                Destroy(obj.gameObject);
+            }
         }
 
         /// <summary>Remove one client's observer copy; the server's canonical entity remains alive.</summary>
@@ -331,12 +356,13 @@ namespace AtlasNet
             if (!hidden.TryGetValue(obj.EntityId, out var excluded) || !excluded.Remove(session)) return;
             if (clientResidents.TryGetValue(session, out var residents))
             {
-                if (ShouldClientHold(session, obj, false) && residents.Add(obj.EntityId))
-                    transport.SendTo(session, MakeSpawn(obj, session));
+                if (ShouldClientHold(session, directory[obj.EntityId], false) && residents.Add(obj.EntityId))
+                    transport.SendTo(session, MakeSpawn(directory[obj.EntityId], session));
             }
-            else transport.SendTo(session, MakeSpawn(obj, session));
+            else transport.SendTo(session, MakeSpawn(directory[obj.EntityId], session));
         }
 
+        /// <summary>Find a local replica; false does not mean the entity is absent from the world.</summary>
         public bool TryGet(EntityId id, out NetworkObject obj) => spawned.TryGetValue(id, out obj);
         internal bool CanSimulate(NetworkObject obj) => IsServer && obj != null && obj.Manager == this &&
             obj.SimulationWorker == localWorkerId && (!isWorker || localWorkerId != 0) &&
@@ -355,21 +381,26 @@ namespace AtlasNet
                 if (session != except && IsObserver(id, session)) transport.SendTo(session, packet);
         }
 
-        private byte[] MakeSpawn(NetworkObject obj, SessionId reader)
+        private byte[] MakeSpawn(CanonicalEntity entity, SessionId reader)
         {
             using (var writer = new NetWriter())
             {
                 writer.Write((byte)Packet.Spawn);
-                writer.Write(obj.EntityId);
-                writer.Write(obj.PrefabId);
-                writer.Write(obj.OwnerSession);
-                writer.Write(obj.transform.position);
-                writer.Write(obj.transform.rotation);
-                writer.Write(obj.SimulationWorker);
-                writer.Write(obj.AuthorityEpoch);
-                obj.WriteSnapshot(writer, reader);
+                WriteReplicaState(writer, entity, reader);
                 return writer.ToArray();
             }
+        }
+
+        private static void WriteReplicaState(NetWriter writer, CanonicalEntity entity, SessionId reader)
+        {
+            writer.Write(entity.Id);
+            writer.Write(entity.PrefabId);
+            writer.Write(entity.Owner);
+            writer.Write(entity.Position);
+            writer.Write(entity.Rotation);
+            writer.Write(entity.Worker);
+            writer.Write(entity.Epoch);
+            writer.WriteRaw(reader == entity.Owner ? entity.OwnerSnapshot : entity.PublicSnapshot);
         }
 
         private void OnConnected(SessionId session)
@@ -411,8 +442,10 @@ namespace AtlasNet
             if (IsServer)
             {
                 SessionLeft?.Invoke(session);
-                foreach (var obj in new List<NetworkObject>(spawned.Values))
-                    if (obj.OwnerSession == session) Despawn(obj);
+                var owned = new List<EntityId>();
+                foreach (var record in directory.Values)
+                    if (record.Owner == session) owned.Add(record.Id);
+                foreach (var id in owned) DespawnCanonical(id);
             }
             else
             {
@@ -441,6 +474,8 @@ namespace AtlasNet
                 }
                 else if (IsServer)
                 {
+                    if (value.WritePermission == NetworkVariableWritePermission.Owner && behaviour.IsOwner)
+                        RememberOwnerUpdate(behaviour.NetworkObject.EntityId, data);
                     foreach (var session in clientSessions)
                         if (IsObserver(behaviour.NetworkObject.EntityId, session) &&
                             (value.ReadPermission == NetworkVariableReadPermission.Everyone || session == behaviour.OwnerSession))
@@ -498,7 +533,7 @@ namespace AtlasNet
                 if (destination == RpcDestination.Authority)
                 {
                     if (IsServer && (obj.SimulationWorker != 0 || pendingHandoffs.ContainsKey(obj.EntityId)))
-                        ForwardAuthorityRpc(behaviour, method, bytes, LocalSession);
+                        ForwardAuthorityRpc(obj.EntityId, behaviour.BehaviourIndex, method, bytes, LocalSession);
                     else if (IsServer) behaviour.ReceiveRpc(method, bytes, LocalSession, destination, target);
                     else transport.SendToServer(data);
                 }
@@ -553,7 +588,7 @@ namespace AtlasNet
                         transport.SendToServer(packet.ToArray());
                     }
                 }
-                else ForwardAuthorityRpc(target, method, bytes, default);
+                else ForwardAuthorityRpc(target.NetworkObject.EntityId, target.BehaviourIndex, method, bytes, default);
             }
         }
 
@@ -585,6 +620,10 @@ namespace AtlasNet
                 byte[] data = writer.ToArray();
                 if (IsServer)
                 {
+                    if (component.IsOwner &&
+                        (((flags & 1) != 0 && component.PositionWriter == TransformWriter.Owner) ||
+                         ((flags & 2) != 0 && component.RotationWriter == TransformWriter.Owner)))
+                        RememberOwnerUpdate(component.NetworkObject.EntityId, data);
                     SendToObservers(component.NetworkObject.EntityId, data);
                     SendToWorkers(component.NetworkObject.EntityId, data);
                 }
@@ -610,6 +649,8 @@ namespace AtlasNet
                 byte[] data = writer.ToArray();
                 if (IsServer)
                 {
+                    if (component.Writer == AnimatorWriter.Owner && component.IsOwner)
+                        RememberOwnerUpdate(component.NetworkObject.EntityId, data);
                     SendToObservers(component.NetworkObject.EntityId, data);
                     SendToWorkers(component.NetworkObject.EntityId, data);
                 }
@@ -648,6 +689,9 @@ namespace AtlasNet
                             break;
                         case Packet.WorkerTransform:
                             if (!isWorker) ReceiveWorkerTransform(sender, reader);
+                            break;
+                        case Packet.WorkerState:
+                            if (!isWorker) ReceiveWorkerState(sender, reader);
                             break;
                         case Packet.WorkerAuthorityRpc:
                             if (isWorker) ReceiveWorkerAuthorityRpc(reader);
@@ -768,6 +812,7 @@ namespace AtlasNet
             if (!spawned.TryGetValue(id, out var obj)) return;
             spawned.Remove(id);
             obj.Shutdown();
+            obj.gameObject.SetActive(false);
             Destroy(obj.gameObject);
         }
 
@@ -784,24 +829,29 @@ namespace AtlasNet
             byte index = reader.ReadByte();
             ushort variable = reader.ReadUShort();
             byte[] payload = reader.ReadBytes();
+            if (IsServer && !isWorker)
+            {
+                if (!clientSessions.Contains(sender) || !directory.TryGetValue(id, out var entity) ||
+                    sender != entity.Owner ||
+                    !Schema(id, index).Variables.TryGetValue(variable, out var permission) ||
+                    permission.Write != NetworkVariableWritePermission.Owner)
+                    throw new InvalidOperationException($"Unauthorized variable update for entity {id} from session {sender}");
+                FindBehaviour(id, index)?.ReadVariable(variable, payload);
+                byte[] update = MakeVariablePacket(id, index, variable, payload);
+                RememberOwnerUpdate(id, update);
+                SendToWorkers(id, update);
+                foreach (var session in clientSessions)
+                    if (session != sender && IsObserver(id, session) &&
+                        (permission.Read == NetworkVariableReadPermission.Everyone || session == entity.Owner))
+                        transport.SendTo(session, update);
+                return;
+            }
             var behaviour = FindBehaviour(id, index);
             if (behaviour == null) return;
             var state = behaviour.GetVariable(variable);
             if (isWorker)
             {
                 behaviour.ReadVariable(variable, payload);
-            }
-            else if (IsServer)
-            {
-                if (sender.Value == 0 || sender != behaviour.OwnerSession ||
-                    state.WritePermission != NetworkVariableWritePermission.Owner)
-                    throw new InvalidOperationException($"Unauthorized variable update for entity {id} from session {sender}");
-                behaviour.ReadVariable(variable, payload);
-                SendToWorkers(id, MakeVariablePacket(id, index, variable, payload));
-                foreach (var session in clientSessions)
-                    if (session != sender && IsObserver(id, session) &&
-                        (state.ReadPermission == NetworkVariableReadPermission.Everyone || session == behaviour.OwnerSession))
-                        transport.SendTo(session, MakeVariablePacket(id, index, variable, payload));
             }
             else
             {
@@ -832,29 +882,23 @@ namespace AtlasNet
             SessionId target = reader.ReadSessionId();
             uint method = reader.ReadUInt();
             byte[] payload = reader.ReadBytes();
-            var behaviour = FindBehaviour(id, index);
-            if (behaviour == null) return;
-            if (isWorker)
+            if (IsServer && !isWorker)
             {
-                if (destination == RpcDestination.Observers || destination == RpcDestination.Everyone ||
-                    (destination == RpcDestination.Target && target == LocalSession))
-                    behaviour.ReceiveRpc(method, payload, new SessionId(0), destination, target);
-            }
-            else if (IsServer)
-            {
-                bool ownerCall = sender.Value != 0 && behaviour.OwnerSession == sender;
-                RpcInvokePermission permission = behaviour.GetRpcPermission(method);
+                if (!clientSessions.Contains(sender) || !directory.TryGetValue(id, out var entity))
+                    throw new InvalidOperationException($"Unknown RPC sender or entity {id}");
+                var rpc = RpcSchemaFor(Schema(id, index), method);
+                bool ownerCall = entity.Owner == sender;
                 bool allowed = (destination == RpcDestination.Authority && ownerCall &&
-                     permission != RpcInvokePermission.Server) ||
+                     rpc.Permission != RpcInvokePermission.Server) ||
                     (destination == RpcDestination.Everyone && IsObserver(id, sender) &&
-                     (permission == RpcInvokePermission.Everyone ||
-                      (permission == RpcInvokePermission.Owner && ownerCall)));
-                if (!allowed)
+                     (rpc.Permission == RpcInvokePermission.Everyone ||
+                      (rpc.Permission == RpcInvokePermission.Owner && ownerCall)));
+                if (!allowed || rpc.Destination != destination)
                     throw new InvalidOperationException($"Unauthorized RPC {method} for entity {id} from session {sender}");
                 if (destination == RpcDestination.Authority &&
-                    (behaviour.NetworkObject.SimulationWorker != 0 || pendingHandoffs.ContainsKey(id)))
-                    ForwardAuthorityRpc(behaviour, method, payload, sender);
-                else behaviour.ReceiveRpc(method, payload, sender, destination, target);
+                    (entity.Worker != 0 || pendingHandoffs.ContainsKey(id)))
+                    ForwardAuthorityRpc(id, index, method, payload, sender);
+                else FindBehaviour(id, index)?.ReceiveRpc(method, payload, sender, destination, target);
                 if (destination == RpcDestination.Everyone)
                 {
                     using (var writer = new NetWriter())
@@ -870,6 +914,15 @@ namespace AtlasNet
                         SendToWorkers(id, writer.ToArray());
                     }
                 }
+                return;
+            }
+            var behaviour = FindBehaviour(id, index);
+            if (behaviour == null) return;
+            if (isWorker)
+            {
+                if (destination == RpcDestination.Observers || destination == RpcDestination.Everyone ||
+                    (destination == RpcDestination.Target && target == LocalSession))
+                    behaviour.ReceiveRpc(method, payload, new SessionId(0), destination, target);
             }
             else if (destination == RpcDestination.Observers || destination == RpcDestination.Everyone ||
                 (destination == RpcDestination.Target && target == LocalSession))
@@ -883,16 +936,18 @@ namespace AtlasNet
             byte flags = reader.ReadByte();
             Vector3 position = (flags & 1) != 0 ? reader.ReadVector3() : default;
             Quaternion rotation = (flags & 2) != 0 ? reader.ReadQuaternion() : default;
-            var transform = FindBehaviour(id, index) as NetworkTransform;
-            if (transform == null) return;
-            if (isWorker)
+            if (IsServer && !isWorker)
             {
-                transform.AcceptServerState(flags, position, rotation);
-            }
-            else if (IsServer)
-            {
-                if (!transform.AcceptOwnerState(sender, flags, position, rotation))
+                if (!clientSessions.Contains(sender) || !directory.TryGetValue(id, out var entity) ||
+                    entity.Owner != sender || flags == 0 || (flags & ~3) != 0)
                     throw new InvalidOperationException($"Unauthorized transform update for entity {id} from session {sender}");
+                var schema = Schema(id, index);
+                if (!schema.IsTransform ||
+                    ((flags & 1) != 0 && (!schema.SyncPosition || schema.PositionWriter != TransformWriter.Owner)) ||
+                    ((flags & 2) != 0 && (!schema.SyncRotation || schema.RotationWriter != TransformWriter.Owner)))
+                    throw new InvalidOperationException($"Unauthorized transform channel for entity {id}");
+                if (FindBehaviour(id, index) is NetworkTransform local)
+                    local.AcceptOwnerState(sender, flags, position, rotation);
                 using (var writer = new NetWriter())
                 {
                     writer.Write((byte)Packet.Transform);
@@ -901,9 +956,18 @@ namespace AtlasNet
                     writer.Write(flags);
                     if ((flags & 1) != 0) writer.Write(position);
                     if ((flags & 2) != 0) writer.Write(rotation);
-                    SendToObservers(id, writer.ToArray());
-                    SendToWorkers(id, writer.ToArray());
+                    byte[] update = writer.ToArray();
+                    RememberOwnerUpdate(id, update);
+                    SendToObservers(id, update);
+                    SendToWorkers(id, update);
                 }
+                return;
+            }
+            var transform = FindBehaviour(id, index) as NetworkTransform;
+            if (transform == null) return;
+            if (isWorker)
+            {
+                transform.AcceptServerState(flags, position, rotation);
             }
             else transform.AcceptServerState(flags, position, rotation);
         }
@@ -913,25 +977,31 @@ namespace AtlasNet
             EntityId id = reader.ReadEntityId();
             byte index = reader.ReadByte();
             byte[] payload = reader.ReadBytes();
-            var component = FindBehaviour(id, index) as NetworkAnimator;
-            if (component == null) return;
-            if (isWorker)
+            if (IsServer && !isWorker)
             {
-                component.AcceptServerState(payload);
-            }
-            else if (IsServer)
-            {
-                if (!component.AcceptOwnerState(sender, payload))
+                if (!clientSessions.Contains(sender) || !directory.TryGetValue(id, out var entity) ||
+                    entity.Owner != sender || !Schema(id, index).IsAnimator ||
+                    Schema(id, index).AnimatorWriter != AnimatorWriter.Owner)
                     throw new InvalidOperationException($"Unauthorized Animator update for entity {id} from session {sender}");
+                if (FindBehaviour(id, index) is NetworkAnimator local) local.AcceptOwnerState(sender, payload);
                 using (var writer = new NetWriter())
                 {
                     writer.Write((byte)Packet.Animator);
                     writer.Write(id);
                     writer.Write(index);
                     writer.WriteBytes(payload);
-                    SendToObservers(id, writer.ToArray(), sender);
-                    SendToWorkers(id, writer.ToArray());
+                    byte[] update = writer.ToArray();
+                    RememberOwnerUpdate(id, update);
+                    SendToObservers(id, update, sender);
+                    SendToWorkers(id, update);
                 }
+                return;
+            }
+            var component = FindBehaviour(id, index) as NetworkAnimator;
+            if (component == null) return;
+            if (isWorker)
+            {
+                component.AcceptServerState(payload);
             }
             else component.AcceptServerState(payload);
         }

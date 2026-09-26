@@ -47,7 +47,8 @@ namespace AtlasNet.Editor
             {
                 EditorGUILayout.TextField("Role", manager.IsWorker ? "Worker" : manager.IsHost ? "Host" : manager.IsServer ? "Server" : manager.IsClient ? "Client" : "Stopped");
                 EditorGUILayout.LongField("Network Tick", manager.Tick);
-                EditorGUILayout.IntField("Spawned Objects", manager.SpawnedCount);
+                EditorGUILayout.IntField("Tracked Entity IDs", manager.TrackedEntityCount);
+                EditorGUILayout.IntField("Local Unity Replicas", manager.SpawnedCount);
                 EditorGUILayout.IntField("Remote Clients", manager.RemoteClientCount);
                 EditorGUILayout.TextField("Local Worker ID", manager.LocalWorkerId.ToString());
                 EditorGUILayout.IntField("Workers", manager.WorkerCount);

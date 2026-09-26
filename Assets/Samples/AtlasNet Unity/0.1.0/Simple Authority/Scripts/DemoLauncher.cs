@@ -90,7 +90,7 @@ public sealed class DemoLauncher : MonoBehaviour
         if (logMetrics && Time.unscaledTime >= nextMetrics)
         {
             nextMetrics = Time.unscaledTime + 5f;
-            Debug.Log($"AtlasNet metrics: entities={manager.SpawnedCount} observers={manager.ObserverCopies} tickMs={manager.LastTickMilliseconds:F3} allocated={AllocationText()} bytesLastTick={manager.BytesSentLastTick}");
+            Debug.Log($"AtlasNet metrics: tracked={manager.TrackedEntityCount} localReplicas={manager.SpawnedCount} observers={manager.ObserverCopies} tickMs={manager.LastTickMilliseconds:F3} allocated={AllocationText()} bytesLastTick={manager.BytesSentLastTick}");
         }
         if (manager.PlayerPrefab != null || playerPrefab != null)
         {
@@ -150,7 +150,7 @@ public sealed class DemoLauncher : MonoBehaviour
                 if (movement != null)
                     GUILayout.Label($"Transform writers: position {movement.PositionWriter}, rotation {movement.RotationWriter}");
             }
-            GUILayout.Label($"Entities: {manager.SpawnedCount}   Observers: {manager.ObserverCopies}");
+            GUILayout.Label($"Tracked IDs: {manager.TrackedEntityCount}   Local replicas: {manager.SpawnedCount}   Observers: {manager.ObserverCopies}");
             GUILayout.Label($"Simulating here: {manager.LocalAuthorityCount}   Ghosts: {manager.GhostCount}");
             if (manager.AutomaticLocalHandoffs && manager.IsServer)
                 GUILayout.Label($"Interested ghost visuals: {InterestedGhosts()}");

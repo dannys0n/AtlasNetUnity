@@ -37,6 +37,7 @@ namespace AtlasNet
             writer.Write(value.Length);
             writer.Write(value);
         }
+        internal void WriteRaw(byte[] value) => writer.Write(value);
         public byte[] ToArray() => stream.ToArray();
         public void Dispose()
         {
