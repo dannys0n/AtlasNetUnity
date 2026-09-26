@@ -31,7 +31,6 @@ public sealed class LocalDebugView : MonoBehaviour
     private bool serverRegionCentered;
     private Vector2 serverViewCenter;
     private float serverZoom;
-    private Vector3 lastMousePosition;
 
     private void Awake()
     {
@@ -127,14 +126,11 @@ public sealed class LocalDebugView : MonoBehaviour
         }
 
         // Middle-drag pans the map; the wheel zooms. Never snap back to the region center.
-        Vector3 mousePosition = Input.mousePosition;
-        if (Input.GetMouseButton(2) && !Input.GetMouseButtonDown(2))
+        if (Input.GetMouseButton(2))
         {
-            Vector3 delta = mousePosition - lastMousePosition;
-            float worldPerPixel = 2f * serverZoom / Mathf.Max(1, Screen.height);
-            serverViewCenter -= new Vector2(delta.x, delta.y) * worldPerPixel;
+            Vector2 delta = new Vector2(Input.GetAxisRaw("Mouse X"), Input.GetAxisRaw("Mouse Y"));
+            serverViewCenter -= delta * (serverZoom / 18f);
         }
-        lastMousePosition = mousePosition;
         serverZoom = Mathf.Clamp(serverZoom - Input.mouseScrollDelta.y * 2f, 4f, 60f);
         transform.position = new Vector3(serverViewCenter.x, cameraHeight, serverViewCenter.y);
         overview.orthographicSize = serverZoom;
