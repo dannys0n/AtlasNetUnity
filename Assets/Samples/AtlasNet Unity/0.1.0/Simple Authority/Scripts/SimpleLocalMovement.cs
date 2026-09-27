@@ -13,10 +13,10 @@ public sealed class SimpleLocalMovement : MonoBehaviour
         Vector2 input = new Vector2(Input.GetAxisRaw("Horizontal"), Input.GetAxisRaw("Vertical"));
         input = Vector2.ClampMagnitude(input, 1);
 
-        if (controller.isGrounded && verticalSpeed < 0)
+        if (controller.isGrounded && verticalSpeed < 0) 
             verticalSpeed = -1f;
 
-        if (controller.isGrounded && Input.GetButtonDown("Jump"))
+        if (controller.isGrounded && Input.GetButtonDown("Jump")) 
             verticalSpeed = jumpSpeed;
 
         verticalSpeed += Physics.gravity.y * Time.deltaTime;
