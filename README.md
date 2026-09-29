@@ -15,5 +15,4 @@ Install Unity's Multiplayer Play Mode package to test with multiple editor playe
 The sample includes client- and server-authoritative player scenes with local worker handoff, a scale scene, and a separate Rigidbody check. The local backend is not the production AtlasNet C++ integration; client-side prediction, production ingress/transport integration, and distributed physics remain later work.
 
 ## Documentation
-
-visit the documentation website
+[visit the documentation website](https://dannys0n.github.io/AtlasNetUnity/)
