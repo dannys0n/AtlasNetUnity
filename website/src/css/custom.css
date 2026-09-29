@@ -1,0 +1,45 @@
+:root {
+  --ifm-color-primary: #087f78;
+  --ifm-color-primary-dark: #07726c;
+  --ifm-color-primary-darker: #076c66;
+  --ifm-color-primary-darkest: #065954;
+  --ifm-color-primary-light: #098c84;
+  --ifm-color-primary-lighter: #09928a;
+  --ifm-color-primary-lightest: #0aa59c;
+  --ifm-font-family-base: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --ifm-code-font-size: 90%;
+  --ifm-heading-font-weight: 650;
+  --ifm-line-height-base: 1.7;
+  --ifm-navbar-shadow: 0 1px 0 var(--ifm-color-emphasis-200);
+  --doc-sidebar-width: 280px;
+}
+
+[data-theme='dark'] {
+  --ifm-color-primary: #67d8c3;
+  --ifm-color-primary-dark: #4dd1b8;
+  --ifm-color-primary-darker: #40ceb3;
+  --ifm-color-primary-darkest: #2aaf97;
+  --ifm-color-primary-light: #81dfce;
+  --ifm-color-primary-lighter: #8ee2d3;
+  --ifm-color-primary-lightest: #b5ecdf;
+  --ifm-background-color: #111820;
+  --ifm-background-surface-color: #19222c;
+  --ifm-footer-background-color: #0c1219;
+}
+
+.markdown > h1 {letter-spacing: -0.035em; font-size: 2.6rem;}
+.markdown h2 {letter-spacing: -0.02em; margin-top: 2rem;}
+.markdown img {border-radius: 10px; border: 1px solid var(--ifm-color-emphasis-200);}
+.theme-code-block {border: 1px solid var(--ifm-color-emphasis-200); box-shadow: none;}
+.menu__link {border-radius: 6px;}
+.atlas-eyebrow {color: var(--ifm-color-primary); font-size: 0.8rem; font-weight: 700; letter-spacing: 0.14em;}
+.atlas-lead {font-size: 1.2rem; color: var(--ifm-color-emphasis-700); max-width: 48rem;}
+.atlas-cards {display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; margin: 1.8rem 0;}
+.atlas-card {padding: 1.25rem; border: 1px solid var(--ifm-color-emphasis-200); border-radius: 10px; background: var(--ifm-background-surface-color);}
+.atlas-card h3 {margin: 0 0 0.5rem; font-size: 1.15rem;}
+.atlas-card p {margin: 0; font-size: 0.95rem;}
+.atlas-caption {font-size: 0.85rem; color: var(--ifm-color-emphasis-700); margin-top: -0.5rem;}
+@media (max-width: 600px) {
+  .atlas-cards {grid-template-columns: 1fr;}
+  .markdown > h1 {font-size: 2.1rem;}
+}

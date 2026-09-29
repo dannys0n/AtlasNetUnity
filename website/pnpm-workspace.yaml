@@ -1,0 +1,3 @@
+# Keep install scripts opt-in. core-js ships usable JS without its postinstall.
+allowBuilds:
+  core-js: false

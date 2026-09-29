@@ -84,3 +84,10 @@ crashlytics-build.properties
 /Consumer/.vs/
 /Validation/
 /unity-setup.log
+
+# Documentation site dependencies and generated output
+/website/node_modules/
+/website/.docusaurus/
+/website/build/
+/.pnpm-store/
+/website/.pnpm-store/
