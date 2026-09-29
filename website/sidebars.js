@@ -10,6 +10,5 @@ module.exports = {
     'guides/interest-handoffs',
     'reference/api',
     'troubleshooting',
-    'maintaining-docs',
   ],
 };

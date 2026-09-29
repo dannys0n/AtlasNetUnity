@@ -46,7 +46,6 @@ const config = {
         {title: 'Project', items: [
           {label: 'Unity package source', href: 'https://github.com/dannys0n/AtlasNetUnity'},
           {label: 'Shooter demo', href: 'https://github.com/dannys0n/AtlasNet-Unity-ShooterDemo'},
-          {label: 'Maintain these docs', to: '/maintaining-docs'},
         ]},
       ],
       copyright: 'AtlasNet Unity · Experimental local-backend documentation',
