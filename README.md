@@ -16,15 +16,4 @@ The sample includes client- and server-authoritative player scenes with local wo
 
 ## Documentation
 
-The first-pass developer guide lives in [website/docs](website/docs/intro.md), with installation, prefab/component setup, movement, variables, RPCs, physics, and local-worker interest/handoff examples.
-
-Preview locally with Node.js 24 and pnpm 11.25.0:
-
-```powershell
-cd website
-pnpm install --frozen-lockfile
-pnpm start
-```
-
-The [publishing guide](website/docs/maintaining-docs.md) explains the prepared GitHub Pages workflow. After enabling Pages with **GitHub Actions** and deploying, the site will be available at [dannys0n.github.io/AtlasNetUnity](https://dannys0n.github.io/AtlasNetUnity/).
-
+visit the documentation website
