@@ -91,3 +91,8 @@ crashlytics-build.properties
 /website/build/
 /.pnpm-store/
 /website/.pnpm-store/
+
+# Hand-authored standalone checks, kept out of Unity's asset import.
+!/Packages/com.atlasnet.unity/Tests~/Standalone/AtlasNetChecks.csproj
+/Packages/com.atlasnet.unity/Tests~/Standalone/bin/
+/Packages/com.atlasnet.unity/Tests~/Standalone/obj/

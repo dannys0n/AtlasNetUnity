@@ -86,12 +86,12 @@ public sealed class DemoLauncher : MonoBehaviour
                 break;
             }
         }
-        if (!manager.IsServer || manager.IsWorker) return;
-        if (logMetrics && Time.unscaledTime >= nextMetrics)
+        if (manager.IsRunning && logMetrics && Time.unscaledTime >= nextMetrics)
         {
             nextMetrics = Time.unscaledTime + 5f;
-            Debug.Log($"AtlasNet metrics: tracked={manager.TrackedEntityCount} localReplicas={manager.SpawnedCount} observers={manager.ObserverCopies} tickMs={manager.LastTickMilliseconds:F3} allocated={AllocationText()} bytesLastTick={manager.BytesSentLastTick}");
+            Debug.Log($"AtlasNet metrics: role={(manager.IsWorker ? "worker" : manager.IsServer ? "server" : "client")} worker={manager.LocalWorkerId} tick={manager.Tick} tracked={manager.TrackedEntityCount} localReplicas={manager.SpawnedCount} authority={manager.LocalAuthorityCount} ghosts={manager.GhostCount} pending={manager.PendingHandoffCount} observers={manager.ObserverCopies} tickMs={manager.LastTickMilliseconds:F3} allocated={AllocationText()} bytesLastTick={manager.BytesSentLastTick}");
         }
+        if (!manager.IsServer || manager.IsWorker) return;
         if (manager.PlayerPrefab != null || playerPrefab != null)
         {
             if (Input.GetKeyDown(KeyCode.P)) SpawnExtra();
@@ -163,6 +163,7 @@ public sealed class DemoLauncher : MonoBehaviour
             GUILayout.Label($"Tick: {manager.LastTickMilliseconds:F2} ms   Alloc: {AllocationText()}");
             GUILayout.Label($"Sent: {manager.BytesSentLastTick} B/tick   Peers: {manager.RemoteClientCount}");
             GUILayout.Label($"Pending handoffs: {manager.PendingHandoffCount}");
+            logMetrics = GUILayout.Toggle(logMetrics, "Log metrics every 5 seconds");
             if (manager.IsServer && !manager.IsWorker && (manager.PlayerPrefab != null || playerPrefab != null))
             {
                 if (GUILayout.Button("Spawn extra (P)")) SpawnExtra();

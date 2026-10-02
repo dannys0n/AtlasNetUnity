@@ -73,6 +73,8 @@ namespace AtlasNet
         internal void SetSimulationAuthority(ulong worker, uint epoch)
         {
             if (epoch < AuthorityEpoch) throw new InvalidOperationException($"Stale authority epoch for entity {EntityId}");
+            if (completedSpawn && epoch == AuthorityEpoch && worker != SimulationWorker)
+                throw new InvalidOperationException($"Conflicting authority at epoch {epoch} for entity {EntityId}");
             bool changed = SimulationWorker != worker || AuthorityEpoch != epoch;
             SimulationWorker = worker;
             AuthorityEpoch = epoch;

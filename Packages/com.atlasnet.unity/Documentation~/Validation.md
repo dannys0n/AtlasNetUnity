@@ -1,5 +1,15 @@
 # First-demo validation record
 
+## Backend extraction and handoff ordering (2026-10-01)
+
+The public `NetworkManager` component now delegates to internal `IWorldBackend`, with `LocalWorldBackend` owning local TCP, canonical records, interest, routing, and handoff policy. Serialized manager field names and gameplay method signatures are retained. Unity replica creation/removal stays in the manager, with snapshots applied and replicas registered before spawn callbacks.
+
+The checked-in standalone harness is `Packages/com.atlasnet.unity/Tests~/Standalone/AtlasNetChecks.csproj`. Its runtime and sample compilation passed with zero errors and 37 existing warnings (Unity-serialized fields and the sample's obsolete `FindFirstObjectByType` call); the earlier baseline had the same warning count. Execution passed codec, TCP, Voronoi/interest, handoff source/destination/epoch checks, premature ACK rejection, repeated-export rejection, aborted-attempt retry epochs, timeout/tick wrap, and epoch overflow checks. `git diff --check` passed. Restore encountered an inaccessible shared NuGet scratch lock in this environment; using an isolated `NUGET_SCRATCH` directory allowed the package-free offline restore to complete.
+
+No new Unity EditMode, Multiplayer Play Mode, shooter animation, disconnect, or current scale performance run has passed for this refactor. Existing recorded videos and historical measurements predate it. Use the current `LocalWorkers.md` checklist and the sample's **Log metrics every 5 seconds** toggle before accepting runtime behavior. Native AtlasNet integration, command deduplication over retransmitting transports, and crash recovery remain unimplemented.
+
+## Historical checks
+
 Checked with Unity 6000.6.2f1 on Windows on 2026-09-23. The checks below exercise this local implementation, not the future AtlasNet backend. They predate the direct-call RPC IL post-processor.
 
 | Check | Result |
