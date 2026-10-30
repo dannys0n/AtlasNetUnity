@@ -7,6 +7,7 @@
     <RestoreConfigFile>$(MSBuildThisFileDirectory)NuGet.Config</RestoreConfigFile>
     <NuGetAudit>false</NuGetAudit>
     <LangVersion>latest</LangVersion>
+    <DefineConstants>$(DefineConstants);ATLASNET_STANDALONE</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="Program.cs" />

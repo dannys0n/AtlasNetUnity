@@ -65,6 +65,15 @@ static class Program
             "Three worker region polygons must cover the world");
 
 
+        var ordering=new MessageSequence();var peer=new SessionId(20);
+        Check(ordering.Accept(peer,1,10),"First sequence accepted");
+        Check(!ordering.Accept(peer,1,9)&&!ordering.Accept(peer,1,10),"Old and duplicate sequence rejected");
+        Check(ordering.Accept(peer,2,1),"Independent streams do not suppress each other");
+        Check(ordering.Accept(peer,3,uint.MaxValue)&&ordering.Accept(peer,3,0),"Sequence wraparound");
+        ordering.Remove(peer);Check(ordering.Accept(peer,1,1),"Disconnect clears sequence state");
+        Check(new RpcAttribute(SendTo.Authority).Delivery==RpcDelivery.Reliable,"RPCs default to reliable delivery");
+        Check(new RpcAttribute(SendTo.Authority){Delivery=RpcDelivery.Unreliable}.Delivery==RpcDelivery.Unreliable,"NGO-style delivery configuration");
+
         LocalTcpTransport server = null;
         int port = 17000;
         for (; port < 17100; port++)
@@ -76,6 +85,7 @@ static class Program
         using (server)
         using (var client = new LocalTcpTransport(false, "127.0.0.1", port))
         {
+            Check((server.Capabilities(default)&TransportCapabilities.Unreliable)==0,"TCP must not claim datagram unreliability");
             SessionId connected = default;
             SessionId sender = default;
             byte[] received = null;

@@ -217,7 +217,7 @@ namespace AtlasNetDemo.Tests
                 entries.GetArrayElementAtIndex(0).objectReferenceValue = list;
                 data.ApplyModifiedPropertiesWithoutUndo();
                 var error = Assert.Throws<System.InvalidOperationException>(() => manager.ValidateRegistry());
-                StringAssert.Contains("contains a missing NetworkObject prefab", error.Message);
+                StringAssert.Contains("missing NetworkObject prefab", error.Message);
             }
             finally
             {
@@ -256,7 +256,7 @@ namespace AtlasNetDemo.Tests
                 var manager = gameObject.AddComponent<NetworkManager>();
                 var error = Assert.Throws<System.InvalidOperationException>(() =>
                     manager.Spawn("anything", Vector3.zero, Quaternion.identity));
-                StringAssert.Contains("Only the server", error.Message);
+                StringAssert.Contains("canonically spawn", error.Message);
             }
             finally
             {
