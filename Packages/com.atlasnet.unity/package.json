@@ -4,9 +4,12 @@
   "version": "0.1.0",
   "unity": "6000.0",
   "description": "An entity-oriented Unity networking API with a local multi-worker backend for development demos.",
-  "author": { "name": "AtlasNet" },
+  "author": {
+    "name": "AtlasNet"
+  },
   "dependencies": {
-    "com.unity.nuget.mono-cecil": "1.11.6"
+    "com.unity.nuget.mono-cecil": "1.11.6",
+    "com.unity.transport": "6.6.0"
   },
   "samples": [
     {
