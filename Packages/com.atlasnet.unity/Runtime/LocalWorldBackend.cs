@@ -15,8 +15,8 @@ namespace AtlasNet
             WorkerVariable = 18, WorkerOutboundRpc = 19, AuthorityChange = 20,
             WorkerExportRequest = 21, WorkerExport = 22, WorkerAbort = 23, WorkerAnimator = 24,
             WorkerRegion = 25, WorkerRegionRequest = 26, WorkerSpawnRequest = 27, WorkerDespawnRequest = 28,
-            WorkerInteractionRpc = 29, ClientDebugRegionRequest = 30, ClientDebugRegion = 31, WorkerState = 32 }
-        private const ushort LocalProtocolVersion = 9;
+            WorkerInteractionRpc = 29, ClientDebugRegionRequest = 30, ClientDebugRegion = 31, WorkerState = 32, NamedMessage = 33, ClientReady = 34, ClientRoster = 35 }
+        private const ushort LocalProtocolVersion = 11;
         private readonly NetworkManager runtime;
         private NetworkObject playerPrefab => runtime.playerPrefab;
         private NetworkPrefabsList[] networkPrefabsLists => runtime.networkPrefabsLists;
@@ -37,6 +37,7 @@ namespace AtlasNet
         private float accumulator;
         private long lastBytes;
         private bool allocationCounterSupported;
+        private bool clientReady;
         public bool IsServer { get; private set; }
         public bool IsClient { get; private set; }
         public bool IsHost => IsServer && IsClient;
@@ -85,12 +86,21 @@ namespace AtlasNet
         internal LocalWorldBackend(NetworkManager runtime)
         {
             this.runtime = runtime;
-            long before = GC.GetAllocatedBytesForCurrentThread();
+            long before = ReadAllocatedBytes();
             byte[] probe = new byte[1024];
             GC.KeepAlive(probe);
-            allocationCounterSupported = GC.GetAllocatedBytesForCurrentThread() > before;
+            allocationCounterSupported = before >= 0 && ReadAllocatedBytes() > before;
         }
 
+        private static long ReadAllocatedBytes()
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            // Unity Web does not implement the per-thread GC allocation counter.
+            return -1;
+#else
+            return GC.GetAllocatedBytesForCurrentThread();
+#endif
+        }
         public void ValidateRegistry()
         {
             registry.Clear();
@@ -135,7 +145,7 @@ namespace AtlasNet
                 world = new LocalVoronoi(localWorldMin.x, localWorldMax.x, localWorldMin.y, localWorldMax.y);
                 world.AddWorker(0);
             }
-            transport = new LocalTcpTransport(server, localAddress, port);
+            transport = CreateTransport(server);
             transport.Connected += OnConnected;
             transport.Disconnected += OnDisconnected;
             transport.Received += OnReceived;
@@ -146,9 +156,13 @@ namespace AtlasNet
             Tick = 0;
             accumulator = 0;
             ResetMetrics();
+            clientReady = false;
+            if (server) ServerStarted?.Invoke();
+            if (!IsRunning) return;
             if (LocalSession.Value != 0)
             {
                 SpawnPlayer(LocalSession);
+                clientReady = true;
                 SessionJoined?.Invoke(LocalSession);
             }
             if (!server)
@@ -157,7 +171,8 @@ namespace AtlasNet
                 {
                     hello.Write((byte)Packet.ClientHello);
                     hello.Write(LocalProtocolVersion);
-                    transport.SendToServer(hello.ToArray());
+                    hello.WriteBytes(runtime.ConnectionData??Array.Empty<byte>());
+                    SendToServer(hello.ToArray());
                 }
             }
         }
@@ -165,6 +180,9 @@ namespace AtlasNet
         public void Stop()
         {
             if (transport == null) return;
+            bool wasServer = IsServer && !isWorker, wasClient = IsClient;
+            var departed = new List<SessionId>(clientSessions);
+            if (wasClient && !departed.Contains(LocalSession)) departed.Add(LocalSession);
             transport.Dispose();
             transport = null;
             foreach (var obj in new List<NetworkObject>(spawned.Values))
@@ -190,9 +208,11 @@ namespace AtlasNet
             ClearClientDebugRegion();
             isWorker = false;
             localWorkerId = 0;
+            foreach (var session in departed) SessionLeft?.Invoke(session);
             IsServer = false;
             IsClient = false;
             LocalSession = new SessionId(0);
+            Stopped?.Invoke(wasServer, wasClient);
         }
 
         public void PollAndTick(float deltaTime)
@@ -206,7 +226,7 @@ namespace AtlasNet
             {
                 accumulator -= interval;
                 long before = Stopwatch.GetTimestamp();
-                long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+                long allocatedBefore = allocationCounterSupported ? ReadAllocatedBytes() : -1;
                 Tick++;
                 CheckHandoffTimeouts();
                 tickObjects.Clear();
@@ -228,7 +248,7 @@ namespace AtlasNet
                 RefreshCoordinatorResidency();
                 LastTickMilliseconds = (Stopwatch.GetTimestamp() - before) * 1000.0 / Stopwatch.Frequency;
                 AllocatedBytesLastTick = allocationCounterSupported
-                    ? GC.GetAllocatedBytesForCurrentThread() - allocatedBefore : -1;
+                    ? ReadAllocatedBytes() - allocatedBefore : -1;
                 BytesSentLastTick = transport.BytesSent - lastBytes;
                 lastBytes = transport.BytesSent;
             }
@@ -283,7 +303,7 @@ namespace AtlasNet
                 writer.Write(position);
                 writer.Write(rotation);
                 writer.Write(owner);
-                transport.SendToServer(writer.ToArray());
+                SendToServer(writer.ToArray());
             }
         }
 
@@ -298,7 +318,7 @@ namespace AtlasNet
                     writer.Write((byte)Packet.WorkerDespawnRequest);
                     writer.Write(obj.EntityId);
                     writer.Write(obj.AuthorityEpoch);
-                    transport.SendToServer(writer.ToArray());
+                    SendToServer(writer.ToArray());
                 }
                 return;
             }
@@ -347,7 +367,7 @@ namespace AtlasNet
             bool wasObserver = IsObserver(obj.EntityId, session);
             if (!excluded.Add(session)) return;
             if (clientResidents.TryGetValue(session, out var residents)) residents.Remove(obj.EntityId);
-            if (wasObserver) transport.SendTo(session, MakeEntityPacket(Packet.Hide, obj.EntityId));
+            if (wasObserver) SendTo(session, MakeEntityPacket(Packet.Hide, obj.EntityId));
         }
 
         public void ShowTo(NetworkObject obj, SessionId session)
@@ -359,9 +379,9 @@ namespace AtlasNet
             if (clientResidents.TryGetValue(session, out var residents))
             {
                 if (ShouldClientHold(session, directory[obj.EntityId], false) && residents.Add(obj.EntityId))
-                    transport.SendTo(session, MakeSpawn(directory[obj.EntityId], session));
+                    SendTo(session, MakeSpawn(directory[obj.EntityId], session));
             }
-            else transport.SendTo(session, MakeSpawn(directory[obj.EntityId], session));
+            else SendTo(session, MakeSpawn(directory[obj.EntityId], session));
         }
 
         /// <summary>Find a local replica; false does not mean the entity is absent from the world.</summary>
@@ -380,7 +400,7 @@ namespace AtlasNet
         private void SendToObservers(EntityId id, byte[] packet, SessionId except = default)
         {
             foreach (var session in clientSessions)
-                if (session != except && IsObserver(id, session)) transport.SendTo(session, packet);
+                if (session != except && IsObserver(id, session)) SendTo(session, packet);
         }
 
         private byte[] MakeSpawn(CanonicalEntity entity, SessionId reader)
@@ -438,12 +458,16 @@ namespace AtlasNet
                 Debug.LogWarning($"AtlasNet worker {session} disconnected; its entities remain frozen until authority is recovered");
                 return;
             }
-            clientSessions.Remove(session);
+            bool admitted = clientSessions.Remove(session);
             clientResidents.Remove(session);
             clientDebugRegionSubscribers.Remove(session);
             if (IsServer)
             {
-                SessionLeft?.Invoke(session);
+                if (admitted)
+                {
+                    BroadcastClientRoster();
+                    SessionLeft?.Invoke(session);
+                }
                 var owned = new List<EntityId>();
                 foreach (var record in directory.Values)
                     if (record.Owner == session) owned.Add(record.Id);
@@ -481,11 +505,11 @@ namespace AtlasNet
                     foreach (var session in clientSessions)
                         if (IsObserver(behaviour.NetworkObject.EntityId, session) &&
                             (value.ReadPermission == NetworkVariableReadPermission.Everyone || session == behaviour.OwnerSession))
-                            transport.SendTo(session, data);
+                            SendTo(session, data);
                     SendToWorkers(behaviour.NetworkObject.EntityId, data);
                 }
                 else if (value.WritePermission == NetworkVariableWritePermission.Owner && behaviour.IsOwner)
-                    transport.SendToServer(data);
+                    SendToServer(data);
                 else throw new InvalidOperationException("Only the permitted writer can send a NetworkVariable");
             }
         }
@@ -537,7 +561,7 @@ namespace AtlasNet
                     if (IsServer && (obj.SimulationWorker != 0 || pendingHandoffs.ContainsKey(obj.EntityId)))
                         ForwardAuthorityRpc(obj.EntityId, behaviour.BehaviourIndex, method, bytes, LocalSession);
                     else if (IsServer) behaviour.ReceiveRpc(method, bytes, LocalSession, destination, target);
-                    else transport.SendToServer(data);
+                    else SendToServer(data);
                 }
                 else if (destination == RpcDestination.Observers)
                 {
@@ -553,12 +577,12 @@ namespace AtlasNet
                         SendToObservers(obj.EntityId, data);
                         SendToWorkers(obj.EntityId, data);
                     }
-                    else transport.SendToServer(data);
+                    else SendToServer(data);
                 }
                 else
                 {
                     if (IsClient && target == LocalSession) behaviour.ReceiveRpc(method, bytes, LocalSession, destination, target);
-                    else if (IsObserver(obj.EntityId, target)) transport.SendTo(target, data);
+                    else if (IsObserver(obj.EntityId, target)) SendTo(target, data);
                 }
             }
         }
@@ -587,7 +611,7 @@ namespace AtlasNet
                         packet.Write(target.BehaviourIndex);
                         packet.Write(method);
                         packet.WriteBytes(bytes);
-                        transport.SendToServer(packet.ToArray());
+                        SendToServer(packet.ToArray());
                     }
                 }
                 else ForwardAuthorityRpc(target.NetworkObject.EntityId, target.BehaviourIndex, method, bytes, default);
@@ -607,7 +631,7 @@ namespace AtlasNet
                     update.Write(flags);
                     if ((flags & 1) != 0) update.Write(position);
                     if ((flags & 2) != 0) update.Write(rotation);
-                    transport.SendToServer(update.ToArray());
+                    SendToServer(update.ToArray());
                 }
                 return;
             }
@@ -629,7 +653,7 @@ namespace AtlasNet
                     SendToObservers(component.NetworkObject.EntityId, data);
                     SendToWorkers(component.NetworkObject.EntityId, data);
                 }
-                else transport.SendToServer(data);
+                else SendToServer(data);
             }
         }
 
@@ -656,7 +680,7 @@ namespace AtlasNet
                     SendToObservers(component.NetworkObject.EntityId, data);
                     SendToWorkers(component.NetworkObject.EntityId, data);
                 }
-                else transport.SendToServer(data);
+                else SendToServer(data);
             }
         }
 
@@ -668,8 +692,11 @@ namespace AtlasNet
                 {
                     switch ((Packet)reader.ReadByte())
                     {
+                        case Packet.NamedMessage:
+                            ReceiveNamedMessage(sender, reader);
+                            break;
                         case Packet.ClientHello:
-                            if (IsServer && !isWorker) { ValidateHello(reader); AcceptClient(sender); }
+                            if (IsServer && !isWorker) { ValidateHello(reader,true); var admission=reader.ReadBytes(); if(reader.HasRemaining)throw new InvalidOperationException("Trailing client admission data."); if(runtime.ConnectionApproval==null||runtime.ConnectionApproval(sender,admission))AcceptClient(sender);else transport.Disconnect(sender); }
                             break;
                         case Packet.WorkerHello:
                             if (IsServer && !isWorker) { ValidateHello(reader); AcceptWorker(sender); }
@@ -743,7 +770,19 @@ namespace AtlasNet
                         case Packet.Welcome:
                             if (IsServer) break;
                             LocalSession = reader.ReadSessionId();
-                            SessionJoined?.Invoke(LocalSession);
+                            break;
+                        case Packet.ClientReady:
+                            // Like NGO ConnectionApprovedMessage with scene management disabled,
+                            // notify gameplay only after the preceding reliable spawn stream.
+                            if (!IsServer && LocalSession.Value != 0 && !clientReady)
+                            {
+                                ReceiveClientRoster(reader);
+                                clientReady = true;
+                                SessionJoined?.Invoke(LocalSession);
+                            }
+                            break;
+                        case Packet.ClientRoster:
+                            if (!IsServer && clientReady) ReceiveClientRoster(reader);
                             break;
                         case Packet.Spawn:
                             if (!IsServer) ReceiveSpawn(reader);
@@ -825,7 +864,7 @@ namespace AtlasNet
                 foreach (var session in clientSessions)
                     if (session != sender && IsObserver(id, session) &&
                         (permission.Read == NetworkVariableReadPermission.Everyone || session == entity.Owner))
-                        transport.SendTo(session, update);
+                        SendTo(session, update);
                 return;
             }
             var behaviour = FindBehaviour(id, index);

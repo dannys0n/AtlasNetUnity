@@ -15,7 +15,12 @@ namespace AtlasNet.Editor
             EditorGUILayout.PropertyField(serializedObject.FindProperty("tickRate"), new GUIContent("Tick Rate"));
             EditorGUILayout.PropertyField(serializedObject.FindProperty("localAddress"), new GUIContent("Local Address"));
             EditorGUILayout.PropertyField(serializedObject.FindProperty("port"), new GUIContent("Port"));
-            EditorGUILayout.HelpBox("Local TCP development mode. The first server coordinates clients and optional Unity workers; production AtlasNet transport selection is not connected yet.", MessageType.None);
+            EditorGUILayout.PropertyField(serializedObject.FindProperty("serverTransport"),new GUIContent("Server Transport"));
+            EditorGUILayout.PropertyField(serializedObject.FindProperty("clientTransport"),new GUIContent("Native Client Transport","Connection type used by non-browser clients. Web builds always use WebSocket. This does not change the server listeners."));
+            EditorGUILayout.PropertyField(serializedObject.FindProperty("listenAddress"),new GUIContent("Listen Address"));
+            EditorGUILayout.PropertyField(serializedObject.FindProperty("transportProvider"),new GUIContent("Transport Override","Optional custom adapter; leave empty for built-in transport selection."));
+            EditorGUILayout.PropertyField(serializedObject.FindProperty("backendProvider"),new GUIContent("Backend Override","Leave empty for the dummy backend. This is an adapter extension, not a gameplay prefab requirement."));
+            EditorGUILayout.HelpBox("Default server accepts UDP and WebSocket clients simultaneously on the same port number. TCP-only mode is optional. Browsers use WebSocket. An empty backend override uses the local dummy.",MessageType.None);
 
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("Local Worker Regions", EditorStyles.boldLabel);

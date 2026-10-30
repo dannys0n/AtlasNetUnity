@@ -1,7 +1,10 @@
 {
   "name": "AtlasNet.Unity",
   "rootNamespace": "AtlasNet",
-  "references": [],
+  "references": [
+    "Unity.Networking.Transport",
+    "Unity.Collections"
+  ],
   "includePlatforms": [],
   "excludePlatforms": [],
   "allowUnsafeCode": false,

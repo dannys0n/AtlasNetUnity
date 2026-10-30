@@ -7,7 +7,7 @@ namespace AtlasNet
     // Semantic Unity/backend boundary, not a native ABI or a transport interface.
     // All operations and callbacks execute on Unity's main thread. A native bridge
     // must drain its inbound queue from PollAndTick before invoking Unity lifecycle code.
-    internal interface IWorldBackend
+    public interface IWorldBackend
     {
         bool IsServer { get; }
         bool IsClient { get; }
@@ -17,6 +17,7 @@ namespace AtlasNet
         uint Tick { get; }
         int TrackedEntityCount { get; }
         int RemoteClientCount { get; }
+        TransportCapabilities GetTransportCapabilities(SessionId peer);
         int ObserverCopies { get; }
         long BytesSent { get; }
         long BytesSentLastTick { get; }
@@ -38,6 +39,11 @@ namespace AtlasNet
         Func<SessionId, Vector3> PlayerSpawnPosition { get; set; }
         event Action<SessionId> SessionJoined;
         event Action<SessionId> SessionLeft;
+        event Action ServerStarted;
+        event Action<bool, bool> Stopped;
+        void ValidateNamedMessageRecipient(SessionId recipient);
+        void SendNamedMessage(SessionId recipient, ulong messageId, byte[] payload, NetworkDelivery delivery);
+        void DisconnectClient(SessionId session);
         void PollAndTick(float deltaTime);
         void ValidateRegistry();
         void StartServer();

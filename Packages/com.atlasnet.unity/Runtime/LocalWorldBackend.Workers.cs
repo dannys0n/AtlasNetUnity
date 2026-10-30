@@ -50,8 +50,8 @@ namespace AtlasNet
         {
             public readonly Dictionary<ushort, (NetworkVariableReadPermission Read, NetworkVariableWritePermission Write)> Variables =
                 new Dictionary<ushort, (NetworkVariableReadPermission, NetworkVariableWritePermission)>();
-            public readonly Dictionary<uint, (RpcDestination Destination, RpcInvokePermission Permission)> Rpcs =
-                new Dictionary<uint, (RpcDestination, RpcInvokePermission)>();
+            public readonly Dictionary<uint, (RpcDestination Destination, RpcInvokePermission Permission, NetworkDelivery Delivery)> Rpcs =
+                new Dictionary<uint, (RpcDestination, RpcInvokePermission, NetworkDelivery)>();
             public bool IsTransform;
             public bool SyncPosition;
             public bool SyncRotation;
@@ -123,7 +123,7 @@ namespace AtlasNet
                     schema.Variables.Add(pair.Key, (pair.Value.ReadPermission, pair.Value.WritePermission));
                 foreach (var pair in behaviour.RpcSchema)
                     schema.Rpcs.Add(pair.Key, (RpcMethods.DestinationOf(RpcMethods.TargetOf(pair.Value).Value),
-                        pair.Value.GetCustomAttribute<RpcAttribute>().InvokePermission));
+                        pair.Value.GetCustomAttribute<RpcAttribute>().InvokePermission,(NetworkDelivery)pair.Value.GetCustomAttribute<RpcAttribute>().Delivery));
                 if (behaviour is NetworkTransform transform)
                 {
                     schema.IsTransform = true;
@@ -151,7 +151,7 @@ namespace AtlasNet
             return record.Behaviours[index];
         }
 
-        private static (RpcDestination Destination, RpcInvokePermission Permission) RpcSchemaFor(BehaviourSchema schema, uint method)
+        private static (RpcDestination Destination, RpcInvokePermission Permission, NetworkDelivery Delivery) RpcSchemaFor(BehaviourSchema schema, uint method)
         {
             if (!schema.Rpcs.TryGetValue(method, out var rpc))
                 throw new InvalidOperationException($"Unknown RPC {method} on canonical entity");
@@ -215,7 +215,7 @@ namespace AtlasNet
                 packet.Write((byte)Packet.ClientDebugRegionRequest);
                 packet.Write(enabled);
                 if (enabled) packet.Write(ownedPlayer.EntityId);
-                transport.SendToServer(packet.ToArray());
+                SendToServer(packet.ToArray());
             }
             if (!enabled) ClearClientDebugRegion();
             return true;
@@ -231,7 +231,7 @@ namespace AtlasNet
                 using (var packet = new NetWriter())
                 {
                     packet.Write((byte)Packet.WorkerRegionRequest);
-                    transport.SendToServer(packet.ToArray());
+                    SendToServer(packet.ToArray());
                 }
             }
             else UpdateCoordinatorDebugRegion();
@@ -263,7 +263,7 @@ namespace AtlasNet
         {
             if (IsRunning) throw new InvalidOperationException("NetworkManager is already running");
             ValidateRegistry();
-            transport = new LocalTcpTransport(false, localAddress, port);
+            transport = CreateTransport(false);
             transport.Connected += OnConnected;
             transport.Disconnected += OnDisconnected;
             transport.Received += OnReceived;
@@ -279,7 +279,7 @@ namespace AtlasNet
             {
                 hello.Write((byte)Packet.WorkerHello);
                 hello.Write(LocalProtocolVersion);
-                transport.SendToServer(hello.ToArray());
+                SendToServer(hello.ToArray());
             }
         }
 
@@ -293,7 +293,7 @@ namespace AtlasNet
             {
                 writer.Write((byte)Packet.Welcome);
                 writer.Write(session);
-                transport.SendTo(session, writer.ToArray());
+                SendTo(session, writer.ToArray());
             }
             if (radiusInterest)
             {
@@ -304,9 +304,12 @@ namespace AtlasNet
             else
             {
                 foreach (var entity in directory.Values)
-                    if (IsObserver(entity.Id, session)) transport.SendTo(session, MakeSpawn(entity, session));
+                    if (IsObserver(entity.Id, session)) SendTo(session, MakeSpawn(entity, session));
                 SpawnPlayer(session);
             }
+            // Reliable ordering makes this a completion barrier for initial replicas.
+            SendClientRoster(session, Packet.ClientReady);
+            BroadcastClientRoster(session);
             SessionJoined?.Invoke(session);
         }
 
@@ -318,9 +321,9 @@ namespace AtlasNet
                 EntityId id = entity.Id;
                 bool excluded = hidden.TryGetValue(id, out var sessions) && sessions.Contains(session);
                 bool wanted = !excluded && ShouldClientHold(session, entity, residents.Contains(id));
-                if (wanted && residents.Add(id)) transport.SendTo(session, MakeSpawn(entity, session));
+                if (wanted && residents.Add(id)) SendTo(session, MakeSpawn(entity, session));
                 else if (!wanted && residents.Remove(id))
-                    transport.SendTo(session, MakeEntityPacket(Packet.Hide, id));
+                    SendTo(session, MakeEntityPacket(Packet.Hide, id));
             }
         }
 
@@ -337,18 +340,18 @@ namespace AtlasNet
             {
                 if (!clientResidents.TryGetValue(session, out var residents))
                 {
-                    if (IsObserver(entity.Id, session)) transport.SendTo(session, MakeSpawn(entity, session));
+                    if (IsObserver(entity.Id, session)) SendTo(session, MakeSpawn(entity, session));
                 }
                 else if (ShouldClientHold(session, entity, false) && IsExplicitlyVisible(entity.Id, session) &&
                          residents.Add(entity.Id))
-                    transport.SendTo(session, MakeSpawn(entity, session));
+                    SendTo(session, MakeSpawn(entity, session));
             }
         }
 
-        private static void ValidateHello(NetReader reader)
+        private static void ValidateHello(NetReader reader,bool allowAdmission=false)
         {
             ushort version = reader.ReadUShort();
-            if (version != LocalProtocolVersion || reader.HasRemaining)
+            if (version != LocalProtocolVersion || (!allowAdmission&&reader.HasRemaining))
                 throw new InvalidOperationException($"AtlasNet local protocol mismatch: peer {version}, expected {LocalProtocolVersion}. Use the same package version in every instance.");
         }
 
@@ -360,7 +363,7 @@ namespace AtlasNet
             {
                 writer.Write((byte)Packet.WorkerWelcome);
                 writer.Write(session.Value);
-                transport.SendTo(session, writer.ToArray());
+                SendTo(session, writer.ToArray());
             }
             localWorld?.AddWorker(session.Value);
             RefreshWorkerInterest();
@@ -371,7 +374,7 @@ namespace AtlasNet
         private void EnsureWorkerResident(SessionId worker, CanonicalEntity entity)
         {
             if (workerResidents.TryGetValue(worker, out var residents) && residents.Add(entity.Id))
-                transport.SendTo(worker, MakeWorkerSpawn(entity));
+                SendTo(worker, MakeWorkerSpawn(entity));
         }
 
         private void RefreshWorkerInterest()
@@ -386,7 +389,7 @@ namespace AtlasNet
                     bool wanted = ShouldWorkerHold(worker, entity, residents.Contains(entity.Id));
                     if (wanted) EnsureWorkerResident(worker, entity);
                     else if (residents.Remove(entity.Id))
-                        transport.SendTo(worker, MakeEntityPacket(Packet.Despawn, entity.Id));
+                        SendTo(worker, MakeEntityPacket(Packet.Despawn, entity.Id));
                 }
             }
         }
@@ -402,7 +405,7 @@ namespace AtlasNet
         {
             foreach (var pair in workerResidents)
                 if (pair.Value.Remove(id))
-                    transport.SendTo(pair.Key, MakeEntityPacket(Packet.Despawn, id));
+                    SendTo(pair.Key, MakeEntityPacket(Packet.Despawn, id));
         }
 
         private void SetLocalRegion(Vector2[] polygon)
@@ -445,7 +448,7 @@ namespace AtlasNet
                     packet.Write(vertex.x);
                     packet.Write(vertex.y);
                 }
-                transport.SendTo(client, packet.ToArray());
+                SendTo(client, packet.ToArray());
             }
         }
 
@@ -506,7 +509,7 @@ namespace AtlasNet
                     packet.Write(vertex.x);
                     packet.Write(vertex.y);
                 }
-                transport.SendTo(worker, packet.ToArray());
+                SendTo(worker, packet.ToArray());
             }
         }
 
@@ -591,7 +594,7 @@ namespace AtlasNet
                     packet.Write(obj.transform.rotation);
                     packet.WriteBytes(publicState.ToArray());
                     packet.WriteBytes(ownerState.ToArray());
-                    transport.SendToServer(packet.ToArray());
+                    SendToServer(packet.ToArray());
                 }
             }
         }
@@ -710,7 +713,7 @@ namespace AtlasNet
                     request.Write(entity.Epoch);
                     request.Write(nextEpoch);
                     request.Write(destinationWorker);
-                    transport.SendTo(pending.Source, request.ToArray());
+                    SendTo(pending.Source, request.ToArray());
                 }
                 Debug.Log($"AtlasNet requested handoff state for {entity.Id} from worker {pending.Source}");
                 return;
@@ -722,7 +725,7 @@ namespace AtlasNet
                 packet.Write(nextEpoch);
                 packet.Write(Tick);
                 packet.WriteBytes(localState);
-                transport.SendTo(destination, packet.ToArray());
+                SendTo(destination, packet.ToArray());
             }
             Debug.Log($"AtlasNet preparing handoff of {entity.Id} to worker {destinationWorker}, epoch {nextEpoch}");
         }
@@ -822,7 +825,7 @@ namespace AtlasNet
                 ack.Write((byte)Packet.WorkerPrepared);
                 ack.Write(id);
                 ack.Write(epoch);
-                transport.SendToServer(ack.ToArray());
+                SendToServer(ack.ToArray());
             }
         }
 
@@ -852,7 +855,7 @@ namespace AtlasNet
                 packet.Write(destination);
                 packet.Write(Tick);
                 packet.WriteBytes(state.ToArray());
-                transport.SendToServer(packet.ToArray());
+                SendToServer(packet.ToArray());
             }
         }
 
@@ -894,7 +897,7 @@ namespace AtlasNet
                     packet.Write(nextEpoch);
                     packet.Write(snapshotTick);
                     packet.WriteBytes(state);
-                    transport.SendTo(pending.Destination, packet.ToArray());
+                    SendTo(pending.Destination, packet.ToArray());
                 }
             }
         }
@@ -927,7 +930,7 @@ namespace AtlasNet
             lastHandoffTick[id] = Tick;
             byte[] authorityChange = MakeAuthorityChange(entity);
             foreach (var client in clientSessions)
-                if (IsObserver(id, client)) transport.SendTo(client, authorityChange);
+                if (IsObserver(id, client)) SendTo(client, authorityChange);
             if (clientDebugRegionSubscribers.TryGetValue(entity.Owner, out var requested) && requested == id)
                 SendClientDebugRegion(entity.Owner, entity);
             using (var commit = new NetWriter())
@@ -993,7 +996,7 @@ namespace AtlasNet
                         packet.Write((byte)Packet.WorkerAbort);
                         packet.Write(id);
                         packet.Write(pending.Epoch);
-                        transport.SendTo(participant, packet.ToArray());
+                        SendTo(participant, packet.ToArray());
                     }
                 }
                 Debug.LogWarning($"AtlasNet aborted uncommitted handoff of {id}; epoch remains unchanged");
@@ -1100,7 +1103,7 @@ namespace AtlasNet
                 packet.Write(component.NetworkObject.AuthorityEpoch);
                 packet.Write(component.BehaviourIndex);
                 packet.WriteBytes(payload);
-                transport.SendToServer(packet.ToArray());
+                SendToServer(packet.ToArray());
             }
         }
 
@@ -1171,7 +1174,7 @@ namespace AtlasNet
                 packet.Write(method);
                 packet.Write(sender);
                 packet.WriteBytes(payload);
-                transport.SendTo(worker, packet.ToArray());
+                SendTo(worker, packet.ToArray());
             }
         }
 
@@ -1199,7 +1202,7 @@ namespace AtlasNet
                 packet.Write(behaviour.BehaviourIndex);
                 packet.Write(variable);
                 packet.WriteBytes(payload);
-                transport.SendToServer(packet.ToArray());
+                SendToServer(packet.ToArray());
             }
         }
 
@@ -1221,7 +1224,7 @@ namespace AtlasNet
             foreach (var session in clientSessions)
                 if (IsObserver(id, session) &&
                     (state.Read == NetworkVariableReadPermission.Everyone || session == entity.Owner))
-                    transport.SendTo(session, update);
+                    SendTo(session, update);
             SendToWorkers(id, update, sender);
         }
 
@@ -1233,7 +1236,7 @@ namespace AtlasNet
                 packet.Write(obj.EntityId);
                 packet.Write(obj.AuthorityEpoch);
                 packet.WriteBytes(rpcPacket);
-                transport.SendToServer(packet.ToArray());
+                SendToServer(packet.ToArray());
             }
         }
 
@@ -1269,7 +1272,7 @@ namespace AtlasNet
                     behaviour.ReceiveRpc(method, payload, default, destination, target);
                 if (destination == RpcDestination.Target)
                 {
-                    if (clientSessions.Contains(target) && IsObserver(id, target)) transport.SendTo(target, bytes);
+                    if (clientSessions.Contains(target) && IsObserver(id, target)) SendTo(target, bytes);
                 }
                 else
                 {
@@ -1283,7 +1286,7 @@ namespace AtlasNet
         {
             foreach (var pair in workerResidents)
                 if (pair.Key != except && pair.Value.Contains(id))
-                    transport.SendTo(pair.Key, data);
+                    SendTo(pair.Key, data);
         }
 
         private static byte[] MakeEntityPacket(Packet type, EntityId id)

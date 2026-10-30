@@ -4,7 +4,7 @@ using System.Reflection;
 
 namespace AtlasNet
 {
-    internal interface INetworkVariable
+    public interface INetworkVariable
     {
         NetworkVariableReadPermission ReadPermission { get; }
         NetworkVariableWritePermission WritePermission { get; }
@@ -376,6 +376,9 @@ namespace AtlasNet
 
         internal IEnumerable<KeyValuePair<uint, MethodInfo>> RpcSchema => rpcMethods;
 
+        internal NetworkDelivery GetRpcDelivery(uint id)
+        {if(!rpcMethods.TryGetValue(id,out var method))throw new InvalidOperationException($"Unknown RPC {id}");return (NetworkDelivery)method.GetCustomAttribute<RpcAttribute>().Delivery;}
+
         internal RpcInvokePermission GetRpcPermission(uint id)
         {
             if (!rpcMethods.TryGetValue(id, out var method))
@@ -391,7 +394,7 @@ namespace AtlasNet
         }
     }
 
-    internal enum RpcDestination : byte { Authority = 1, Observers = 2, Target = 3, Everyone = 4 }
+    public enum RpcDestination : byte { Authority = 1, Observers = 2, Target = 3, Everyone = 4 }
 
     public enum SendTo { Authority, Observers, Owner, SpecifiedInParams, Everyone }
     public enum RpcInvokePermission { Server, Owner, Everyone }
@@ -402,6 +405,7 @@ namespace AtlasNet
     {
         public SendTo Target { get; }
         public RpcInvokePermission InvokePermission { get; set; } = RpcInvokePermission.Everyone;
+        public RpcDelivery Delivery { get; set; } = RpcDelivery.Reliable;
         public RpcAttribute(SendTo target) => Target = target;
     }
 

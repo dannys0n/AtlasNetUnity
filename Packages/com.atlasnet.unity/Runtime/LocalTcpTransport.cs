@@ -6,21 +6,6 @@ using System.Net.Sockets;
 
 namespace AtlasNet
 {
-    // Only this local adapter knows about sockets. The gameplay API addresses entities/sessions.
-    internal interface IMessageTransport : IDisposable
-    {
-        event Action<SessionId> Connected;
-        event Action<SessionId> Disconnected;
-        event Action<SessionId, byte[]> Received;
-        int PeerCount { get; }
-        IEnumerable<SessionId> Sessions { get; }
-        long BytesSent { get; }
-        void Poll();
-        void SendToServer(byte[] payload);
-        void SendTo(SessionId session, byte[] payload);
-        void Broadcast(byte[] payload);
-    }
-
     internal sealed class LocalTcpTransport : IMessageTransport
     {
         private sealed class Peer
@@ -45,12 +30,12 @@ namespace AtlasNet
         public IEnumerable<SessionId> Sessions => peers.Keys;
         public long BytesSent { get; private set; }
 
-        public LocalTcpTransport(bool server, string address, int port)
+        public LocalTcpTransport(bool server, string address, int port, string bindAddress = "127.0.0.1")
         {
             this.server = server;
             if (server)
             {
-                listener = new TcpListener(IPAddress.Loopback, port);
+                listener = new TcpListener(IPAddress.Parse(bindAddress), port);
                 listener.Start();
             }
             else
@@ -75,11 +60,12 @@ namespace AtlasNet
                 }
 
                 var disconnected = new List<SessionId>();
-                foreach (var pair in peers)
-                    if (!ReadAvailable(pair.Value)) disconnected.Add(pair.Key);
+                foreach (var peer in new List<Peer>(peers.Values))
+                    if (!ReadAvailable(peer)) disconnected.Add(peer.Session);
                 foreach (var session in disconnected)
                 {
-                    peers[session].Client.Close();
+                    if(!peers.TryGetValue(session,out var peer))continue;
+                    peer.Client.Close();
                     peers.Remove(session);
                     Disconnected?.Invoke(session);
                 }
@@ -140,14 +126,20 @@ namespace AtlasNet
             }
         }
 
-        public void SendToServer(byte[] payload) => Send(upstream, payload);
-        public void SendTo(SessionId session, byte[] payload)
+        public void SendToServer(byte[] payload, NetworkDelivery delivery=NetworkDelivery.ReliableOrdered, ulong stream=0) => Send(upstream, payload);
+        public void SendTo(SessionId session, byte[] payload, NetworkDelivery delivery=NetworkDelivery.ReliableOrdered, ulong stream=0)
         {
             if (peers.TryGetValue(session, out var peer)) Send(peer, payload);
         }
-        public void Broadcast(byte[] payload)
+        public void Broadcast(byte[] payload, NetworkDelivery delivery=NetworkDelivery.ReliableOrdered, ulong stream=0)
         {
             foreach (var peer in peers.Values) Send(peer, payload);
+        }
+        public TransportCapabilities Capabilities(SessionId peer)=>TransportCapabilities.ReliableOrdered|TransportCapabilities.Sequenced;
+        public void Disconnect(SessionId session)
+        {
+            if(server&&peers.TryGetValue(session,out var peer)){peer.Client.Close();peers.Remove(session);Disconnected?.Invoke(session);}
+            else if(!server&&upstream!=null){upstream.Client.Close();upstream=null;Disconnected?.Invoke(default);}
         }
         public void Dispose()
         {

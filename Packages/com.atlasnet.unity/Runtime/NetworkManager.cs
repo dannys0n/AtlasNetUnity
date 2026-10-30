@@ -22,16 +22,43 @@ namespace AtlasNet
 
 
         internal readonly Dictionary<EntityId, NetworkObject> Replicas = new Dictionary<EntityId, NetworkObject>();
+        [SerializeField] private WorldBackendProvider backendProvider;
+        [SerializeField] internal NetworkTransportProvider transportProvider;
+        [SerializeField] internal ServerTransport serverTransport=ServerTransport.UdpAndWebSocket;
+        [SerializeField] internal ClientTransport clientTransport=ClientTransport.Udp;
+        [SerializeField] internal string listenAddress="0.0.0.0";
         private IWorldBackend backend;
+        public ServerTransport ServerConnection=>serverTransport;
+        public ClientTransport ClientConnection=>clientTransport;
+        public string Address=>localAddress;
+        public string ListenAddress=>listenAddress;
+        public int Port=>port;
+        // Configure before starting; serialized prefabs remain the normal workflow.
+        public void ConfigureConnection(string address,int port,ClientTransport client=ClientTransport.Udp,ServerTransport server=ServerTransport.UdpAndWebSocket)
+        {
+            if(IsRunning)throw new InvalidOperationException("Stop networking before changing connection settings.");
+            if(port<1||port>65535)throw new ArgumentOutOfRangeException(nameof(port));
+            localAddress=address;this.port=port;clientTransport=client;serverTransport=server;
+        }
+        public void SetBackend(WorldBackendProvider provider)
+        {
+            if(backend!=null&&backend.IsRunning)throw new InvalidOperationException("Stop networking before changing backend.");
+            backend?.Stop();backend=null;backendProvider=provider;
+        }
+        public Func<SessionId,byte[],bool> ConnectionApproval { get; set; }
+        public byte[] ConnectionData { get; set; }=Array.Empty<byte>();
         private IWorldBackend Backend
         {
             get
             {
                 if (backend == null)
                 {
-                    backend = new LocalWorldBackend(this);
-                    backend.SessionJoined += session => SessionJoined?.Invoke(session);
-                    backend.SessionLeft += session => SessionLeft?.Invoke(session);
+                    backend = backendProvider?backendProvider.CreateBackend(this):new LocalWorldBackend(this);
+                    if(backend==null)throw new InvalidOperationException("Backend provider returned null.");
+                    backend.SessionJoined += HandleSessionJoined;
+                    backend.SessionLeft += HandleSessionLeft;
+                    backend.ServerStarted += () => OnServerStarted?.Invoke();
+                    backend.Stopped += HandleStopped;
                 }
                 return backend;
             }
@@ -45,6 +72,7 @@ namespace AtlasNet
         public uint Tick => Backend.Tick;
         public int TrackedEntityCount => Backend.TrackedEntityCount;
         public int RemoteClientCount => Backend.RemoteClientCount;
+        public TransportCapabilities GetTransportCapabilities(SessionId peer=default)=>Backend.GetTransportCapabilities(peer);
         public int ObserverCopies => Backend.ObserverCopies;
         public long BytesSent => Backend.BytesSent;
         public long BytesSentLastTick => Backend.BytesSentLastTick;
@@ -92,8 +120,8 @@ namespace AtlasNet
         private NetworkObject InstantiateReplica(NetworkObject prefab, Vector3 position, Quaternion rotation)
             => Instantiate(prefab, position, rotation);
 
-        internal NetworkObject CreateReplica(NetworkObject prefab, EntityId id, SessionId owner,
-            Vector3 position, Quaternion rotation, ulong worker, uint epoch, NetReader snapshot = null)
+        public NetworkObject CreateReplica(NetworkObject prefab, EntityId id, SessionId owner,
+            Vector3 position, Quaternion rotation, ulong worker, uint epoch, NetReader snapshot = null, bool migration = false)
         {
             if (Replicas.ContainsKey(id)) throw new InvalidOperationException($"Duplicate local replica {id}");
             var obj = InstantiateReplica(prefab, position, rotation);
@@ -101,7 +129,7 @@ namespace AtlasNet
             {
                 obj.Initialize(this, id, owner, deferSpawnCallbacks: true);
                 obj.SetSimulationAuthority(worker, epoch);
-                if (snapshot != null) obj.ReadSnapshot(snapshot);
+                if (snapshot != null) { if(migration)obj.ReadHandoff(snapshot);else obj.ReadSnapshot(snapshot); }
                 Replicas.Add(id, obj);
                 obj.CompleteSpawn();
                 return obj;
@@ -122,7 +150,26 @@ namespace AtlasNet
             Destroy(obj.gameObject);
         }
 
-        internal void RemoveReplica(EntityId id)
+        // Adapter API matching native extract/restore callbacks. Capturing does
+        // not delete the source; the backend commits or rolls back residency.
+        public byte[] CaptureMigrationState(EntityId id)
+        {
+            if(!Replicas.TryGetValue(id,out var obj))throw new InvalidOperationException($"No replica {id} to capture.");
+            using var writer=new NetWriter();obj.WriteHandoff(writer);return writer.ToArray();
+        }
+        public NetworkObject RestoreMigratedReplica(NetworkObject prefab,EntityId id,SessionId owner,ulong worker,uint epoch,byte[] payload)
+        {
+            using var reader=new NetReader(payload);
+            return CreateReplica(prefab,id,owner,Vector3.zero,Quaternion.identity,worker,epoch,reader,migration:true);
+        }
+        public void DispatchBackendRpc(EntityId id,byte behaviour,uint method,byte[] payload,SessionId sender,RpcDestination destination,SessionId target=default)
+        {
+            if(!Replicas.TryGetValue(id,out var obj))return;
+            if(behaviour>=obj.Behaviours.Length)throw new InvalidOperationException("Backend supplied an invalid behaviour index.");
+            obj.Behaviours[behaviour].ReceiveRpc(method,payload,sender,destination,target);
+        }
+
+        public void RemoveReplica(EntityId id)
         {
             if (!Replicas.TryGetValue(id, out var obj)) return;
             Replicas.Remove(id);

@@ -37,7 +37,9 @@ namespace AtlasNet
             writer.Write(value.Length);
             writer.Write(value);
         }
-        internal void WriteRaw(byte[] value) => writer.Write(value);
+        /// <summary>Write bytes without a length prefix, for existing binary codecs.</summary>
+        public void WriteRaw(byte[] value) => writer.Write(value);
+        public int Length => checked((int)stream.Length);
         public byte[] ToArray() => stream.ToArray();
         public void Dispose()
         {
@@ -56,6 +58,14 @@ namespace AtlasNet
             reader = new BinaryReader(stream);
         }
         public bool HasRemaining => stream.Position < stream.Length;
+        public int Length => checked((int)stream.Length);
+        public int Position => checked((int)stream.Position);
+        public int Remaining => checked((int)(stream.Length - stream.Position));
+        public byte[] ReadRawBytes(int count)
+        {
+            if (count < 0 || count > Remaining) throw new InvalidDataException("Read exceeds the message payload.");
+            return reader.ReadBytes(count);
+        }
         public byte ReadByte() => reader.ReadByte();
         public bool ReadBool() => reader.ReadBoolean();
         public ushort ReadUShort() => reader.ReadUInt16();
