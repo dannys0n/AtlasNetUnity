@@ -10,6 +10,8 @@ public sealed class DemoLauncher : MonoBehaviour
     [SerializeField] private Camera overviewCamera;
     [SerializeField, HideInInspector] private NetworkObject playerPrefab; // Older imported samples stored this here.
     private string error;
+    private string joinAddress,joinPort;
+    private int joinTransport;
     private NetworkObject extra;
     private bool reportedOwner;
     private bool autoFire;
@@ -21,6 +23,8 @@ public sealed class DemoLauncher : MonoBehaviour
     {
         Application.runInBackground = true;
         if (manager == null) manager = GetComponent<NetworkManager>();
+        joinAddress=manager.Address;joinPort=manager.Port.ToString();
+        joinTransport=Application.platform==RuntimePlatform.WebGLPlayer?1:(int)manager.ClientConnection;
         bool crossServer = SceneManager.GetActiveScene().name.EndsWith("CrossServer", StringComparison.Ordinal) ||
             SceneManager.GetActiveScene().name == "PhysicsDemo";
         manager.PlayerSpawnPosition = crossServer
@@ -38,6 +42,9 @@ public sealed class DemoLauncher : MonoBehaviour
         logMetrics = Array.IndexOf(args, "-atlas-metrics") >= 0;
         foreach (string arg in args)
         {
+            if(arg.StartsWith("-atlas-address=",StringComparison.Ordinal))joinAddress=arg.Substring("-atlas-address=".Length);
+            if(arg.StartsWith("-atlas-port=",StringComparison.Ordinal))joinPort=arg.Substring("-atlas-port=".Length);
+            if(arg.StartsWith("-atlas-transport=",StringComparison.Ordinal)&&Enum.TryParse<ClientTransport>(arg.Substring("-atlas-transport=".Length),true,out var transport))joinTransport=(int)transport;
             if (!arg.StartsWith("-atlas-scene=", StringComparison.Ordinal)) continue;
             string scene = arg.Substring("-atlas-scene=".Length);
             if (SceneManager.GetActiveScene().name != scene)
@@ -45,6 +52,17 @@ public sealed class DemoLauncher : MonoBehaviour
                 SceneManager.LoadScene(scene);
                 return;
             }
+        }
+        if(Application.platform==RuntimePlatform.WebGLPlayer)
+        {
+            var uri=new Uri(Application.absoluteURL);bool directJoin=false;
+            foreach(var item in uri.Query.TrimStart('?').Split('&'))
+            {
+                var pair=item.Split('=');if(pair.Length!=2)continue;
+                if(pair[0]=="host"){joinAddress=Uri.UnescapeDataString(pair[1]);directJoin=true;}
+                if(pair[0]=="port")joinPort=pair[1];
+            }
+            if(directJoin){StartSafely(manager.StartClient);return;}
         }
         if (Array.IndexOf(args, "-atlas-host") >= 0) StartSafely(manager.StartHost);
         else if (Array.IndexOf(args, "-atlas-server") >= 0) StartSafely(manager.StartServer);
@@ -61,7 +79,15 @@ public sealed class DemoLauncher : MonoBehaviour
 
     private void StartSafely(Action action)
     {
-        try { action(); error = null; }
+        try
+        {
+            if(!manager.IsRunning)
+            {
+                if(!int.TryParse(joinPort,out int value))throw new ArgumentException("Enter a valid port.");
+                manager.ConfigureConnection(joinAddress,value,(ClientTransport)joinTransport,manager.ServerConnection);
+            }
+            action(); error = null;
+        }
         catch (Exception exception) { error = exception.Message; Debug.LogException(exception); }
     }
 
@@ -118,6 +144,11 @@ public sealed class DemoLauncher : MonoBehaviour
         GUILayout.Label("AtlasNet local demo");
         if (!manager.IsRunning)
         {
+            GUILayout.Label("Server address / port");
+            joinAddress=GUILayout.TextField(joinAddress);joinPort=GUILayout.TextField(joinPort);
+            if(Application.platform==RuntimePlatform.WebGLPlayer){joinTransport=1;GUILayout.Label("Browser: WebSocket / TCP");}
+            else joinTransport=GUILayout.Toolbar(joinTransport,new[]{"UDP","WebSocket","TCP"});
+            GUILayout.Label("Default server accepts UDP + WebSocket together.");
             if (SceneManager.GetActiveScene().name == "ScaleDemo")
             {
                 if (GUILayout.Button("Start World (Server)")) StartSafely(manager.StartServer);

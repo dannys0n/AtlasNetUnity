@@ -44,7 +44,7 @@ public sealed class SimpleRpcExample : NetworkBehaviour
         AcknowledgeFireRpc(count.Value);
     }
 
-    [Rpc(SendTo.Everyone, InvokePermission = RpcInvokePermission.Owner)]
+    [Rpc(SendTo.Everyone, InvokePermission = RpcInvokePermission.Owner, Delivery=RpcDelivery.Unreliable)]
     private void ShowFlashRpc()
     {
         if (visual == null) 

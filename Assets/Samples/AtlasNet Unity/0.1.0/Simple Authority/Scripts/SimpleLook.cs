@@ -24,7 +24,9 @@ public sealed class SimpleLook : NetworkBehaviour
         if (playerCamera != null && playerCamera.TryGetComponent<AudioListener>(out var listener)) listener.enabled = firstPerson;
         if (bodyRenderer != null) bodyRenderer.enabled = !IsOwner;
         RefreshServerVisual();
+#if !UNITY_WEBGL || UNITY_EDITOR
         if (firstPerson) Cursor.lockState = CursorLockMode.Locked;
+#endif
     }
 
     public override void OnNetworkDespawn()
@@ -51,6 +53,12 @@ public sealed class SimpleLook : NetworkBehaviour
             return;
         }
         if (serverOverview && IsServer) return;
+#if UNITY_WEBGL && !UNITY_EDITOR
+        // Browser pointer lock must be requested by an explicit gameplay click,
+        // never by an asynchronous network spawn callback.
+        if (Input.GetMouseButtonDown(0) && Cursor.lockState != CursorLockMode.Locked)
+            Cursor.lockState = CursorLockMode.Locked;
+#endif
         if (Input.GetKeyDown(KeyCode.Escape)) 
             Cursor.lockState = CursorLockMode.None;
         
