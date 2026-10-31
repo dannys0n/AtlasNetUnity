@@ -8,6 +8,10 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 0}
     m_Modifications:
+    - target: {fileID: 67210687149204267, guid: c33455c5576f0984b89033b8989f09dc, type: 3}
+      propertyPath: m_Layer
+      value: 8
+      objectReference: {fileID: 0}
     - target: {fileID: 388381679865300868, guid: c33455c5576f0984b89033b8989f09dc, type: 3}
       propertyPath: positionWriter
       value: 0
@@ -24,6 +28,34 @@ PrefabInstance:
       propertyPath: m_Controller
       value: 
       objectReference: {fileID: 9100000, guid: 560f5adc699114b4383ed3feae4b0e8c, type: 2}
+    - target: {fileID: 3507074760653155722, guid: c33455c5576f0984b89033b8989f09dc, type: 3}
+      propertyPath: m_Layer
+      value: 8
+      objectReference: {fileID: 0}
+    - target: {fileID: 3582810593471951172, guid: c33455c5576f0984b89033b8989f09dc, type: 3}
+      propertyPath: m_Layer
+      value: 8
+      objectReference: {fileID: 0}
+    - target: {fileID: 3924624035762959164, guid: c33455c5576f0984b89033b8989f09dc, type: 3}
+      propertyPath: m_Layer
+      value: 8
+      objectReference: {fileID: 0}
+    - target: {fileID: 3979420971520086362, guid: c33455c5576f0984b89033b8989f09dc, type: 3}
+      propertyPath: m_Layer
+      value: 8
+      objectReference: {fileID: 0}
+    - target: {fileID: 4203176981055792528, guid: c33455c5576f0984b89033b8989f09dc, type: 3}
+      propertyPath: m_Layer
+      value: 8
+      objectReference: {fileID: 0}
+    - target: {fileID: 4715947048231039413, guid: c33455c5576f0984b89033b8989f09dc, type: 3}
+      propertyPath: m_Layer
+      value: 8
+      objectReference: {fileID: 0}
+    - target: {fileID: 5536949472343139139, guid: c33455c5576f0984b89033b8989f09dc, type: 3}
+      propertyPath: m_Layer
+      value: 8
+      objectReference: {fileID: 0}
     - target: {fileID: 6288375694382478263, guid: c33455c5576f0984b89033b8989f09dc, type: 3}
       propertyPath: m_LocalScale.x
       value: 1.6
@@ -80,9 +112,29 @@ PrefabInstance:
       propertyPath: m_Name
       value: SoccerPlayer
       objectReference: {fileID: 0}
+    - target: {fileID: 6330230231365084708, guid: c33455c5576f0984b89033b8989f09dc, type: 3}
+      propertyPath: m_Layer
+      value: 8
+      objectReference: {fileID: 0}
+    - target: {fileID: 6330230231365084708, guid: c33455c5576f0984b89033b8989f09dc, type: 3}
+      propertyPath: m_TagString
+      value: Player
+      objectReference: {fileID: 0}
     - target: {fileID: 7632955344992680494, guid: c33455c5576f0984b89033b8989f09dc, type: 3}
       propertyPath: prefabId
       value: atlasnet.soccer.player
+      objectReference: {fileID: 0}
+    - target: {fileID: 7757712013863239065, guid: c33455c5576f0984b89033b8989f09dc, type: 3}
+      propertyPath: m_Layer
+      value: 8
+      objectReference: {fileID: 0}
+    - target: {fileID: 8249635486633069031, guid: c33455c5576f0984b89033b8989f09dc, type: 3}
+      propertyPath: m_Layer
+      value: 8
+      objectReference: {fileID: 0}
+    - target: {fileID: 8996131832060877874, guid: c33455c5576f0984b89033b8989f09dc, type: 3}
+      propertyPath: m_Layer
+      value: 8
       objectReference: {fileID: 0}
     m_RemovedComponents:
     - {fileID: 427391155585899300, guid: c33455c5576f0984b89033b8989f09dc, type: 3}
@@ -194,7 +246,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a1000000000000000000000000000010, type: 3}
   m_Name: 
   m_EditorClassIdentifier: AtlasNet.Unity::AtlasNet.NetworkInterestSource
-  radius: 160
+  radius: 53.333332
   exitPadding: 1
 --- !u!114 &1714533070640341856
 MonoBehaviour:
@@ -211,7 +263,7 @@ MonoBehaviour:
   player: {fileID: 3577024587618404424}
   interest: {fileID: 8198331562434397126}
   fillMaterial: {fileID: 2100000, guid: 8917440dc60a4c70b28cb58007e239a4, type: 2}
-  showOnAuthorityServer: 1
+  showOnClients: 0
 --- !u!114 &6074192864757158507
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -225,8 +277,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::AtlasNet.Samples.Soccer.SoccerNetworkIndicator
   bodyRenderer: {fileID: 423784483125053318}
-  authorityMaterial: {fileID: 2100000, guid: de91743c7a774812b64191daf71589b4, type: 2}
-  ghostMaterial: {fileID: 2100000, guid: 93d4fc33342a4d57ab857bad1646f774, type: 2}
 --- !u!114 &3577024587618404424 stripped
 MonoBehaviour:
   m_CorrespondingSourceObject: {fileID: 7632955344992680494, guid: c33455c5576f0984b89033b8989f09dc, type: 3}

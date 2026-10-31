@@ -27,6 +27,7 @@ namespace AtlasNet.Samples.Soccer
             if (!pendingCelebration) return;
             pendingCelebration = false;
             // Process after all snapshot fields, including ScoringTeam, have been applied.
+            if (NetworkManager.TryGetComponent(out SoccerGoalConfetti confetti)) confetti.Burst(ScoringTeam.Value);
             foreach (var obj in NetworkManager.SpawnedObjects)
                 if (obj.HasAuthority && obj.TryGetComponent(out SoccerPlayer player) && player.Team == ScoringTeam.Value)
                     player.Celebrate();

@@ -19,7 +19,8 @@ namespace AtlasNet.Samples.Soccer
         [Tooltip("URL of the served Soccer Web build. Set to the LAN hostname/IP, e.g. http://192.168.1.20:8094/")]
         public string webBaseUrl = "http://localhost:8094/";
         public TMP_FontAsset font;
-        TMP_Text blueScore, orangeScore, notice, joinLabel;
+        TMP_Text blueScore, orangeScore, notice, joinLabel, clock;
+        long clockSecond = -1;
         TMP_InputField address;
         GameObject connectionPanel, joinPanel;
         RawImage qrView;
@@ -33,7 +34,7 @@ namespace AtlasNet.Samples.Soccer
         void Awake()
         {
             Application.runInBackground = true;
-            manager.PlayerSpawnPosition = s => new Vector3((s.Value & 1) == 0 ? -15 : 15, 0, ((int)(s.Value / 2) % 5 - 2) * 3f);
+            manager.PlayerSpawnPosition = s => { int index = SoccerPlayer.RosterIndex(manager, s); return new Vector3((index & 1) == 0 ? -15 : 15, 0, (index / 2 % 5 - 2) * 3f); };
             BuildHud(); view = Camera.main;
         }
         void Start()
@@ -64,6 +65,13 @@ namespace AtlasNet.Samples.Soccer
         }
         void Update()
         {
+            var now = DateTime.Now;
+            long second = now.Ticks / TimeSpan.TicksPerSecond;
+            if (second != clockSecond)
+            {
+                clockSecond = second;
+                clock.text = now.ToString("HH:mm:ss");
+            }
             connectionPanel.SetActive(!manager.IsRunning);
             joinPanel.SetActive(manager.IsRunning && manager.IsServer);
             if (!manager.IsRunning) { match = null; local = null; createdBall = false; return; }
@@ -88,7 +96,8 @@ namespace AtlasNet.Samples.Soccer
             Vector3 focus = local.transform.position;
             focus.x = Mathf.Clamp(focus.x, -35, 35); focus.z = Mathf.Clamp(focus.z, -18, 18);
             Vector3 desired = focus + new Vector3(0, 32, -26);
-            view.transform.position = Vector3.Lerp(view.transform.position, desired, 1 - Mathf.Exp(-5 * Time.deltaTime));
+            // Follow the already-interpolated render pose; a second smoothing pass adds movement lag.
+            view.transform.position = desired;
             view.transform.rotation = Quaternion.Euler(51, 0, 0);
         }
         void RefreshJoin()
@@ -134,7 +143,7 @@ namespace AtlasNet.Samples.Soccer
             var blueBg=Panel(score,"Blue color",new Vector2(.5f,.5f),new Vector2(-112,0),new Vector2(100,62),Blue); blueBg.SetAsFirstSibling();
             orangeScore = Label(score, "Orange", "0", new Vector2(112,0), new Vector2(100,62), 38, Color.white);
             var orangeBg=Panel(score,"Orange color",new Vector2(.5f,.5f),new Vector2(112,0),new Vector2(100,62),Orange); orangeBg.SetAsFirstSibling();
-            Label(score,"Title","SOCCER",Vector2.zero,new Vector2(120,62),19,Color.white);
+            clock = Label(score,"Clock",DateTime.Now.ToString("HH:mm:ss"),Vector2.zero,new Vector2(120,62),19,Color.white);
             notice=Label(canvas.transform,"Status","",new Vector2(0,-85),new Vector2(900,45),18,Color.white); notice.rectTransform.anchorMin=notice.rectTransform.anchorMax=new Vector2(.5f,1);
             var lobby=Panel(canvas.transform,"Connection",new Vector2(.5f,.5f),Vector2.zero,new Vector2(440,370),new Color(.025f,.04f,.07f,.97f)); connectionPanel=lobby.gameObject;
             Label(lobby,"Welcome","ATLASNET SOCCER",new Vector2(0,145),new Vector2(420,40),28,Color.white);
@@ -150,11 +159,17 @@ namespace AtlasNet.Samples.Soccer
             var qrObject=new GameObject("QR",typeof(RectTransform),typeof(RawImage));qrObject.transform.SetParent(qrRect,false);qrView=qrObject.GetComponent<RawImage>();qrView.rectTransform.sizeDelta=new Vector2(340,340);qrView.raycastTarget=false;
             joinLabel=Label(join,"Join address","",new Vector2(0,-180),new Vector2(420,75),30,Color.white);joinLabel.textWrappingMode=TextWrappingModes.Normal;
             Button(join,"Copy address",new Vector2(0,-238),new Vector2(420,36),()=>GUIUtility.systemCopyBuffer=lastLink);
-            var stick=Panel(canvas.transform,"Movement",new Vector2(0,0),new Vector2(140,140),new Vector2(160,160),new Color(.04f,.08f,.13f,.5f));
+            var stick=Circle(canvas.transform,"Movement",new Vector2(0,0),new Vector2(220,210),new Vector2(220,220),new Color(.04f,.08f,.13f,.5f));
             var control=stick.gameObject.AddComponent<SoccerStick>();
-            control.handle=Panel(stick,"Handle",new Vector2(.5f,.5f),Vector2.zero,new Vector2(60,60),new Color(.8f,.9f,1,.65f));control.handle.GetComponent<Image>().raycastTarget=false;
+            control.handle=Circle(stick,"Handle",new Vector2(.5f,.5f),Vector2.zero,new Vector2(80,80),new Color(.8f,.9f,1,.65f));control.handle.GetComponent<SoccerStickGraphic>().raycastTarget=false;
             Button(canvas.transform,"Disconnect",new Vector2(-90,-30),new Vector2(150,35),()=>manager.Stop()).GetComponent<RectTransform>().anchorMin=new Vector2(1,1);
             var stop=canvas.transform.Find("Disconnect").GetComponent<RectTransform>();stop.anchorMax=new Vector2(1,1);stop.anchoredPosition=new Vector2(-90,-30);
+        }
+        RectTransform Circle(Transform parent,string name,Vector2 anchor,Vector2 pos,Vector2 size,Color color)
+        {
+            var obj=new GameObject(name,typeof(RectTransform),typeof(SoccerStickGraphic));obj.transform.SetParent(parent,false);
+            var rect=obj.GetComponent<RectTransform>();rect.anchorMin=rect.anchorMax=anchor;rect.anchoredPosition=pos;rect.sizeDelta=size;
+            obj.GetComponent<SoccerStickGraphic>().color=color;return rect;
         }
         RectTransform Panel(Transform parent,string name,Vector2 anchor,Vector2 pos,Vector2 size,Color color)
         {

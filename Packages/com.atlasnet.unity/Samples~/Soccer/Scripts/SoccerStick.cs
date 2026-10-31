@@ -14,8 +14,9 @@ namespace AtlasNet.Samples.Soccer
             if (pointer != e.pointerId) return;
             var rect = (RectTransform)transform;
             RectTransformUtility.ScreenPointToLocalPointInRectangle(rect, e.position, e.pressEventCamera, out var point);
-            Input = Vector2.ClampMagnitude(point / (rect.rect.width * .4f), 1);
-            handle.anchoredPosition = Input * (rect.rect.width * .32f);
+            float travel=Mathf.Max(1,(rect.rect.width-handle.rect.width)*.5f);
+            Input=Vector2.ClampMagnitude(point/travel,1);
+            handle.anchoredPosition=Input*travel;
         }
         public void OnPointerUp(PointerEventData e) { if (pointer == e.pointerId) ResetStick(); }
         void OnDisable() => ResetStick();

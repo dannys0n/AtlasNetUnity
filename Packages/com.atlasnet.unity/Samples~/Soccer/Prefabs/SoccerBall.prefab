@@ -232,5 +232,3 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::AtlasNet.Samples.Soccer.SoccerNetworkIndicator
   bodyRenderer: {fileID: 3477563465847338704}
-  authorityMaterial: {fileID: 2100000, guid: de91743c7a774812b64191daf71589b4, type: 2}
-  ghostMaterial: {fileID: 2100000, guid: 93d4fc33342a4d57ab857bad1646f774, type: 2}

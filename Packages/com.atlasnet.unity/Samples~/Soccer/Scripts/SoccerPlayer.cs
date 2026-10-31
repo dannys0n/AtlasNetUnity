@@ -11,7 +11,22 @@ namespace AtlasNet.Samples.Soccer
         public const float Size = 1.6f;
         public Vector3 AttackingGoal => new Vector3(Team == 0 ? 52 : -52, 0, 0);
         public Vector2 MoveInput { get; private set; }
-        public int Team => (int)(OwnerSession.Value & 1);
+        public readonly NetworkVariable<int> TeamIndex = new(-1);
+        public int Team => Mathf.Max(0, TeamIndex.Value);
+        Renderer[] renderers;
+        SoccerNetworkIndicator indicator;
+        public static int RosterIndex(NetworkManager manager, SessionId owner)
+        {
+            int index = 0;
+            foreach (var session in manager.ConnectedClientsIds)
+                if (session.Value < owner.Value) index++;
+            return index;
+        }
+        public override void OnNetworkTick()
+        {
+            // The admitted roster is shared with workers. A departure rebalances both sides.
+            if (HasAuthority) TeamIndex.Value = RosterIndex(NetworkManager, OwnerSession) & 1;
+        }
         Rigidbody body;
         Animator animator;
         NetworkAnimator networkAnimator;
@@ -23,11 +38,24 @@ namespace AtlasNet.Samples.Soccer
             body = GetComponent<Rigidbody>();
             animator = GetComponentInChildren<Animator>();
             networkAnimator = GetComponent<NetworkAnimator>();
+            renderers = GetComponentsInChildren<Renderer>();
+            indicator = GetComponent<SoccerNetworkIndicator>();
+            TeamIndex.Changed += TeamChanged;
             ApplyAuthority();
+            if (HasAuthority) TeamIndex.Value = RosterIndex(NetworkManager, OwnerSession) & 1;
+            ApplyTeamColor();
+        }
+        public override void OnNetworkDespawn() => TeamIndex.Changed -= TeamChanged;
+        void TeamChanged(int previous, int current) => ApplyTeamColor();
+        void ApplyTeamColor()
+        {
+            if (renderers == null) return;
             var tint = new MaterialPropertyBlock();
             Color color = Team == 0 ? SoccerSession.Blue : SoccerSession.Orange;
             tint.SetColor("_BaseColor", color); tint.SetColor("_Color", color);
-            foreach (var renderer in GetComponentsInChildren<Renderer>()) renderer.SetPropertyBlock(tint);
+            foreach (var renderer in renderers)
+                if (!indicator || renderer != indicator.bodyRenderer) renderer.SetPropertyBlock(tint);
+            if (indicator) indicator.SetRestingColor(color);
         }
         public override void OnSimulationAuthorityChanged() { ApplyAuthority(); kickedBalls.Clear(); }
         void ApplyAuthority()

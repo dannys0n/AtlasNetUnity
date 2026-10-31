@@ -3,39 +3,58 @@ using UnityEngine;
 
 namespace AtlasNet.Samples.Soccer
 {
-    // Uses the same palette and handoff highlights as ScaleMotion, without adding motion or traffic.
+    // Temporary local handoff feedback; normal materials and team colors remain unchanged.
     [RequireComponent(typeof(NetworkObject))]
     public sealed class SoccerNetworkIndicator : MonoBehaviour
     {
         public Renderer bodyRenderer;
-        public Material authorityMaterial, ghostMaterial;
-        MaterialPropertyBlock tint;
-        Color shown;
-        bool hasTint, initializedWorker;
-        ulong previousWorker;
-        float arrivalUntil;
         NetworkObject entity;
-        void Awake() => entity=GetComponent<NetworkObject>();
-        void LateUpdate() { if(entity && entity.IsSpawned) RefreshColor(); }
-        void RefreshColor()
+        MaterialPropertyBlock original, flash;
+        bool captured, flashing, initialized;
+        ulong previousWorker;
+        uint previousEpoch;
+        float greenUntil;
+        HandoffDebugState previousState;
+        Color shown;
+        void Awake()=>entity=GetComponent<NetworkObject>();
+        void LateUpdate()
+        {
+            if(!entity || !entity.IsSpawned || !bodyRenderer){Restore();return;}
+            if(!captured){original=new MaterialPropertyBlock();bodyRenderer.GetPropertyBlock(original);captured=true;}
+            ulong worker=entity.SimulationWorker;
+            var state=entity.Manager.GetHandoffStateForDebug(entity);
+            bool committed=initialized && worker!=previousWorker && entity.AuthorityEpoch!=previousEpoch;
+            // New transitions replace the previous flash immediately, including an aborted departure.
+            if(committed || (state!=previousState && state!=HandoffDebugState.None))greenUntil=0;
+            if(committed && (!entity.Manager.IsServer || worker==entity.Manager.LocalWorkerId))greenUntil=Time.unscaledTime+.5f;
+            initialized=true;previousWorker=worker;previousEpoch=entity.AuthorityEpoch;previousState=state;
+            if(state==HandoffDebugState.Exiting)
+            {greenUntil=0;Show(new Color(1f,.12f,.08f));}
+            else if(Time.unscaledTime<greenUntil)Show(new Color(.15f,1f,.2f));
+            else Restore();
+        }
+        public void SetRestingColor(Color color)
         {
             if (!bodyRenderer) return;
-            ulong worker = entity.SimulationWorker;
-            if (initializedWorker && previousWorker != worker && worker == entity.Manager.LocalWorkerId)
-                arrivalUntil = Time.unscaledTime + .75f;
-            initializedWorker = true; previousWorker = worker;
-            var state = entity.Manager.GetHandoffStateForDebug(entity);
-            if (state == HandoffDebugState.Entering) arrivalUntil = Time.unscaledTime + .75f;
-            Color color;
-            if (!entity.Manager.IsServer)
-                color = Color.HSVToRGB((worker * .618034f + .55f) % 1f, .65f, .95f);
-            else if (state == HandoffDebugState.Exiting) color = new Color(1f,.12f,.08f);
-            else if (state == HandoffDebugState.Entering || (worker == entity.Manager.LocalWorkerId && Time.unscaledTime < arrivalUntil))
-                color = new Color(.15f,1f,.2f);
-            else color = entity.HasAuthority ? authorityMaterial.color : ghostMaterial.color;
-            if (hasTint && color == shown) return;
-            tint ??= new MaterialPropertyBlock(); tint.SetColor("_Color",color);tint.SetColor("_BaseColor",color);
-            bodyRenderer.SetPropertyBlock(tint); shown=color;hasTint=true;
+            original ??= new MaterialPropertyBlock();
+            if (!captured) bodyRenderer.GetPropertyBlock(original);
+            original.SetColor("_Color", color); original.SetColor("_BaseColor", color);
+            captured = true;
+            bodyRenderer.SetPropertyBlock(flashing ? flash : original);
         }
+        void Show(Color color)
+        {
+            if(flashing && shown==color)return;
+            flash??=new MaterialPropertyBlock();bodyRenderer.GetPropertyBlock(flash);
+            flash.SetColor("_Color",color);flash.SetColor("_BaseColor",color);
+            bodyRenderer.SetPropertyBlock(flash);shown=color;flashing=true;
+        }
+        void Restore()
+        {
+            if(!flashing)return;
+            if(bodyRenderer && captured)bodyRenderer.SetPropertyBlock(original.isEmpty?null:original);
+            flashing=false;
+        }
+        void OnDisable(){Restore();greenUntil=0;initialized=false;previousState=HandoffDebugState.None;}
     }
 }
