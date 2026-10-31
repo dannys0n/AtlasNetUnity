@@ -8,11 +8,11 @@ An early Unity networking framework with a local multi-worker backend for testin
 https://github.com/dannys0n/AtlasNetUnity.git?path=/Packages/com.atlasnet.unity#main
 ```
 
-Select **AtlasNet Unity** in Package Manager and import **Simple Authority Demo** from its Samples section if you want the example scenes. The package provides the framework runtime; the sample scenes are optional.
+Select **AtlasNet Unity** in Package Manager and import **00 Shared**, then whichever numbered samples you want from its Samples section. The package provides the framework runtime; the sample scenes are optional.
 
 Install Unity's Multiplayer Play Mode package to test with multiple editor players, or use separate builds. Multiplayer Play Mode is a testing tool, not a dependency of the AtlasNet package.
 
-The sample includes client- and server-authoritative player scenes with local worker handoff, a scale scene, and a separate Rigidbody check. The local backend is not the production AtlasNet C++ integration; client-side prediction, production ingress/transport integration, and distributed physics remain later work.
+The samples include QuickStart, client- and server-authoritative movement, server and client Rigidbody physics, interest and scale, and Animator synchronization. The local backend is not the production AtlasNet C++ integration; client-side prediction, production ingress/transport integration, and distributed physics remain later work.
 
 ## Documentation
 [visit the documentation website](https://dannys0n.github.io/AtlasNetUnity/)
