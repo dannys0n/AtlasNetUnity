@@ -7,7 +7,10 @@
 /[Tt]emp/
 /[Oo]bj/
 /[Bb]uild/
-/[Bb]uilds/
+/[Bb]uilds/*
+!/Builds/Serve.cmd
+!/Builds/Enable-Firewall.cmd
+!/Builds/serve_web.py
 /[Ll]ogs/
 /[Uu]ser[Ss]ettings/
 *.log
@@ -96,3 +99,6 @@ crashlytics-build.properties
 !/Packages/com.atlasnet.unity/Tests~/Standalone/AtlasNetChecks.csproj
 /Packages/com.atlasnet.unity/Tests~/Standalone/bin/
 /Packages/com.atlasnet.unity/Tests~/Standalone/obj/
+
+# Unity Web Burst build output
+/Data/
