@@ -27,6 +27,10 @@ namespace AtlasNet
             public float InterestRadius;
             public float ExitPadding;
             public bool CanHandoff;
+            public bool ServerPhysics;
+            public float PhysicsRadius;
+            public bool ReceivingPhysicsPush;
+            public uint LastPhysicsPushTick;
             // Latest reliable fields received since the last local-authority capture.
             // Bounded by the prefab's declared variable count, not an event history.
             public readonly Dictionary<(byte Behaviour, ushort Variable), byte[]> VariableUpdates = new();
@@ -61,6 +65,7 @@ namespace AtlasNet
             public bool SyncRotation;
             public TransformWriter PositionWriter;
             public TransformWriter RotationWriter;
+            public bool IsPhysics;
             public bool IsAnimator;
             public AnimatorWriter AnimatorWriter;
         }
@@ -136,6 +141,7 @@ namespace AtlasNet
                     schema.PositionWriter = transform.PositionWriter;
                     schema.RotationWriter = transform.RotationWriter;
                 }
+                schema.IsPhysics = behaviour is NetworkRigidbody;
                 if (behaviour is NetworkAnimator animator)
                 {
                     schema.IsAnimator = true;
@@ -143,6 +149,8 @@ namespace AtlasNet
                 }
                 record.Behaviours[i] = schema;
             }
+            if (obj.TryGetComponent<NetworkRigidbody>(out var physics) && physics.ServerPushBody)
+            { record.ServerPhysics = true; record.PhysicsRadius = physics.ContactRadius; }
             record.Capture(obj);
             directory.Add(record.Id, record);
             return record;
@@ -182,6 +190,14 @@ namespace AtlasNet
             if (target.Worker == worker.Value ||
                 (handoffPending && (pending.Source == worker || pending.Destination == worker))) return true;
             if (localWorld == null) return false;
+            if (target.ServerPhysics)
+                foreach (var source in directory.Values)
+                    if (source.ServerPhysics && source.Worker == worker.Value && source.Id != target.Id &&
+                        (source.Owner.Value != 0 || target.Owner.Value != 0))
+                    {
+                        float reach = source.PhysicsRadius + target.PhysicsRadius + (alreadyResident ? 3f : 2f);
+                        if ((source.Position - target.Position).sqrMagnitude <= reach * reach) return true;
+                    }
             foreach (var source in directory.Values)
             {
                 if (source.Id == target.Id || source.Owner.Value == 0 ||
@@ -697,6 +713,8 @@ namespace AtlasNet
                 targetRpc.Destination != RpcDestination.Authority ||
                 targetRpc.Permission != RpcInvokePermission.Server)
                 throw new InvalidOperationException("Unauthorized worker entity interaction");
+            if (Schema(targetId, index).IsPhysics && source.Owner.Value != 0 && directory.TryGetValue(targetId, out var physicsTarget))
+            { physicsTarget.ReceivingPhysicsPush = true; physicsTarget.LastPhysicsPushTick = Tick; }
             if (spawned.TryGetValue(targetId, out var localTarget) && localTarget.HasAuthority)
                 localTarget.Behaviours[index].ReceiveRpc(method, payload, default, RpcDestination.Authority, default);
             else ForwardAuthorityRpc(targetId, index, method, payload, default);
@@ -999,6 +1017,7 @@ namespace AtlasNet
             {
                 if (started >= 4) break;
                 if (!entity.CanHandoff || pendingHandoffs.ContainsKey(entity.Id)) continue;
+                if (entity.ReceivingPhysicsPush && Tick - entity.LastPhysicsPushTick < Mathf.Max(1, tickRate / 2)) continue;
                 ulong destination = localWorld.OwnerAt(entity.Position.x, entity.Position.z);
                 if (destination == entity.Worker) continue;
                 if (lastHandoffTick.TryGetValue(entity.Id, out uint last) && Tick - last < tickRate * 2) continue;

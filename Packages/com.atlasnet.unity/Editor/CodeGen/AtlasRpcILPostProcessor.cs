@@ -184,7 +184,7 @@ namespace AtlasNet.CodeGen
             method.Body.MaxStackSize = Math.Max(method.Body.MaxStackSize, 8);
         }
 
-        private static bool Supported(string name) => name == "System.Int32" || name == "System.Single" ||
+        private static bool Supported(string name) => name == "System.Int32" || name == "System.UInt32" || name == "System.UInt64" || name == "System.Single" ||
             name == "System.Boolean" || name == "System.String" || name == "UnityEngine.Vector2" ||
             name == "UnityEngine.Vector3" || name == "UnityEngine.Quaternion";
     }

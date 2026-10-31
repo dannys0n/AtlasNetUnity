@@ -426,7 +426,7 @@ namespace AtlasNet
                 Type type = parameters[i].ParameterType;
                 if (target == SendTo.Authority && i == parameters.Length - 1 && type == typeof(SessionId)) continue;
                 if (target == SendTo.SpecifiedInParams && i == 0) continue;
-                if (type == typeof(int) || type == typeof(float) || type == typeof(bool) ||
+                if (type == typeof(int) || type == typeof(uint) || type == typeof(ulong) || type == typeof(float) || type == typeof(bool) ||
                     type == typeof(string) || type == typeof(UnityEngine.Vector2) ||
                     type == typeof(UnityEngine.Vector3) || type == typeof(UnityEngine.Quaternion)) continue;
                 throw new NotSupportedException($"RPC {method.Name} has unsupported parameter {parameters[i].Name} ({type.Name})");
@@ -467,6 +467,8 @@ namespace AtlasNet
         internal static void Write(NetWriter writer, Type type, object value)
         {
             if (type == typeof(int)) writer.Write((int)value);
+            else if (type == typeof(uint)) writer.Write((uint)value);
+            else if (type == typeof(ulong)) writer.Write((ulong)value);
             else if (type == typeof(float)) writer.Write((float)value);
             else if (type == typeof(bool)) writer.Write((bool)value);
             else if (type == typeof(string)) writer.Write((string)value);
@@ -479,6 +481,8 @@ namespace AtlasNet
         internal static object Read(NetReader reader, Type type)
         {
             if (type == typeof(int)) return reader.ReadInt();
+            if (type == typeof(uint)) return reader.ReadUInt();
+            if (type == typeof(ulong)) return reader.ReadULong();
             if (type == typeof(float)) return reader.ReadFloat();
             if (type == typeof(bool)) return reader.ReadBool();
             if (type == typeof(string)) return reader.ReadString();

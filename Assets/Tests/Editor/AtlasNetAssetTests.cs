@@ -11,6 +11,21 @@ namespace AtlasNetDemo.Tests
         private const string Sample = "Assets/Samples/AtlasNet Unity/0.1.0/00 Shared/";
 
         [Test]
+        public void UnsignedRpcPrimitivesPreserveEntityIdsAndEpochs()
+        {
+            var codec = typeof(NetworkBehaviour).Assembly.GetType("AtlasNet.RpcMethods", true);
+            var flags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static;
+            var write = codec.GetMethod("Write", flags); var read = codec.GetMethod("Read", flags);
+            using var writer = new NetWriter();
+            write.Invoke(null, new object[] { writer, typeof(ulong), ulong.MaxValue });
+            write.Invoke(null, new object[] { writer, typeof(uint), uint.MaxValue });
+            using var reader = new NetReader(writer.ToArray());
+            Assert.AreEqual(ulong.MaxValue, read.Invoke(null, new object[] { reader, typeof(ulong) }));
+            Assert.AreEqual(uint.MaxValue, read.Invoke(null, new object[] { reader, typeof(uint) }));
+            Assert.IsFalse(reader.HasRemaining);
+        }
+
+        [Test]
         public void IdentityAndPayloadRoundTrip()
         {
             var entity = new AtlasNet.EntityId(829381);

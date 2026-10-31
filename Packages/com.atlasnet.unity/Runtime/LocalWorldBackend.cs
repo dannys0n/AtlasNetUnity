@@ -16,7 +16,7 @@ namespace AtlasNet
             WorkerExportRequest = 21, WorkerExport = 22, WorkerAbort = 23, WorkerAnimator = 24,
             WorkerRegion = 25, WorkerRegionRequest = 26, WorkerSpawnRequest = 27, WorkerDespawnRequest = 28,
             WorkerInteractionRpc = 29, ClientDebugRegionRequest = 30, ClientDebugRegion = 31, WorkerState = 32, NamedMessage = 33, ClientReady = 34, ClientRoster = 35, DisconnectNotice = 36 }
-        private const ushort LocalProtocolVersion = 15;
+        private const ushort LocalProtocolVersion = 18;
         private readonly NetworkManager runtime;
         private NetworkObject playerPrefab => runtime.playerPrefab;
         private NetworkPrefabsList[] networkPrefabsLists => runtime.networkPrefabsLists;
@@ -608,6 +608,9 @@ namespace AtlasNet
                 target.GetRpcDestination(method) != RpcDestination.Authority ||
                 target.GetRpcPermission(method) != RpcInvokePermission.Server)
                 throw new InvalidOperationException("Invalid server entity interaction");
+            if (!isWorker && target is NetworkRigidbody && source.OwnerSession.Value != 0 &&
+                directory.TryGetValue(target.NetworkObject.EntityId, out var physicsTarget))
+            { physicsTarget.ReceivingPhysicsPush = true; physicsTarget.LastPhysicsPushTick = Tick; }
             using (var payload = new NetWriter())
             {
                 write(payload);

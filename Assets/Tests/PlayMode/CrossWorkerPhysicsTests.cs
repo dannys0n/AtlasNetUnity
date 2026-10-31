@@ -21,6 +21,16 @@ namespace AtlasNetDemo.Tests
         {
             foreach (var operation in pendingUnloads) yield return operation;
             pendingUnloads.Clear();
+            // Failed coroutine assertions must not leave fixture managers/scenes
+            // behind and turn a single failure into unrelated scene-name failures.
+            foreach (var manager in Object.FindObjectsByType<NetworkManager>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+                if (manager.name == "Physics coordinator" || manager.name == "Physics worker" || manager.name == "Physics observer")
+                { manager.Stop(); Object.DestroyImmediate(manager.gameObject); }
+            foreach (string name in new[] { "Physics coordinator", "Physics worker", "Physics observer" })
+            {
+                var scene = SceneManager.GetSceneByName(name);
+                if (scene.IsValid() && scene.isLoaded) yield return SceneManager.UnloadSceneAsync(scene);
+            }
         }
         static void Set(object obj, string field, object value) =>
             obj.GetType().GetField(field, BindingFlags.Instance | BindingFlags.NonPublic).SetValue(obj, value);
@@ -100,8 +110,8 @@ namespace AtlasNetDemo.Tests
                 Prepare();
                 return managers.Take(2).SelectMany(m => m.SpawnedObjects).SingleOrDefault(o => o.EntityId == id && o.HasAuthority);
             }
-            public EntityId Spawn(Vector3 position, bool ordinary = false) =>
-                Server.Spawn(ordinary ? OrdinaryPrefab : Prefab, position, Quaternion.identity).EntityId;
+            public EntityId Spawn(Vector3 position, bool ordinary = false, SessionId owner = default) =>
+                Server.Spawn(ordinary ? OrdinaryPrefab : Prefab, position, Quaternion.identity, owner).EntityId;
             public IEnumerator Step(int count = 1, Action beforePhysics = null)
             {
                 for (int i = 0; i < count; i++)
@@ -111,10 +121,10 @@ namespace AtlasNetDemo.Tests
                     yield return null;
                 }
             }
-            public IEnumerator Until(Func<bool> condition, string phase)
+            public IEnumerator Until(Func<bool> condition, string phase, Action beforePhysics = null)
             {
                 float end = Time.realtimeSinceStartup + 12;
-                while (!condition() && Time.realtimeSinceStartup < end) yield return Step();
+                while (!condition() && Time.realtimeSinceStartup < end) yield return Step(1, beforePhysics);
                 string state = string.Join("; ", managers.Take(2).SelectMany(m => m.SpawnedObjects)
                     .Select(o => $"{o.Manager.name}: {o.EntityId}, authority={o.HasAuthority}, worker={o.SimulationWorker}, pos={o.transform.position}"));
                 Assert.IsTrue(condition(), "Timed out: " + phase + ": " + state);
@@ -133,6 +143,108 @@ namespace AtlasNetDemo.Tests
                 Object.DestroyImmediate(template); Object.DestroyImmediate(ordinaryTemplate); Object.DestroyImmediate(list);
                 foreach (var scene in scenes) pendingUnloads.Add(SceneManager.UnloadSceneAsync(scene));
             }
+        }
+
+        [UnityTest]
+        public IEnumerator RemotePlayerPushMovesBoxWithoutCoLocatingPlayer()
+        {
+            using var world = new World(); yield return world.Ready();
+            var player = world.Spawn(new Vector3(-.65f, .5f, 0), owner: world.Client.LocalSession);
+            var box = world.Spawn(new Vector3(.6f, .5f, 0));
+            yield return world.Until(() => world.Authority(box)?.SimulationWorker > 0, "box starts on neighboring worker");
+            yield return world.Step(15);
+            ulong worker = world.Authority(box).SimulationWorker;
+            var remotePlayer = world.Worker.SpawnedObjects.Single(o => o.EntityId == player);
+            yield return world.Step(2);
+            Assert.IsTrue(Physics.GetIgnoreCollision(world.Authority(box).GetComponent<Collider>(), remotePlayer.GetComponent<Collider>()),
+                "The receiving authority must suppress the duplicate native proxy response.");
+            float start = world.Authority(box).transform.position.x;
+            yield return world.Until(() => world.Authority(box).transform.position.x > start + .2f,
+                "native player contact routes a push across the boundary", () =>
+                    world.Authority(player).GetComponent<Rigidbody>().linearVelocity = Vector3.right * 2);
+            Assert.Greater(world.Authority(box).transform.position.x, start + .2f, "The routed push must move the remote dynamic box.");
+            Assert.AreEqual(0ul, world.Authority(player).SimulationWorker);
+            Assert.AreEqual(worker, world.Authority(box).SimulationWorker);
+            var playerBody = world.Authority(player).GetComponent<Rigidbody>();
+            playerBody.position = new Vector3(2.5f, 1, 0); playerBody.linearVelocity = Vector3.zero;
+            yield return world.Until(() => world.Authority(player)?.SimulationWorker == worker, "player follows ordinary spatial handoff");
+            yield return world.Step(3);
+            Assert.IsFalse(Physics.GetIgnoreCollision(world.Authority(box).GetComponent<Collider>(), world.Authority(player).GetComponent<Collider>()),
+                "Co-located bodies must return to normal native collision handling.");
+            world.AssertGhostsKinematic(); LogAssert.NoUnexpectedReceived();
+        }
+
+        [UnityTest]
+        public IEnumerator OpposingRemoteAndLocalPlayersCanPushOneBoxWithoutAuthorityChurn()
+        {
+            using var world = new World(); yield return world.Ready();
+            var left = world.Spawn(new Vector3(-.65f, .5f, 0), owner: world.Client.LocalSession);
+            var box = world.Spawn(new Vector3(.6f, .5f, 0));
+            var right = world.Spawn(new Vector3(1.85f, .5f, 0), owner: world.Client.LocalSession);
+            yield return world.Until(() => world.Authority(box)?.SimulationWorker > 0 && world.Authority(right)?.SimulationWorker > 0, "right player and box on neighboring worker");
+            yield return world.Step(15);
+            ulong worker = world.Authority(box).SimulationWorker;
+            yield return world.Step(60, () => {
+                world.Authority(left).GetComponent<Rigidbody>().linearVelocity = Vector3.right;
+                world.Authority(right).GetComponent<Rigidbody>().linearVelocity = Vector3.left;
+            });
+            Assert.AreEqual(0ul, world.Authority(left).SimulationWorker);
+            Assert.AreEqual(worker, world.Authority(box).SimulationWorker);
+            Assert.AreEqual(worker, world.Authority(right).SimulationWorker);
+            Assert.Less(world.Authority(box).GetComponent<Rigidbody>().linearVelocity.magnitude, 10f);
+            Assert.That(world.Authority(box).transform.position.x, Is.InRange(-.2f, 1.4f), "Opposed pushes must not launch the box out of the interaction.");
+            world.AssertGhostsKinematic(); LogAssert.NoUnexpectedReceived();
+        }
+
+        [UnityTest]
+        public IEnumerator RoutedPushRejectsStaleEpochsAndRepeatedRequestsCannotLaunchBox()
+        {
+            using var world = new World(); yield return world.Ready();
+            var player = world.Spawn(new Vector3(-.6f, 1, 0), owner: world.Client.LocalSession);
+            var box = world.Spawn(new Vector3(.6f, 1, 0));
+            yield return world.Until(() => world.Authority(box)?.SimulationWorker > 0, "remote box authority");
+            yield return world.Step(12);
+            var source = world.Authority(player);
+            Assert.IsTrue(source.Manager.TryGet(box, out var target));
+            var send = typeof(NetworkBehaviour).GetMethod("SendAuthorityFrom", BindingFlags.Instance | BindingFlags.NonPublic);
+            void Push(uint sourceEpoch, uint targetEpoch, Vector3 impulse) => send.Invoke(target.GetComponent<NetworkRigidbody>(),
+                new object[] { source, "ReceiveRemotePushRpc", new object[] { source.EntityId.Value, sourceEpoch, targetEpoch, impulse } });
+            Push(source.AuthorityEpoch + 1, target.AuthorityEpoch, Vector3.right * 1000);
+            Push(source.AuthorityEpoch, target.AuthorityEpoch + 1, Vector3.right * 1000);
+            Push(source.AuthorityEpoch, target.AuthorityEpoch, new Vector3(float.NaN, 0, 0));
+            yield return world.Step(8);
+            Assert.Less(world.Authority(box).GetComponent<Rigidbody>().linearVelocity.sqrMagnitude, .001f);
+            for (int i = 0; i < 30; i++)
+            {
+                Push(source.AuthorityEpoch, target.AuthorityEpoch, Vector3.right * 1000);
+                Push(source.AuthorityEpoch, target.AuthorityEpoch, Vector3.right * 1000);
+                yield return world.Step();
+                var velocity = world.Authority(box).GetComponent<Rigidbody>().linearVelocity;
+                Assert.LessOrEqual(velocity.x, 3.05f, "Repeated requests must converge to the requested speed, not add impulses indefinitely.");
+                Assert.Less(Mathf.Abs(velocity.y), .01f);
+            }
+            Assert.Greater(world.Authority(box).GetComponent<Rigidbody>().linearVelocity.x, .2f);
+            yield return world.Step(12);
+            Assert.LessOrEqual(world.Authority(box).GetComponent<Rigidbody>().linearVelocity.x, 3.05f);
+            world.AssertGhostsKinematic(); LogAssert.NoUnexpectedReceived();
+        }
+
+        [UnityTest]
+        public IEnumerator StationaryPenetrationDoesNotBecomeAnExplosivePush()
+        {
+            using var world = new World(); yield return world.Ready();
+            var player = world.Spawn(new Vector3(-.6f, .5f, 0), owner: world.Client.LocalSession);
+            var box = world.Spawn(new Vector3(.6f, .5f, 0));
+            yield return world.Until(() => world.Authority(box)?.SimulationWorker > 0, "remote box authority");
+            yield return world.Step(12);
+            yield return world.Step(25, () => {
+                var pusher = world.Authority(player).GetComponent<Rigidbody>();
+                pusher.position = new Vector3(-.2f, .5f, 0);
+                pusher.linearVelocity = Vector3.zero;
+            });
+            Assert.Less(world.Authority(box).GetComponent<Rigidbody>().linearVelocity.magnitude, .1f,
+                "A stationary overlapped player must not forward the solver's depenetration energy.");
+            world.AssertGhostsKinematic(); LogAssert.NoUnexpectedReceived();
         }
 
         [UnityTest]
