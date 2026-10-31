@@ -215,6 +215,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: c34e53bf65444f729b2addfc7b658c9b, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  maxRemotePushSpeed: 3
+  maxRemotePushForce: 30
 --- !u!114 &1012
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -244,7 +246,7 @@ MonoBehaviour:
   player: {fileID: 1006}
   interest: {fileID: 1012}
   fillMaterial: {fileID: 2100000, guid: 8917440dc60a4c70b28cb58007e239a4, type: 2}
-  showOnAuthorityServer: 1
+  showOnClients: 1
 --- !u!54 &1014
 Rigidbody:
   m_ObjectHideFlags: 0

@@ -63,6 +63,8 @@ namespace AtlasNet
         {
             foreach (var session in clientSessions)
                 if (session != except) SendClientRoster(session, Packet.ClientRoster);
+            // Server-side gameplay must see the same admitted players after authority handoff.
+            foreach (var worker in workerSessions) SendClientRoster(worker, Packet.ClientRoster);
         }
 
         void ReceiveClientRoster(NetReader reader)
@@ -76,7 +78,7 @@ namespace AtlasNet
                 roster[i] = reader.ReadSessionId();
                 if (roster[i].Value == 0 || !seen.Add(roster[i])) throw new InvalidDataException("Invalid client roster entry.");
             }
-            if (reader.HasRemaining || !seen.Contains(LocalSession)) throw new InvalidDataException("Invalid client roster snapshot.");
+            if (reader.HasRemaining || (!isWorker && !seen.Contains(LocalSession))) throw new InvalidDataException("Invalid client roster snapshot.");
             runtime.UpdateConnectedClients(roster);
         }
 

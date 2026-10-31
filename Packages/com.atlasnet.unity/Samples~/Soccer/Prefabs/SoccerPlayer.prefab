@@ -1,0 +1,240 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1001 &6361774935129485926
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 0}
+    m_Modifications:
+    - target: {fileID: 388381679865300868, guid: c33455c5576f0984b89033b8989f09dc, type: 3}
+      propertyPath: positionWriter
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 388381679865300868, guid: c33455c5576f0984b89033b8989f09dc, type: 3}
+      propertyPath: rotationWriter
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 917260955230851970, guid: c33455c5576f0984b89033b8989f09dc, type: 3}
+      propertyPath: writer
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 1502464712006546549, guid: c33455c5576f0984b89033b8989f09dc, type: 3}
+      propertyPath: m_Controller
+      value: 
+      objectReference: {fileID: 9100000, guid: 560f5adc699114b4383ed3feae4b0e8c, type: 2}
+    - target: {fileID: 6288375694382478263, guid: c33455c5576f0984b89033b8989f09dc, type: 3}
+      propertyPath: m_LocalScale.x
+      value: 1.6
+      objectReference: {fileID: 0}
+    - target: {fileID: 6288375694382478263, guid: c33455c5576f0984b89033b8989f09dc, type: 3}
+      propertyPath: m_LocalScale.y
+      value: 1.6
+      objectReference: {fileID: 0}
+    - target: {fileID: 6288375694382478263, guid: c33455c5576f0984b89033b8989f09dc, type: 3}
+      propertyPath: m_LocalScale.z
+      value: 1.6
+      objectReference: {fileID: 0}
+    - target: {fileID: 6288375694382478263, guid: c33455c5576f0984b89033b8989f09dc, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 6288375694382478263, guid: c33455c5576f0984b89033b8989f09dc, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 6288375694382478263, guid: c33455c5576f0984b89033b8989f09dc, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 6288375694382478263, guid: c33455c5576f0984b89033b8989f09dc, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 6288375694382478263, guid: c33455c5576f0984b89033b8989f09dc, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 6288375694382478263, guid: c33455c5576f0984b89033b8989f09dc, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 6288375694382478263, guid: c33455c5576f0984b89033b8989f09dc, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 6288375694382478263, guid: c33455c5576f0984b89033b8989f09dc, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 6288375694382478263, guid: c33455c5576f0984b89033b8989f09dc, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 6288375694382478263, guid: c33455c5576f0984b89033b8989f09dc, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 6330230231365084708, guid: c33455c5576f0984b89033b8989f09dc, type: 3}
+      propertyPath: m_Name
+      value: SoccerPlayer
+      objectReference: {fileID: 0}
+    - target: {fileID: 7632955344992680494, guid: c33455c5576f0984b89033b8989f09dc, type: 3}
+      propertyPath: prefabId
+      value: atlasnet.soccer.player
+      objectReference: {fileID: 0}
+    m_RemovedComponents:
+    - {fileID: 427391155585899300, guid: c33455c5576f0984b89033b8989f09dc, type: 3}
+    - {fileID: 4888433393151153052, guid: c33455c5576f0984b89033b8989f09dc, type: 3}
+    - {fileID: 4665974626701921602, guid: c33455c5576f0984b89033b8989f09dc, type: 3}
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 6330230231365084708, guid: c33455c5576f0984b89033b8989f09dc, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 929488862138934516}
+    - targetCorrespondingSourceObject: {fileID: 6330230231365084708, guid: c33455c5576f0984b89033b8989f09dc, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 3380350284166334604}
+    - targetCorrespondingSourceObject: {fileID: 6330230231365084708, guid: c33455c5576f0984b89033b8989f09dc, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 5571775309294813125}
+    - targetCorrespondingSourceObject: {fileID: 6330230231365084708, guid: c33455c5576f0984b89033b8989f09dc, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 8198331562434397126}
+    - targetCorrespondingSourceObject: {fileID: 6330230231365084708, guid: c33455c5576f0984b89033b8989f09dc, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1714533070640341856}
+    - targetCorrespondingSourceObject: {fileID: 6330230231365084708, guid: c33455c5576f0984b89033b8989f09dc, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 6074192864757158507}
+  m_SourcePrefab: {fileID: 100100000, guid: c33455c5576f0984b89033b8989f09dc, type: 3}
+--- !u!23 &423784483125053318 stripped
+MeshRenderer:
+  m_CorrespondingSourceObject: {fileID: 6748649698432497120, guid: c33455c5576f0984b89033b8989f09dc, type: 3}
+  m_PrefabInstance: {fileID: 6361774935129485926}
+  m_PrefabAsset: {fileID: 0}
+--- !u!1 &1121658282295170114 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 6330230231365084708, guid: c33455c5576f0984b89033b8989f09dc, type: 3}
+  m_PrefabInstance: {fileID: 6361774935129485926}
+  m_PrefabAsset: {fileID: 0}
+--- !u!54 &929488862138934516
+Rigidbody:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1121658282295170114}
+  serializedVersion: 5
+  m_Mass: 80
+  m_LinearDamping: 0
+  m_AngularDamping: 0.05
+  m_CenterOfMass: {x: 0, y: 0, z: 0}
+  m_InertiaTensor: {x: 1, y: 1, z: 1}
+  m_InertiaRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ImplicitCom: 1
+  m_ImplicitTensor: 1
+  m_UseGravity: 0
+  m_IsKinematic: 0
+  m_Interpolate: 1
+  m_Constraints: 116
+  m_CollisionDetection: 2
+--- !u!136 &3380350284166334604
+CapsuleCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1121658282295170114}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 2
+  m_Radius: 0.59999996
+  m_Height: 2.1
+  m_Direction: 1
+  m_Center: {x: 0, y: 1.05, z: 0}
+--- !u!114 &5571775309294813125
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1121658282295170114}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 389bdfe22f0dfd64ebc84c209ed9b3e2, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::AtlasNet.Samples.Soccer.SoccerPlayer
+--- !u!114 &8198331562434397126
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1121658282295170114}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a1000000000000000000000000000010, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: AtlasNet.Unity::AtlasNet.NetworkInterestSource
+  radius: 160
+  exitPadding: 1
+--- !u!114 &1714533070640341856
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1121658282295170114}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a2000000000000000000000000000009, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ScaleInterestOverlay
+  player: {fileID: 3577024587618404424}
+  interest: {fileID: 8198331562434397126}
+  fillMaterial: {fileID: 2100000, guid: 8917440dc60a4c70b28cb58007e239a4, type: 2}
+  showOnAuthorityServer: 1
+--- !u!114 &6074192864757158507
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1121658282295170114}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e657e8663e08b3b4e988c49ae650db84, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::AtlasNet.Samples.Soccer.SoccerNetworkIndicator
+  bodyRenderer: {fileID: 423784483125053318}
+  authorityMaterial: {fileID: 2100000, guid: de91743c7a774812b64191daf71589b4, type: 2}
+  ghostMaterial: {fileID: 2100000, guid: 93d4fc33342a4d57ab857bad1646f774, type: 2}
+--- !u!114 &3577024587618404424 stripped
+MonoBehaviour:
+  m_CorrespondingSourceObject: {fileID: 7632955344992680494, guid: c33455c5576f0984b89033b8989f09dc, type: 3}
+  m_PrefabInstance: {fileID: 6361774935129485926}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1121658282295170114}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a1000000000000000000000000000001, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: AtlasNet.Unity::AtlasNet.NetworkObject

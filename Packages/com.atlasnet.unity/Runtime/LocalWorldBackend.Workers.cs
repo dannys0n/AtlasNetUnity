@@ -393,6 +393,7 @@ namespace AtlasNet
                 writer.Write(session.Value);
                 SendTo(session, writer.ToArray());
             }
+            SendClientRoster(session, Packet.ClientRoster);
             localWorld?.AddWorker(session.Value);
             RefreshWorkerInterest();
             BroadcastLocalRegions();

@@ -810,7 +810,7 @@ namespace AtlasNet
                             }
                             break;
                         case Packet.ClientRoster:
-                            if (!IsServer && clientReady) ReceiveClientRoster(reader);
+                            if (isWorker || (!IsServer && clientReady)) ReceiveClientRoster(reader);
                             break;
                         case Packet.Spawn:
                             if (!IsServer) ReceiveSpawn(reader);

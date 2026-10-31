@@ -40,10 +40,10 @@ namespace AtlasNetDemo.Tests
         public void AllShowcasesHaveNoPrivateProjectDependenciesOrMissingScripts()
         {
             var scenes = AssetDatabase.FindAssets("t:Scene", new[] { Root }).Select(AssetDatabase.GUIDToAssetPath).ToArray();
-            Assert.AreEqual(7, scenes.Length);
+            Assert.AreEqual(8, scenes.Length);
             foreach (var path in scenes)
             {
-                var external = AssetDatabase.GetDependencies(path, true).Where(p => p.StartsWith("Assets/") && !p.StartsWith(Root)).ToArray();
+                var external = AssetDatabase.GetDependencies(path, true).Where(p => p.StartsWith("Assets/") && !p.StartsWith(Root) && !p.StartsWith("Assets/TextMesh Pro/")).ToArray();
                 Assert.IsEmpty(external, path);
                 var scene = EditorSceneManager.OpenScene(path);
                 var config = new SerializedObject(Object.FindAnyObjectByType<NetworkManager>());

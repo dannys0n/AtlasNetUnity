@@ -51,6 +51,11 @@
       "displayName": "07 ClientPhysics",
       "description": "Requires 00 Shared. Owner-simulated Rigidbody movement with kinematic server replicas, native/WebSocket clients, and worker handoffs.",
       "path": "Samples~/ClientPhysics"
+    },
+    {
+      "displayName": "08 Soccer",
+      "description": "Requires 00 Shared, URP, Unity UI and imported TMP Essential Resources. Horizontal team soccer with solid server-authoritative players, contact kicks, goal celebrations, debug boundaries and large join QR codes. Serve a Web build separately for browser joining.",
+      "path": "Samples~/Soccer"
     }
   ]
 }

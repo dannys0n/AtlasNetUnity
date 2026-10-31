@@ -1,0 +1,1 @@
+Source: manuelbl/QrCodeGenerator v1.6.0 (Nayuki-derived), MIT. Imported encoding core only. QrCode bitmap/SVG export methods and System.Drawing imports removed; Unity renders modules directly. No changes to encoding logic.
