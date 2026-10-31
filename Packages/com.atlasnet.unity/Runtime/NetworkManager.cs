@@ -44,13 +44,6 @@ namespace AtlasNet
         [SerializeField, Tooltip("Dummy backend only. Its position is sampled when the coordinating server starts; null uses world zero.")] internal Transform localPartitionCenter;
         [SerializeField, Min(1), Tooltip("Half-size of the debug polygon window. This does not limit ownership or interest.")] internal float localRegionDebugExtent = 10000f;
         [SerializeField, Min(0)] internal float localBoundaryMargin = 0.75f;
-        [SerializeField, Tooltip("Dummy backend only. Keep NetworkRigidbody objects in the configured region on the coordinating server, so Unity can solve their contacts together. Requires automatic handoffs.")]
-        internal bool localSharedPhysicsRegion;
-        [SerializeField, Tooltip("World-space physics area, sampled when the coordinating server starts.")]
-        internal Bounds localPhysicsRegion = new Bounds(Vector3.zero, new Vector3(32f, 64f, 32f));
-        [SerializeField, Min(0f), Tooltip("Entry guard distance. Bodies already in the region get this distance again as exit hysteresis.")]
-        internal float localPhysicsRegionPadding = 2f;
-
 
         internal readonly Dictionary<EntityId, NetworkObject> Replicas = new Dictionary<EntityId, NetworkObject>();
         [SerializeField] private WorldBackendProvider backendProvider;
@@ -154,6 +147,13 @@ namespace AtlasNet
 
         public NetworkObject CreateReplica(NetworkObject prefab, EntityId id, SessionId owner,
             Vector3 position, Quaternion rotation, ulong worker, uint epoch, NetReader snapshot = null, bool migration = false)
+            => CreateReplica(prefab, id, owner, position, rotation, worker, epoch, snapshot, migration, null);
+
+        // The dummy directory can retain newer variable deltas than its last full
+        // worker snapshot. Apply those before gameplay's spawn callback, like NGO.
+        internal NetworkObject CreateReplica(NetworkObject prefab, EntityId id, SessionId owner,
+            Vector3 position, Quaternion rotation, ulong worker, uint epoch, NetReader snapshot, bool migration,
+            Action<NetworkObject> initializeState)
         {
             if (Replicas.ContainsKey(id)) throw new InvalidOperationException($"Duplicate local replica {id}");
             var obj = InstantiateReplica(prefab, position, rotation);
@@ -163,6 +163,7 @@ namespace AtlasNet
                 obj.SetSimulationAuthority(worker, epoch);
                 if (snapshot != null) { if(migration)obj.ReadHandoff(snapshot);else obj.ReadSnapshot(snapshot); }
                 Replicas.Add(id, obj);
+                initializeState?.Invoke(obj);
                 obj.CompleteSpawn();
                 return obj;
             }

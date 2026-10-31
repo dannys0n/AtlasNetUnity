@@ -75,4 +75,21 @@ public sealed class AtlasNetMixedTransportTests
         for(int i=0;i<received.Count;i++)Assert.AreEqual(i,received[i],"Retries must neither lose nor reorder appended messages.");
         Assert.LessOrEqual(Counter("LargestBatchBytes"),1100,"Retry batches must retain their packet-size cap.");
     }
+    [TestCase(ClientTransport.Udp)]
+    [TestCase(ClientTransport.WebSocket)]
+    public void ReliableQueueLimitProducesTypedRecoverableFailure(ClientTransport kind)
+    {
+        using var server=Open(true,17884,kind);
+        using var client=Open(false,17884,kind);
+        var data=new byte[60*1024];int accepted=0;
+        NetworkSendException failure=null;
+        for(int i=0;i<100;i++)
+        {
+            try{client.SendToServer(data);accepted++;}
+            catch(NetworkSendException error){failure=error;break;}
+        }
+        Assert.IsNotNull(failure);Assert.AreEqual(NetworkSendError.QueueFull,failure.Error);
+        Assert.Greater(accepted,0);Assert.LessOrEqual(accepted*data.Length,4*1024*1024);
+        StringAssert.Contains("4194304",failure.Message);
+    }
 }

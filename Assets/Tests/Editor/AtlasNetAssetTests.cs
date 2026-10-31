@@ -49,7 +49,7 @@ namespace AtlasNetDemo.Tests
         }
 
         [Test]
-        public void NetworkRigidbodyRequiresServerPoseAndMakesReplicaKinematic()
+        public void NetworkRigidbodyRequiresMatchingPoseWritersAndMakesReplicaKinematic()
         {
             var gameObject = new GameObject("Network Rigidbody Test");
             try
@@ -75,6 +75,21 @@ namespace AtlasNetDemo.Tests
             {
                 Object.DestroyImmediate(gameObject);
             }
+        }
+
+        [Test]
+        public void ClientPhysicsSceneUsesOwnerWrittenRigidbodyPlayer()
+        {
+            EditorSceneManager.OpenScene("Assets/Samples/AtlasNet Unity/0.1.0/07 ClientPhysics/07_ClientPhysics.unity");
+            var manager = Object.FindAnyObjectByType<NetworkManager>();
+            Assert.DoesNotThrow(manager.ValidateRegistry);
+            var player = manager.PlayerPrefab;
+            Assert.IsNotNull(player.GetComponent<Rigidbody>());
+            Assert.IsNull(player.GetComponent<CharacterController>());
+            Assert.IsNotNull(player.GetComponent<NetworkRigidbody>());
+            Assert.IsNotNull(player.GetComponent("PhysicsPlayerMovement"));
+            Assert.AreEqual(TransformWriter.Owner, player.GetComponent<NetworkTransform>().PositionWriter);
+            Assert.AreEqual(TransformWriter.Owner, player.GetComponent<NetworkTransform>().RotationWriter);
         }
 
         [TestCase("02 ClientAuthority/02_ClientAuthority.unity", TransformWriter.Owner)]

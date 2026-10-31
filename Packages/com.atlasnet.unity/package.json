@@ -46,6 +46,11 @@
       "displayName": "06 AnimatorSync",
       "description": "Requires 00 Shared. Primitive animated players with owner-written movement parameters, network triggers, and late-join state.",
       "path": "Samples~/AnimatorSync"
+    },
+    {
+      "displayName": "07 ClientPhysics",
+      "description": "Requires 00 Shared. Owner-simulated Rigidbody movement with kinematic server replicas, native/WebSocket clients, and worker handoffs.",
+      "path": "Samples~/ClientPhysics"
     }
   ]
 }

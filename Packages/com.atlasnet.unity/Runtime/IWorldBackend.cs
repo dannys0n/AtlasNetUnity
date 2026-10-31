@@ -45,7 +45,7 @@ namespace AtlasNet
         event Action<bool, bool> Stopped;
         void ValidateNamedMessageRecipient(SessionId recipient);
         void SendNamedMessage(SessionId recipient, ulong messageId, byte[] payload, NetworkDelivery delivery);
-        void DisconnectClient(SessionId session);
+        void DisconnectClient(SessionId session, string reason = null);
         void PollAndTick(float deltaTime);
         void ValidateRegistry();
         void StartServer();

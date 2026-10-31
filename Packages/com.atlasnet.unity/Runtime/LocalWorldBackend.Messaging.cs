@@ -80,12 +80,43 @@ namespace AtlasNet
             runtime.UpdateConnectedClients(roster);
         }
 
-        public void DisconnectClient(SessionId session)
+        readonly System.Collections.Generic.Dictionary<SessionId, int> pendingDisconnects = new();
+        const int MaxDisconnectReasonBytes = 512;
+        static void ValidateDisconnectReason(string reason)
+        {
+            if (System.Text.Encoding.UTF8.GetByteCount(reason) > MaxDisconnectReasonBytes)
+                throw new ArgumentException("Disconnect reasons support at most 512 UTF-8 bytes.", nameof(reason));
+        }
+        void BeginDisconnect(SessionId session, string reason)
+        {
+            reason ??= "Disconnected by server.";
+            ValidateDisconnectReason(reason);
+            if (pendingDisconnects.ContainsKey(session)) return;
+            using var writer = new NetWriter();
+            writer.Write((byte)Packet.DisconnectNotice); writer.Write(reason);
+            try
+            {
+                SendTo(session, writer.ToArray());
+                // NGO queues the reason, then processes deferred disconnects after
+                // its send queues. Give this frame's send phase the same ordering.
+                pendingDisconnects.Add(session, UnityEngine.Time.frameCount + 1);
+            }
+            catch (NetworkSendException) { transport.Disconnect(session); }
+        }
+        void ExpireDisconnects()
+        {
+            if (pendingDisconnects.Count == 0) return;
+            foreach (var pair in new System.Collections.Generic.List<System.Collections.Generic.KeyValuePair<SessionId, int>>(pendingDisconnects))
+                if (UnityEngine.Time.frameCount >= pair.Value)
+                { pendingDisconnects.Remove(pair.Key); transport.Disconnect(pair.Key); }
+        }
+
+        public void DisconnectClient(SessionId session, string reason = null)
         {
             if (!IsRunning || !IsServer || isWorker) throw new InvalidOperationException("Only the gameplay server can disconnect a client.");
             if (IsHost && session == LocalSession) throw new InvalidOperationException("Stop the host to disconnect its local player.");
             if (!clientSessions.Contains(session)) throw new ArgumentException("The session is not an admitted client.", nameof(session));
-            transport.Disconnect(session);
+            BeginDisconnect(session, reason);
         }
     }
 }

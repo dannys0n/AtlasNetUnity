@@ -6,7 +6,7 @@ using System.Net.Sockets;
 
 namespace AtlasNet
 {
-    internal sealed class LocalTcpTransport : IMessageTransport
+    internal sealed class LocalTcpTransport : IMessageTransport, ITransportDiagnostics
     {
         private sealed class Peer
         {
@@ -26,6 +26,8 @@ namespace AtlasNet
         public event Action<SessionId> Connected;
         public event Action<SessionId> Disconnected;
         public event Action<SessionId, byte[]> Received;
+        public event Action<SessionId, string> Disconnecting;
+        public event Action<string> Failure;
         public int PeerCount => server ? peers.Count : (upstream == null ? 0 : 1);
         public IEnumerable<SessionId> Sessions => peers.Keys;
         public long BytesSent { get; private set; }
@@ -50,7 +52,12 @@ namespace AtlasNet
         {
             if (server)
             {
-                while (listener.Pending())
+                bool Pending()
+                {
+                    try { return listener.Pending(); }
+                    catch (SocketException error) { Failure?.Invoke(error.Message); return false; }
+                }
+                while (Pending())
                 {
                     var client = listener.AcceptTcpClient();
                     client.NoDelay = true;
@@ -83,12 +90,13 @@ namespace AtlasNet
             try
             {
                 var socket = peer.Client.Client;
-                if (socket.Poll(0, SelectMode.SelectRead) && socket.Available == 0) return false;
+                if (socket.Poll(0, SelectMode.SelectRead) && socket.Available == 0)
+                { Disconnecting?.Invoke(peer.Session,"TCP connection closed by remote peer."); return false; }
                 var stream = peer.Client.GetStream();
                 while (socket.Available > 0)
                 {
                     int count = stream.Read(peer.Scratch, 0, Math.Min(peer.Scratch.Length, socket.Available));
-                    if (count == 0) return false;
+                    if (count == 0) { Disconnecting?.Invoke(peer.Session,"TCP connection closed by remote peer."); return false; }
                     for (int i = 0; i < count; i++) peer.Buffer.Add(peer.Scratch[i]);
                 }
 
@@ -105,13 +113,14 @@ namespace AtlasNet
             }
             catch (Exception error) when (error is IOException || error is SocketException || error is ObjectDisposedException || error is InvalidDataException)
             {
+                Disconnecting?.Invoke(peer.Session,error.Message);
                 return false;
             }
         }
 
         private void Send(Peer peer, byte[] payload)
         {
-            if (peer == null) return;
+            if (peer == null) throw new NetworkSendException(NetworkSendError.NotConnected,"No TCP connection is available.");
             try
             {
                 byte[] length = BitConverter.GetBytes(payload.Length);
@@ -123,6 +132,7 @@ namespace AtlasNet
             catch (Exception error) when (error is IOException || error is SocketException || error is ObjectDisposedException)
             {
                 // Poll removes the disconnected peer on the next update.
+                throw new NetworkSendException(NetworkSendError.NotConnected,error.Message);
             }
         }
 
@@ -130,6 +140,7 @@ namespace AtlasNet
         public void SendTo(SessionId session, byte[] payload, NetworkDelivery delivery=NetworkDelivery.ReliableOrdered, ulong stream=0)
         {
             if (peers.TryGetValue(session, out var peer)) Send(peer, payload);
+            else throw new NetworkSendException(NetworkSendError.NotConnected,"The TCP recipient is disconnected.");
         }
         public void Broadcast(byte[] payload, NetworkDelivery delivery=NetworkDelivery.ReliableOrdered, ulong stream=0)
         {

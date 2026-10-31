@@ -101,6 +101,29 @@ namespace AtlasNet
             SendNamedMessage(name, manager.ConnectedClientsIds, payload, delivery);
         }
 
+        /// <summary>Try one send without throwing for payload limits, reliable queue pressure,
+        /// or a disconnected peer. Success means accepted locally, not delivered remotely.
+        /// Invalid names, null payloads, delivery modes, or unsupported routing still throw.</summary>
+        public bool TrySendNamedMessage(string name, SessionId recipient, byte[] payload,
+            out NetworkSendError error, NetworkDelivery delivery = NetworkDelivery.ReliableOrdered)
+        {
+            ulong id = MessageId(name);
+            if (payload == null) throw new ArgumentNullException(nameof(payload));
+            if (delivery < NetworkDelivery.ReliableOrdered || delivery > NetworkDelivery.UnreliableSequenced)
+                throw new ArgumentOutOfRangeException(nameof(delivery));
+            if (payload.Length > MaxPayloadSize) { error = NetworkSendError.PayloadTooLarge; return false; }
+            if (!manager.IsRunning || (!manager.IsServer && !manager.IsConnectedClient))
+            { error = NetworkSendError.NotConnected; return false; }
+            if (manager.IsServer && recipient != NetworkManager.ServerSessionId && recipient != manager.LocalSession)
+            {
+                bool admitted = false;
+                foreach (var session in manager.ConnectedClientsIds) admitted |= session == recipient;
+                if (!admitted) { error = NetworkSendError.NotConnected; return false; }
+            }
+            try { manager.SendNamedMessage(recipient, id, payload, delivery); error = NetworkSendError.None; return true; }
+            catch (NetworkSendException failure) { error = failure.Error; return false; }
+        }
+
         static byte[] ValidatePayload(byte[] payload, NetworkDelivery delivery)
         {
             if (payload == null) throw new ArgumentNullException(nameof(payload));

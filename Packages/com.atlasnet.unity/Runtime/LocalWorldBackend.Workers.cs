@@ -27,13 +27,14 @@ namespace AtlasNet
             public float InterestRadius;
             public float ExitPadding;
             public bool CanHandoff;
-            public bool PhysicsBody;
-            public float PhysicsRadius;
-            public bool InPhysicsRegion;
+            // Latest reliable fields received since the last local-authority capture.
+            // Bounded by the prefab's declared variable count, not an event history.
+            public readonly Dictionary<(byte Behaviour, ushort Variable), byte[]> VariableUpdates = new();
             public BehaviourSchema[] Behaviours;
 
             public void Capture(NetworkObject obj)
             {
+                if (obj.HasAuthority) VariableUpdates.Clear();
                 Position = obj.transform.position;
                 Rotation = obj.transform.rotation;
                 using (var publicState = new NetWriter())
@@ -88,9 +89,6 @@ namespace AtlasNet
         private readonly Dictionary<EntityId, List<QueuedAuthorityRpc>> queuedAuthorityRpcs =
             new Dictionary<EntityId, List<QueuedAuthorityRpc>>();
         private ILocalAuthorityPlacement localWorld;
-        private bool sharedPhysicsRegion;
-        private Bounds physicsRegion;
-        private float physicsRegionPadding;
         private bool isWorker;
         private ulong localWorkerId;
         private Vector2[] localRegion = Array.Empty<Vector2>();
@@ -144,19 +142,6 @@ namespace AtlasNet
                     schema.AnimatorWriter = animator.Writer;
                 }
                 record.Behaviours[i] = schema;
-            }
-            record.PhysicsBody = obj.GetComponent<NetworkRigidbody>() != null;
-            if (record.PhysicsBody)
-            {
-                // Cache conservative geometry once, not a collider query per tick.
-                var body = obj.GetComponent<Rigidbody>();
-                foreach (var collider in obj.GetComponentsInChildren<Collider>())
-                {
-                    if (!collider.enabled || collider.isTrigger || collider.attachedRigidbody != body) continue;
-                    Bounds bounds = collider.bounds;
-                    record.PhysicsRadius = Mathf.Max(record.PhysicsRadius,
-                        (bounds.center - obj.transform.position).magnitude + bounds.extents.magnitude);
-                }
             }
             record.Capture(obj);
             directory.Add(record.Id, record);
@@ -291,10 +276,9 @@ namespace AtlasNet
         {
             if (IsRunning) throw new InvalidOperationException("NetworkManager is already running");
             ValidateRegistry();
+            runtime.ResetConnectionDiagnostics();
             transport = CreateTransport(false);
-            transport.Connected += OnConnected;
-            transport.Disconnected += OnDisconnected;
-            transport.Received += OnReceived;
+            AttachTransport();
             isWorker = true;
             localWorkerId = ulong.MaxValue;
             IsServer = true;
@@ -560,8 +544,16 @@ namespace AtlasNet
             SetLocalRegion(polygon);
         }
 
+        private void RefreshCanonicalSnapshot(CanonicalEntity entity)
+        {
+            // A visibility change or connection may happen between network ticks.
+            // Never send an older cached value when its live authority is here.
+            if (spawned.TryGetValue(entity.Id, out var live) && live.HasAuthority) entity.Capture(live);
+        }
+
         private byte[] MakeWorkerSpawn(CanonicalEntity entity)
         {
+            RefreshCanonicalSnapshot(entity);
             using (var writer = new NetWriter())
             {
                 writer.Write((byte)Packet.WorkerSpawn);
@@ -582,7 +574,7 @@ namespace AtlasNet
                 throw new InvalidOperationException($"Missing prefab {entity.PrefabId} for entity {entity.Id}");
             using (var state = new NetReader(entity.OwnerSnapshot))
                 runtime.CreateReplica(prefab, entity.Id, entity.Owner, entity.Position, entity.Rotation,
-                    entity.Worker, entity.Epoch, state);
+                    entity.Worker, entity.Epoch, state, false, obj => ApplyInitialVariables(obj, entity.VariableUpdates));
         }
 
         private void RefreshCoordinatorResidency()
@@ -1007,18 +999,10 @@ namespace AtlasNet
             {
                 if (started >= 4) break;
                 if (!entity.CanHandoff || pendingHandoffs.ContainsKey(entity.Id)) continue;
-                entity.InPhysicsRegion = sharedPhysicsRegion && entity.PhysicsBody &&
-                    LocalWorldPolicy.WithinPhysicsRegion(physicsRegion, entity.Position,
-                        entity.PhysicsRadius, physicsRegionPadding, entity.InPhysicsRegion);
-                // A region is one Unity physics world. Spatial Voronoi boundaries
-                // do not split it; the coordinator is its fixed simulation worker.
-                ulong destination = entity.InPhysicsRegion ? 0 : localWorld.OwnerAt(entity.Position.x, entity.Position.z);
+                ulong destination = localWorld.OwnerAt(entity.Position.x, entity.Position.z);
                 if (destination == entity.Worker) continue;
-                if (!entity.InPhysicsRegion)
-                {
-                    if (lastHandoffTick.TryGetValue(entity.Id, out uint last) && Tick - last < tickRate * 2) continue;
-                    if (!localWorld.ShouldMove(entity.Worker, entity.Position.x, entity.Position.z, localBoundaryMargin)) continue;
-                }
+                if (lastHandoffTick.TryGetValue(entity.Id, out uint last) && Tick - last < tickRate * 2) continue;
+                if (!localWorld.ShouldMove(entity.Worker, entity.Position.x, entity.Position.z, localBoundaryMargin)) continue;
                 HandoffToWorker(entity, destination);
                 started++;
             }
@@ -1262,6 +1246,7 @@ namespace AtlasNet
                 state.Write != NetworkVariableWritePermission.Server)
                 throw new InvalidOperationException($"Worker cannot write owner variable {variable} on entity {id}");
             FindBehaviour(id, index)?.ReadVariable(variable, payload);
+            entity.VariableUpdates[(index, variable)] = payload;
             byte[] update = MakeVariablePacket(id, index, variable, payload);
             foreach (var session in clientSessions)
                 if (IsObserver(id, session) &&

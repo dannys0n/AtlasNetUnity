@@ -5,7 +5,24 @@ namespace AtlasNet
     {
         public void FlushSend() => (transport as IFlushableMessageTransport)?.FlushSend();
         public TransportCapabilities GetTransportCapabilities(SessionId peer)=>transport?.Capabilities(peer)??0;
+        void AttachTransport()
+        {
+            transport.Connected += OnConnected;
+            transport.Disconnected += OnDisconnected;
+            transport.Received += OnReceived;
+            if (transport is ITransportDiagnostics diagnostics)
+            {
+                diagnostics.Disconnecting += (peer, reason) =>
+                { if ((!IsServer || isWorker) && string.IsNullOrEmpty(runtime.DisconnectReason)) runtime.ReportDisconnectReason(reason); };
+                diagnostics.Failure += runtime.ReportTransportFailure;
+            }
+        }
         IMessageTransport CreateTransport(bool server)
+        {
+            try { return CreateTransportAdapter(server); }
+            catch (Exception error) { runtime.ReportTransportFailure(error.Message); throw; }
+        }
+        IMessageTransport CreateTransportAdapter(bool server)
         {
             if(runtime.transportProvider)
                 return runtime.transportProvider.CreateTransport(runtime,server)??throw new InvalidOperationException("Transport provider returned null.");

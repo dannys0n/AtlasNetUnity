@@ -9,6 +9,22 @@ namespace AtlasNet
     public enum ServerTransport { UdpAndWebSocket, Tcp }
     [Flags] public enum TransportCapabilities { ReliableOrdered=1, Unreliable=2, Sequenced=4 }
 
+    public enum NetworkSendError { None, PayloadTooLarge, QueueFull, NotConnected }
+
+    /// <summary>A recoverable send rejection. No reliable message was queued.</summary>
+    public sealed class NetworkSendException : InvalidOperationException
+    {
+        public NetworkSendError Error { get; }
+        public NetworkSendException(NetworkSendError error, string message) : base(message) => Error = error;
+    }
+
+    /// <summary>Optional adapter diagnostics, raised on the polling Unity thread.</summary>
+    public interface ITransportDiagnostics
+    {
+        event Action<SessionId, string> Disconnecting;
+        event Action<string> Failure;
+    }
+
     // Optional send-only phase: flush after gameplay without polling callbacks again.
     internal interface IFlushableMessageTransport { void FlushSend(); }
 

@@ -9,7 +9,7 @@ namespace AtlasNet
 {
     // One process, multiple listeners. A client chooses one driver; the backend
     // sees logical sessions and messages, never UDP/WebSocket connection handles.
-    internal sealed class UnityMessageTransport : IMessageTransport, IFlushableMessageTransport
+    internal sealed class UnityMessageTransport : IMessageTransport, IFlushableMessageTransport, ITransportDiagnostics
     {
         const int HeaderSize=13,MaxPayload=65536-HeaderSize,MaxQueuedBytes=4*1024*1024,MaxBatchBytes=1100;
         const byte BatchMarker=255;
@@ -31,6 +31,8 @@ namespace AtlasNet
         public event Action<SessionId> Connected;
         public event Action<SessionId> Disconnected;
         public event Action<SessionId,byte[]> Received;
+        public event Action<SessionId,string> Disconnecting;
+        public event Action<string> Failure;
         public int PeerCount=>peers.Count;
         public IEnumerable<SessionId> Sessions=>peers.Keys;
         public long BytesSent {get;private set;}
@@ -96,7 +98,8 @@ namespace AtlasNet
         public void Poll()
         {
             if(!driver.IsCreated)return;
-            driver.ScheduleUpdate().Complete();
+            try { driver.ScheduleUpdate().Complete(); }
+            catch (Exception error) { Failure?.Invoke(error.Message); return; }
             sendPending=true; // Include transport-generated ACKs and retransmissions in the poll flush.
             if(server)
             {
@@ -113,7 +116,17 @@ namespace AtlasNet
             {
                 if(!sessions.TryGetValue(sender,out var id))continue;
                 if(kind==NetworkEvent.Type.Connect){Connected?.Invoke(id);continue;}
-                if(kind==NetworkEvent.Type.Disconnect){disconnected.Add(id);continue;}
+                if(kind==NetworkEvent.Type.Disconnect)
+                {
+                    var reason=reader.Length>0?(Unity.Networking.Transport.Error.DisconnectReason)reader.ReadByte():Unity.Networking.Transport.Error.DisconnectReason.Default;
+                    Disconnecting?.Invoke(id,reason switch {
+                        Unity.Networking.Transport.Error.DisconnectReason.Timeout=>"Connection timed out.",
+                        Unity.Networking.Transport.Error.DisconnectReason.MaxConnectionAttempts=>"Unable to reach the server.",
+                        Unity.Networking.Transport.Error.DisconnectReason.ClosedByRemote=>"Connection closed by remote peer.",
+                        Unity.Networking.Transport.Error.DisconnectReason.HostNotFound=>"Server hostname was not found.",
+                        _=>"Transport disconnected: "+reason });
+                    disconnected.Add(id);continue;
+                }
                 if(kind!=NetworkEvent.Type.Data)continue;
                 var start=reader;
                 if(reader.Length==0){disconnected.Add(id);continue;}
@@ -138,7 +151,11 @@ namespace AtlasNet
             // Build batches afresh from the ordered message queue. Failed sends
             // keep their messages there, so later messages fill the same bounded batches.
             foreach(var peer in peers.Values)if(peer.reliable.Count>0)Flush(peer);
-            if(sendPending){driver.ScheduleFlushSend().Complete();sendPending=false;}
+            if(sendPending)
+            {
+                try { driver.ScheduleFlushSend().Complete(); sendPending=false; }
+                catch (Exception error) { Failure?.Invoke(error.Message); }
+            }
         }
         bool ReceiveFrame(SessionId id,ref DataStreamReader reader,int length)
         {
@@ -205,20 +222,20 @@ namespace AtlasNet
             if(delivery>NetworkDelivery.UnreliableSequenced)throw new ArgumentOutOfRangeException(nameof(delivery));
             var message=new Pending{bytes=bytes,delivery=delivery,stream=stream,sequence=sequence.Next(peer.session,stream)};
             if(delivery!=NetworkDelivery.ReliableOrdered){TrySend(peer,message);return;}
-            if(peer.queuedBytes+bytes.Length>MaxQueuedBytes)throw new InvalidOperationException("Reliable send queue is full; stop producing reliable traffic faster than this peer can receive it.");
+            if(peer.queuedBytes+bytes.Length>MaxQueuedBytes)throw new NetworkSendException(NetworkSendError.QueueFull,$"Reliable send queue limit is {MaxQueuedBytes} bytes per peer; {peer.queuedBytes} bytes are already queued. Retry later or reduce reliable traffic.");
             message.bytes=(byte[])bytes.Clone();
             peer.reliable.Enqueue(message);peer.queuedBytes+=bytes.Length;
         }
         public void SendToServer(byte[] payload,NetworkDelivery delivery=NetworkDelivery.ReliableOrdered,ulong stream=0)
-        {if(peers.TryGetValue(default,out var peer))Send(peer,payload,delivery,stream);}
+        {if(peers.TryGetValue(default,out var peer))Send(peer,payload,delivery,stream);else throw new NetworkSendException(NetworkSendError.NotConnected,"No server connection is available.");}
         public void SendTo(SessionId id,byte[] payload,NetworkDelivery delivery=NetworkDelivery.ReliableOrdered,ulong stream=0)
-        {if(peers.TryGetValue(id,out var peer))Send(peer,payload,delivery,stream);}
+        {if(peers.TryGetValue(id,out var peer))Send(peer,payload,delivery,stream);else throw new NetworkSendException(NetworkSendError.NotConnected,"The recipient is disconnected.");}
         public void Broadcast(byte[] payload,NetworkDelivery delivery=NetworkDelivery.ReliableOrdered,ulong stream=0)
         {foreach(var peer in peers.Values)Send(peer,payload,delivery,stream);}
         void RemovePeer(SessionId id)
         {if(!peers.TryGetValue(id,out var peer))return;sessions.Remove(peer.connection);peers.Remove(id);sequence.Remove(id);Disconnected?.Invoke(id);}
         public void Disconnect(SessionId id)
-        {if(peers.TryGetValue(id,out var peer)){driver.Disconnect(peer.connection);RemovePeer(id);}}
+        {if(peers.TryGetValue(id,out var peer)){Flush(peer);if(sendPending){driver.ScheduleFlushSend().Complete();sendPending=false;}driver.Disconnect(peer.connection);RemovePeer(id);}}
         public void Dispose()
         {
             if(driver.IsCreated)

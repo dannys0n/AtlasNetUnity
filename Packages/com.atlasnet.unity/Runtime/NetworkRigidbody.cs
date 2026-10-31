@@ -3,12 +3,14 @@ using UnityEngine;
 
 namespace AtlasNet
 {
-    /// <summary>Simulates 3D physics on the server; remote copies follow NetworkTransform.</summary>
+    /// <summary>Simulates 3D physics on the NetworkTransform writer; other copies are kinematic.</summary>
     [AddComponentMenu("AtlasNet/Network Rigidbody")]
     [DisallowMultipleComponent]
     public sealed class NetworkRigidbody : NetworkBehaviour
     {
         private Rigidbody body;
+        private TransformWriter writer;
+        private bool initialized, simulating;
         private bool initialKinematic;
         private RigidbodyInterpolation initialInterpolation;
         private Vector3 handoffVelocity;
@@ -21,11 +23,11 @@ namespace AtlasNet
             if (body == null || networkTransform == null)
                 throw new InvalidOperationException("NetworkRigidbody requires Rigidbody and NetworkTransform on the same GameObject");
             if (!networkTransform.SyncPosition || !networkTransform.SyncRotation ||
-                networkTransform.PositionWriter != TransformWriter.Server ||
-                networkTransform.RotationWriter != TransformWriter.Server ||
+                networkTransform.PositionWriter != networkTransform.RotationWriter ||
                 networkTransform.Target != transform)
-                throw new InvalidOperationException("NetworkRigidbody requires NetworkTransform to synchronize this object's position and rotation with Server writers");
+                throw new InvalidOperationException("NetworkRigidbody requires NetworkTransform to synchronize this object's position and rotation with matching writers");
 
+            writer = networkTransform.PositionWriter;
             initialKinematic = body.isKinematic;
             initialInterpolation = body.interpolation;
             ApplyAuthority();
@@ -36,13 +38,17 @@ namespace AtlasNet
         private void ApplyAuthority()
         {
             if (body == null) return;
-            body.isKinematic = !HasAuthority || initialKinematic;
-            body.interpolation = HasAuthority ? initialInterpolation : RigidbodyInterpolation.None;
-            if (HasAuthority && !body.isKinematic)
+            bool simulate = writer == TransformWriter.Owner ? IsOwner : HasAuthority;
+            body.isKinematic = !simulate || initialKinematic;
+            body.interpolation = simulate ? initialInterpolation : RigidbodyInterpolation.None;
+            if (simulate && !body.isKinematic && writer == TransformWriter.Server && (!initialized || !simulating))
             {
                 body.linearVelocity = handoffVelocity;
                 body.angularVelocity = handoffAngularVelocity;
             }
+            // A server-worker handoff must never reset the still-controlling client's velocity.
+            simulating = simulate;
+            initialized = true;
         }
 
         protected override void WriteHandoffState(NetWriter writer)

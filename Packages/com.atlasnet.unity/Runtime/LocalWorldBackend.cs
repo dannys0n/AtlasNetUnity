@@ -15,8 +15,8 @@ namespace AtlasNet
             WorkerVariable = 18, WorkerOutboundRpc = 19, AuthorityChange = 20,
             WorkerExportRequest = 21, WorkerExport = 22, WorkerAbort = 23, WorkerAnimator = 24,
             WorkerRegion = 25, WorkerRegionRequest = 26, WorkerSpawnRequest = 27, WorkerDespawnRequest = 28,
-            WorkerInteractionRpc = 29, ClientDebugRegionRequest = 30, ClientDebugRegion = 31, WorkerState = 32, NamedMessage = 33, ClientReady = 34, ClientRoster = 35 }
-        private const ushort LocalProtocolVersion = 14;
+            WorkerInteractionRpc = 29, ClientDebugRegionRequest = 30, ClientDebugRegion = 31, WorkerState = 32, NamedMessage = 33, ClientReady = 34, ClientRoster = 35, DisconnectNotice = 36 }
+        private const ushort LocalProtocolVersion = 15;
         private readonly NetworkManager runtime;
         private NetworkObject playerPrefab => runtime.playerPrefab;
         private NetworkPrefabsList[] networkPrefabsLists => runtime.networkPrefabsLists;
@@ -143,14 +143,10 @@ namespace AtlasNet
                 var center = runtime.localPartitionCenter != null ? runtime.localPartitionCenter.position : Vector3.zero;
                 world = new LocalVoronoi(new Vector2(center.x, center.z), runtime.localRegionDebugExtent);
                 world.AddWorker(0);
-                sharedPhysicsRegion = runtime.localSharedPhysicsRegion;
-                physicsRegion = runtime.localPhysicsRegion;
-                physicsRegionPadding = Mathf.Max(0f, runtime.localPhysicsRegionPadding);
             }
+            runtime.ResetConnectionDiagnostics();
             transport = CreateTransport(server);
-            transport.Connected += OnConnected;
-            transport.Disconnected += OnDisconnected;
-            transport.Received += OnReceived;
+            AttachTransport();
             IsServer = server;
             IsClient = client;
             localWorld = world;
@@ -198,6 +194,7 @@ namespace AtlasNet
             clientResidents.Clear();
             workerSessions.Clear();
             workerResidents.Clear();
+            pendingDisconnects.Clear();
             pendingHandoffs.Clear();
             queuedAuthorityRpcs.Clear();
             lastHandoffTick.Clear();
@@ -221,6 +218,8 @@ namespace AtlasNet
         {
             if (!IsRunning) return;
             transport.Poll();
+            if (!IsRunning) return;
+            ExpireDisconnects();
             if (!IsRunning) return;
             accumulator += deltaTime;
             float interval = 1f / tickRate;
@@ -407,6 +406,7 @@ namespace AtlasNet
 
         private byte[] MakeSpawn(CanonicalEntity entity, SessionId reader)
         {
+            RefreshCanonicalSnapshot(entity);
             using (var writer = new NetWriter())
             {
                 writer.Write((byte)Packet.Spawn);
@@ -424,7 +424,16 @@ namespace AtlasNet
             writer.Write(entity.Rotation);
             writer.Write(entity.Worker);
             writer.Write(entity.Epoch);
-            writer.WriteRaw(reader == entity.Owner ? entity.OwnerSnapshot : entity.PublicSnapshot);
+            writer.WriteBytes(reader == entity.Owner ? entity.OwnerSnapshot : entity.PublicSnapshot);
+            int count = 0;
+            foreach (var pair in entity.VariableUpdates)
+                if (reader == entity.Owner || entity.Behaviours[pair.Key.Behaviour].Variables[pair.Key.Variable].Read == NetworkVariableReadPermission.Everyone) count++;
+            writer.Write(count);
+            foreach (var pair in entity.VariableUpdates)
+            {
+                if (reader != entity.Owner && entity.Behaviours[pair.Key.Behaviour].Variables[pair.Key.Variable].Read != NetworkVariableReadPermission.Everyone) continue;
+                writer.Write(pair.Key.Behaviour); writer.Write(pair.Key.Variable); writer.WriteBytes(pair.Value);
+            }
         }
 
         private void OnConnected(SessionId session)
@@ -443,6 +452,9 @@ namespace AtlasNet
 
         private void OnDisconnected(SessionId session)
         {
+            pendingDisconnects.Remove(session);
+            if ((!IsServer || isWorker) && string.IsNullOrEmpty(runtime.DisconnectReason))
+                runtime.ReportDisconnectReason("The remote server disconnected.");
             if (isWorker)
             {
                 if (runtime.ShouldLog(LogType.Warning)) runtime.Log(LogType.Warning, "AtlasNet local coordinator disconnected");
@@ -692,13 +704,24 @@ namespace AtlasNet
             {
                 using (var reader = new NetReader(bytes))
                 {
-                    switch ((Packet)reader.ReadByte())
+                    Packet kind = (Packet)reader.ReadByte();
+                    if (pendingDisconnects.ContainsKey(sender)) return;
+                    switch (kind)
                     {
+                        case Packet.DisconnectNotice:
+                            if (!IsServer || isWorker)
+                            {
+                                string reason = reader.ReadString();
+                                ValidateDisconnectReason(reason);
+                                if (reader.HasRemaining) throw new InvalidOperationException("Trailing disconnect notice data.");
+                                runtime.ReportDisconnectReason(reason);
+                            }
+                            break;
                         case Packet.NamedMessage:
                             ReceiveNamedMessage(sender, reader);
                             break;
                         case Packet.ClientHello:
-                            if (IsServer && !isWorker) { ValidateHello(reader,true); var admission=reader.ReadBytes(); if(reader.HasRemaining)throw new InvalidOperationException("Trailing client admission data."); if(runtime.ConnectionApproval==null||runtime.ConnectionApproval(sender,admission))AcceptClient(sender);else transport.Disconnect(sender); }
+                            if (IsServer && !isWorker) { ValidateHello(reader,true); var admission=reader.ReadBytes(); if(reader.HasRemaining)throw new InvalidOperationException("Trailing client admission data."); if(runtime.ConnectionApproval==null||runtime.ConnectionApproval(sender,admission))AcceptClient(sender);else BeginDisconnect(sender, "Connection approval rejected."); }
                             break;
                         case Packet.WorkerHello:
                             if (IsServer && !isWorker) { ValidateHello(reader); AcceptWorker(sender); }
@@ -834,7 +857,28 @@ namespace AtlasNet
             if (spawned.ContainsKey(id)) throw new InvalidOperationException($"Duplicate {recipient.ToLowerInvariant()} entity {id}");
             if (!registry.TryGetValue(prefabId, out var prefab))
                 throw new InvalidOperationException($"{recipient} lacks registered prefab '{prefabId}' for entity {id}. Register the same prefab ID on every instance.");
-            runtime.CreateReplica(prefab, id, owner, position, rotation, authorityWorker, authorityEpoch, reader);
+            byte[] snapshot = reader.ReadBytes();
+            int count = reader.ReadInt();
+            if (count < 0 || count > reader.Remaining / 7) throw new InvalidOperationException("Invalid initial variable count.");
+            var updates = new Dictionary<(byte Behaviour, ushort Variable), byte[]>();
+            for (int i = 0; i < count; i++)
+            {
+                var key = (reader.ReadByte(), reader.ReadUShort());
+                if (!updates.TryAdd(key, reader.ReadBytes())) throw new InvalidOperationException("Duplicate initial variable.");
+            }
+            if (reader.HasRemaining) throw new InvalidOperationException("Trailing replica data.");
+            using var state = new NetReader(snapshot);
+            runtime.CreateReplica(prefab, id, owner, position, rotation, authorityWorker, authorityEpoch, state, false,
+                obj => ApplyInitialVariables(obj, updates));
+        }
+
+        private static void ApplyInitialVariables(NetworkObject obj, Dictionary<(byte Behaviour, ushort Variable), byte[]> updates)
+        {
+            foreach (var pair in updates)
+            {
+                if (pair.Key.Behaviour >= obj.Behaviours.Length) throw new InvalidOperationException("Invalid initial variable behaviour.");
+                obj.Behaviours[pair.Key.Behaviour].ReadVariable(pair.Key.Variable, pair.Value);
+            }
         }
 
         private void RemoveLocal(EntityId id) => runtime.RemoveReplica(id);
@@ -860,6 +904,7 @@ namespace AtlasNet
                     permission.Write != NetworkVariableWritePermission.Owner)
                     throw new InvalidOperationException($"Unauthorized variable update for entity {id} from session {sender}");
                 FindBehaviour(id, index)?.ReadVariable(variable, payload);
+                entity.VariableUpdates[(index, variable)] = payload;
                 byte[] update = MakeVariablePacket(id, index, variable, payload);
                 RememberOwnerUpdate(id, update);
                 SendToWorkers(id, update);

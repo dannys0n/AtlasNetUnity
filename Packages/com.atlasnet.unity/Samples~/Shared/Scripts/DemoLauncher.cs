@@ -27,7 +27,7 @@ public sealed class DemoLauncher : MonoBehaviour
         joinAddress=manager.Address;joinPort=manager.Port.ToString();
         joinTransport=Application.platform==RuntimePlatform.WebGLPlayer?1:(int)manager.ClientConnection;
         bool crossServer = SceneManager.GetActiveScene().name.Contains("Authority") ||
-            SceneManager.GetActiveScene().name == "04_Physics";
+            (SceneManager.GetActiveScene().name == "04_Physics" || SceneManager.GetActiveScene().name == "07_ClientPhysics");
         manager.PlayerSpawnPosition = crossServer
             ? session => (session.Value & 1) == 1 ? new Vector3(2, 1, 2) : new Vector3(-6, 1, -6)
             : session => new Vector3((session.Value - 1) * 2.5f, advancedDiagnostics ? 1 : 0, 0);
@@ -94,7 +94,11 @@ public sealed class DemoLauncher : MonoBehaviour
 
     private void Update()
     {
-        if (!manager.IsRunning) { reportedOwner = false; localPlayer = null; extra = null; }
+        if (!manager.IsRunning)
+        {
+            reportedOwner = false; localPlayer = null; extra = null;
+            if (!string.IsNullOrEmpty(manager.DisconnectReason)) error = manager.DisconnectReason;
+        }
         if (overviewCamera != null)
         {
             bool overview = !manager.IsRunning || manager.IsServer || !advancedDiagnostics;
@@ -145,6 +149,8 @@ public sealed class DemoLauncher : MonoBehaviour
         GUILayout.BeginArea(new Rect(10, 10, 420, 480), GUI.skin.box);
         GUILayout.Label(SceneManager.GetActiveScene().name.Replace("_", " "));
         GUILayout.Label("WASD: move | F: RPC counter | P/O: spawn/despawn extra");
+        if (SceneManager.GetActiveScene().name == "07_ClientPhysics")
+            GUILayout.Label("Client simulates its Rigidbody. Cubes stay server-authoritative.");
         if (SceneManager.GetActiveScene().name.Contains("AnimatorSync")) GUILayout.Label("Space: wave (replicated Animator trigger)");
         if (!manager.IsRunning)
         {

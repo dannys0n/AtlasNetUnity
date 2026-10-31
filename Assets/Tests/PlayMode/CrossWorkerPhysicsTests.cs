@@ -36,10 +36,10 @@ namespace AtlasNetDemo.Tests
             readonly NetworkPrefabsList list;
             public readonly NetworkObject Prefab, OrdinaryPrefab;
 
-            public World(bool shared = true)
+            public World()
             {
                 template = new GameObject("Physics template"); template.SetActive(false);
-                Prefab = template.AddComponent<NetworkObject>(); Set(Prefab, "prefabId", "shared-physics-body");
+                Prefab = template.AddComponent<NetworkObject>(); Set(Prefab, "prefabId", "spatial-physics-body");
                 var body = template.AddComponent<Rigidbody>(); body.useGravity = false;
                 body.interpolation = RigidbodyInterpolation.None;
                 template.AddComponent<BoxCollider>();
@@ -50,14 +50,27 @@ namespace AtlasNetDemo.Tests
                 Set(ordinaryTemplate.AddComponent<NetworkTransform>(), "rotationWriter", TransformWriter.Server);
                 list = ScriptableObject.CreateInstance<NetworkPrefabsList>();
                 Set(list, "prefabs", new List<NetworkObject> { Prefab, OrdinaryPrefab });
+                // Probe both protocols in the test port range. Windows may reserve
+                // its ephemeral ranges differently for UDP and TCP.
+                int port = 0;
+                for (int candidate = 17879; candidate < 17979 && port == 0; candidate++)
+                {
+                    var tcp = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Any, candidate);
+                    try
+                    {
+                        using var udp = new System.Net.Sockets.UdpClient(candidate);
+                        tcp.Start(); port = candidate;
+                    }
+                    catch (System.Net.Sockets.SocketException) { }
+                    finally { tcp.Stop(); }
+                }
+                if (port == 0) throw new InvalidOperationException("No free UDP + WebSocket test port.");
                 NetworkManager Create(string name)
                 {
                     var m = new GameObject(name).AddComponent<NetworkManager>();
                     Set(m, "networkPrefabsLists", new[] { list }); Set(m, "automaticLocalHandoffs", true);
-                    Set(m, "localSharedPhysicsRegion", shared);
-                    Set(m, "localPhysicsRegion", new Bounds(new Vector3(0, 5, 0), new Vector3(8, 20, 8)));
-                    Set(m, "localPhysicsRegionPadding", 1f); Set(m, "localBoundaryMargin", 0.05f);
-                    m.ConfigureConnection("127.0.0.1", 17879); return m;
+                    Set(m, "localBoundaryMargin", 0.05f);
+                    m.ConfigureConnection("127.0.0.1", port); return m;
                 }
                 Server = Create("Physics coordinator"); Worker = Create("Physics worker"); Client = Create("Physics observer");
                 managers = new[] { Server, Worker, Client };
@@ -123,71 +136,34 @@ namespace AtlasNetDemo.Tests
         }
 
         [UnityTest]
-        public IEnumerator ContinuousPushingAcrossSpatialSplitUsesOneSolver()
+        public IEnumerator MovingRigidbodyCrossesBothDirectionsWithOneAuthorityAndPreservedVelocity()
         {
             using var world = new World(); yield return world.Ready();
-            var source = world.Spawn(new Vector3(-1.6f, 0.5f, 0));
-            var target = world.Spawn(new Vector3(0.4f, 0.5f, 0));
-            var ordinary = world.Spawn(new Vector3(3, 0.5f, 2), ordinary: true);
-            yield return world.Until(() => world.Authority(ordinary)?.SimulationWorker > 0, "ordinary actor keeps spatial ownership");
-            Assert.AreEqual(0ul, world.Authority(source).SimulationWorker);
-            Assert.AreEqual(0ul, world.Authority(target).SimulationWorker);
-            yield return world.Step(80, () => world.Authority(source).GetComponent<Rigidbody>().linearVelocity = Vector3.right * 3f);
-            var pushed = world.Authority(target);
-            Assert.AreEqual(0ul, pushed.SimulationWorker, "The Voronoi boundary must not split a continuous contact.");
-            Assert.AreEqual(0u, pushed.AuthorityEpoch, "A body already in the shared area must not migrate back and forth.");
-            Assert.Greater(pushed.transform.position.x, 2.5f, "Sustained native contact should move the box, not only give one impulse.");
-            yield return world.Until(() => world.Client.TryGet(target, out var ghost) && ghost.transform.position.x > 2f, "client sees pushed body");
-            world.AssertGhostsKinematic(); LogAssert.NoUnexpectedReceived();
-        }
-
-        [UnityTest]
-        public IEnumerator StackSettlesAcrossSpatialBoundaryWithoutHandoffOrForwardedForces()
-        {
-            using var world = new World(); yield return world.Ready();
-            var ids = new[] { 0, 1, 2 }.Select(i => world.Spawn(new Vector3(0.2f, 0.5f + i * 1.03f, 0))).ToArray();
-            foreach (var id in ids) world.Authority(id).GetComponent<Rigidbody>().useGravity = true;
-            yield return world.Step(150);
-            for (int i = 0; i < ids.Length; i++)
-            {
-                var obj = world.Authority(ids[i]); var body = obj.GetComponent<Rigidbody>();
-                Assert.AreEqual(0ul, obj.SimulationWorker); Assert.AreEqual(0u, obj.AuthorityEpoch);
-                Assert.That(obj.transform.position.y, Is.EqualTo(0.5f + i).Within(0.1f));
-                Assert.That(obj.transform.position.x, Is.EqualTo(0.2f).Within(0.15f));
-                Assert.Less(body.linearVelocity.magnitude, 0.15f, "A settled stack must not receive synthetic contact kicks.");
-            }
-            world.AssertGhostsKinematic(); LogAssert.NoUnexpectedReceived();
-        }
-
-        [UnityTest]
-        public IEnumerator EnteringBodyPinsToRegionAndExitHysteresisPreventsPingPong()
-        {
-            using var world = new World(); yield return world.Ready();
-            var id = world.Spawn(new Vector3(12, 1, 0));
-            yield return world.Until(() => world.Authority(id)?.SimulationWorker > 0, "outside body transfers spatially");
-            var old = world.Authority(id); uint epoch = old.AuthorityEpoch;
-            old.GetComponent<Rigidbody>().position = new Vector3(5.5f, 1, 0);
-            // Entry must override the ordinary two-second handoff cooldown.
-            yield return world.Until(() => world.Authority(id)?.SimulationWorker == 0 && world.Authority(id).AuthorityEpoch > epoch, "entry into shared authority");
-            var pinned = world.Authority(id); uint entryEpoch = pinned.AuthorityEpoch;
-            pinned.GetComponent<Rigidbody>().position = new Vector3(6.2f, 1, 0);
-            yield return world.Step(120);
-            Assert.AreEqual(0ul, world.Authority(id).SimulationWorker);
-            Assert.AreEqual(entryEpoch, world.Authority(id).AuthorityEpoch, "The release margin must prevent boundary churn.");
-            var body = world.Authority(id).GetComponent<Rigidbody>();
-            body.position = new Vector3(12, 1, 0); body.linearVelocity = Vector3.right;
-            yield return world.Until(() => world.Authority(id)?.SimulationWorker > 0, "released body returns to spatial placement");
-            Assert.That(world.Authority(id).GetComponent<Rigidbody>().linearVelocity.x, Is.EqualTo(1f).Within(0.15f));
-            world.AssertGhostsKinematic(); LogAssert.NoUnexpectedReceived();
-        }
-
-        [UnityTest]
-        public IEnumerator DisabledRegionRetainsOrdinarySpatialPhysicsPlacement()
-        {
-            using var world = new World(shared: false); yield return world.Ready();
-            var id = world.Spawn(new Vector3(3, 1, 0));
-            yield return world.Until(() => world.Authority(id)?.SimulationWorker > 0, "physics body spatial placement without shared region");
+            var id = world.Spawn(new Vector3(-1.5f, 1, 0));
+            var obj = world.Authority(id);
+            Assert.AreEqual(0ul, obj.SimulationWorker);
+            obj.GetComponent<Rigidbody>().linearVelocity = Vector3.right * 2;
+            yield return world.Until(() => world.Authority(id)?.SimulationWorker > 0, "moving body enters neighboring worker");
+            obj = world.Authority(id);
+            Assert.Greater(obj.AuthorityEpoch, 0);
+            Assert.That(obj.GetComponent<Rigidbody>().linearVelocity.x, Is.EqualTo(2f).Within(.15f));
             Assert.AreEqual(1, world.Server.LocalAuthorityCount + world.Worker.LocalAuthorityCount);
+            uint epoch = obj.AuthorityEpoch;
+            obj.GetComponent<Rigidbody>().linearVelocity = Vector3.left * 2;
+            yield return world.Until(() => world.Authority(id)?.SimulationWorker == 0 && world.Authority(id).AuthorityEpoch > epoch, "moving body returns to coordinator after cooldown");
+            Assert.That(world.Authority(id).GetComponent<Rigidbody>().linearVelocity.x, Is.EqualTo(-2f).Within(.15f));
+            world.AssertGhostsKinematic(); LogAssert.NoUnexpectedReceived();
+        }
+
+        [UnityTest]
+        public IEnumerator RigidbodyAndOrdinaryEntityUseTheSameSpatialPlacement()
+        {
+            using var world = new World(); yield return world.Ready();
+            var body = world.Spawn(new Vector3(3, 1, 0));
+            var ordinary = world.Spawn(new Vector3(3, 1, 2), ordinary: true);
+            yield return world.Until(() => world.Authority(body)?.SimulationWorker > 0 && world.Authority(ordinary)?.SimulationWorker > 0, "spatial placement for both entity types");
+            Assert.AreEqual(world.Authority(ordinary).SimulationWorker, world.Authority(body).SimulationWorker);
+            Assert.AreEqual(2, world.Server.LocalAuthorityCount + world.Worker.LocalAuthorityCount);
             world.AssertGhostsKinematic(); LogAssert.NoUnexpectedReceived();
         }
     }

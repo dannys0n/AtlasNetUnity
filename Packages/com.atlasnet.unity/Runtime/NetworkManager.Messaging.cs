@@ -23,6 +23,25 @@ namespace AtlasNet
         public bool IsConnectedClient => IsRunning && IsClient && LocalSession.Value != 0;
         public CustomMessagingManager CustomMessagingManager => customMessagingManager ??= new CustomMessagingManager(this);
 
+        public string DisconnectReason { get; private set; } = string.Empty;
+        public string LastTransportError { get; private set; } = string.Empty;
+        public event Action OnTransportFailure;
+
+        internal void ResetConnectionDiagnostics()
+        { DisconnectReason = LastTransportError = string.Empty; }
+
+        /// <summary>Backend adapters report a reason before raising disconnection callbacks.</summary>
+        public void ReportDisconnectReason(string reason) => DisconnectReason = reason ?? string.Empty;
+
+        /// <summary>Fatal adapter failure. Notify gameplay, then stop this session.</summary>
+        public void ReportTransportFailure(string reason)
+        {
+            LastTransportError = reason ?? "Transport failed.";
+            DisconnectReason = LastTransportError;
+            try { OnTransportFailure?.Invoke(); }
+            finally { if (IsRunning) Stop(); }
+        }
+
         public event Action OnServerStarted;
         public event Action<bool> OnServerStopped;
         public event Action<bool> OnClientStopped;
@@ -67,6 +86,6 @@ namespace AtlasNet
             CustomMessagingManager.Dispatch(sender, messageId, payload);
         }
 
-        public void DisconnectClient(SessionId session) => Backend.DisconnectClient(session);
+        public void DisconnectClient(SessionId session, string reason = null) => Backend.DisconnectClient(session, reason);
     }
 }
