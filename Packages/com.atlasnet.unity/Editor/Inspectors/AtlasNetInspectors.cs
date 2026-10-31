@@ -29,6 +29,14 @@ namespace AtlasNet.Editor
             EditorGUILayout.PropertyField(serializedObject.FindProperty("localPartitionCenter"), new GUIContent("Partition Center", "The coordinating server samples this Transform at session start."));
             EditorGUILayout.PropertyField(serializedObject.FindProperty("localRegionDebugExtent"), new GUIContent("Debug View Extent", "Rendering crop only. Authority regions extend indefinitely."));
             EditorGUILayout.PropertyField(serializedObject.FindProperty("localBoundaryMargin"), new GUIContent("Boundary Margin"));
+            EditorGUILayout.PropertyField(serializedObject.FindProperty("localSharedPhysicsRegion"), new GUIContent("Shared Physics Region"));
+            using (new EditorGUI.DisabledScope(!serializedObject.FindProperty("localSharedPhysicsRegion").boolValue))
+            {
+                EditorGUILayout.PropertyField(serializedObject.FindProperty("localPhysicsRegion"), new GUIContent("Physics Region (World)"));
+                EditorGUILayout.PropertyField(serializedObject.FindProperty("localPhysicsRegionPadding"), new GUIContent("Physics Region Padding"));
+            }
+            if (serializedObject.FindProperty("localSharedPhysicsRegion").boolValue)
+                EditorGUILayout.HelpBox("With automatic handoffs enabled, NetworkRigidbody bodies in this area share the coordinating server's PhysX world. Other entities retain spatial placement. Configure on the coordinator before starting.", MessageType.None);
 
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("Prefab Settings", EditorStyles.boldLabel);
@@ -76,6 +84,18 @@ namespace AtlasNet.Editor
                     if (GUILayout.Button("Join Worker")) manager.StartWorker();
                 }
             }
+        }
+
+        private void OnSceneGUI()
+        {
+            serializedObject.Update();
+            if (!serializedObject.FindProperty("localSharedPhysicsRegion").boolValue) return;
+            var region = serializedObject.FindProperty("localPhysicsRegion").boundsValue;
+            Color previous = Handles.color;
+            Handles.color = new Color(1f, 0.55f, 0.12f, 1f);
+            Handles.DrawWireCube(region.center, region.size);
+            Handles.Label(region.center + Vector3.up * region.extents.y, "Shared physics: coordinator");
+            Handles.color = previous;
         }
 
         private static bool IsRegistered(NetworkObject player, SerializedProperty lists)

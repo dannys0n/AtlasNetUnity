@@ -27,6 +27,9 @@ namespace AtlasNet
             public float InterestRadius;
             public float ExitPadding;
             public bool CanHandoff;
+            public bool PhysicsBody;
+            public float PhysicsRadius;
+            public bool InPhysicsRegion;
             public BehaviourSchema[] Behaviours;
 
             public void Capture(NetworkObject obj)
@@ -85,6 +88,9 @@ namespace AtlasNet
         private readonly Dictionary<EntityId, List<QueuedAuthorityRpc>> queuedAuthorityRpcs =
             new Dictionary<EntityId, List<QueuedAuthorityRpc>>();
         private ILocalAuthorityPlacement localWorld;
+        private bool sharedPhysicsRegion;
+        private Bounds physicsRegion;
+        private float physicsRegionPadding;
         private bool isWorker;
         private ulong localWorkerId;
         private Vector2[] localRegion = Array.Empty<Vector2>();
@@ -138,6 +144,19 @@ namespace AtlasNet
                     schema.AnimatorWriter = animator.Writer;
                 }
                 record.Behaviours[i] = schema;
+            }
+            record.PhysicsBody = obj.GetComponent<NetworkRigidbody>() != null;
+            if (record.PhysicsBody)
+            {
+                // Cache conservative geometry once, not a collider query per tick.
+                var body = obj.GetComponent<Rigidbody>();
+                foreach (var collider in obj.GetComponentsInChildren<Collider>())
+                {
+                    if (!collider.enabled || collider.isTrigger || collider.attachedRigidbody != body) continue;
+                    Bounds bounds = collider.bounds;
+                    record.PhysicsRadius = Mathf.Max(record.PhysicsRadius,
+                        (bounds.center - obj.transform.position).magnitude + bounds.extents.magnitude);
+                }
             }
             record.Capture(obj);
             directory.Add(record.Id, record);
@@ -674,15 +693,18 @@ namespace AtlasNet
             byte index = reader.ReadByte();
             uint method = reader.ReadUInt();
             byte[] payload = reader.ReadBytes();
-            var targetRpc = RpcSchemaFor(Schema(targetId, index), method);
-            if (reader.HasRemaining || !workerSessions.Contains(sender) ||
-                !directory.TryGetValue(sourceId, out var source) ||
+            if (reader.HasRemaining || !workerSessions.Contains(sender))
+                throw new InvalidOperationException("Unauthorized worker entity interaction");
+            // Reliable entity interactions can cross an export/despawn in flight.
+            // The old authority's request is obsolete, not a protocol failure.
+            if (!directory.TryGetValue(sourceId, out var source) ||
                 source.Worker != sender.Value || source.Epoch != sourceEpoch ||
-                pendingHandoffs.ContainsKey(sourceId) ||
-                !workerResidents.TryGetValue(sender, out var residents) || !residents.Contains(targetId) ||
+                pendingHandoffs.ContainsKey(sourceId) || !directory.ContainsKey(targetId)) return;
+            var targetRpc = RpcSchemaFor(Schema(targetId, index), method);
+            if (!workerResidents.TryGetValue(sender, out var residents) || !residents.Contains(targetId) ||
                 targetRpc.Destination != RpcDestination.Authority ||
                 targetRpc.Permission != RpcInvokePermission.Server)
-                throw new InvalidOperationException("Stale or unauthorized worker entity interaction");
+                throw new InvalidOperationException("Unauthorized worker entity interaction");
             if (spawned.TryGetValue(targetId, out var localTarget) && localTarget.HasAuthority)
                 localTarget.Behaviours[index].ReceiveRpc(method, payload, default, RpcDestination.Authority, default);
             else ForwardAuthorityRpc(targetId, index, method, payload, default);
@@ -985,10 +1007,18 @@ namespace AtlasNet
             {
                 if (started >= 4) break;
                 if (!entity.CanHandoff || pendingHandoffs.ContainsKey(entity.Id)) continue;
-                if (lastHandoffTick.TryGetValue(entity.Id, out uint last) && Tick - last < tickRate * 2) continue;
-                ulong destination = localWorld.OwnerAt(entity.Position.x, entity.Position.z);
-                if (destination == entity.Worker ||
-                    !localWorld.ShouldMove(entity.Worker, entity.Position.x, entity.Position.z, localBoundaryMargin)) continue;
+                entity.InPhysicsRegion = sharedPhysicsRegion && entity.PhysicsBody &&
+                    LocalWorldPolicy.WithinPhysicsRegion(physicsRegion, entity.Position,
+                        entity.PhysicsRadius, physicsRegionPadding, entity.InPhysicsRegion);
+                // A region is one Unity physics world. Spatial Voronoi boundaries
+                // do not split it; the coordinator is its fixed simulation worker.
+                ulong destination = entity.InPhysicsRegion ? 0 : localWorld.OwnerAt(entity.Position.x, entity.Position.z);
+                if (destination == entity.Worker) continue;
+                if (!entity.InPhysicsRegion)
+                {
+                    if (lastHandoffTick.TryGetValue(entity.Id, out uint last) && Tick - last < tickRate * 2) continue;
+                    if (!localWorld.ShouldMove(entity.Worker, entity.Position.x, entity.Position.z, localBoundaryMargin)) continue;
+                }
                 HandoffToWorker(entity, destination);
                 started++;
             }

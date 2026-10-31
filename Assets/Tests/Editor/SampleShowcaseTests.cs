@@ -48,6 +48,7 @@ namespace AtlasNetDemo.Tests
                 var scene = EditorSceneManager.OpenScene(path);
                 var config = new SerializedObject(Object.FindAnyObjectByType<NetworkManager>());
                 Assert.IsNotNull(config.FindProperty("localPartitionCenter").objectReferenceValue, path);
+                Assert.AreEqual(path.EndsWith("04_Physics.unity"), config.FindProperty("localSharedPhysicsRegion").boolValue, path);
                 Assert.Greater(config.FindProperty("localRegionDebugExtent").floatValue, 0, path);
                 var overlay = config.targetObject is NetworkManager manager ? manager.GetComponent("ClientBoundaryOverlay") : null;
                 Assert.IsNotNull(overlay, path);

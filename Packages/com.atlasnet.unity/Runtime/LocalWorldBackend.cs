@@ -16,7 +16,7 @@ namespace AtlasNet
             WorkerExportRequest = 21, WorkerExport = 22, WorkerAbort = 23, WorkerAnimator = 24,
             WorkerRegion = 25, WorkerRegionRequest = 26, WorkerSpawnRequest = 27, WorkerDespawnRequest = 28,
             WorkerInteractionRpc = 29, ClientDebugRegionRequest = 30, ClientDebugRegion = 31, WorkerState = 32, NamedMessage = 33, ClientReady = 34, ClientRoster = 35 }
-        private const ushort LocalProtocolVersion = 12;
+        private const ushort LocalProtocolVersion = 14;
         private readonly NetworkManager runtime;
         private NetworkObject playerPrefab => runtime.playerPrefab;
         private NetworkPrefabsList[] networkPrefabsLists => runtime.networkPrefabsLists;
@@ -143,6 +143,9 @@ namespace AtlasNet
                 var center = runtime.localPartitionCenter != null ? runtime.localPartitionCenter.position : Vector3.zero;
                 world = new LocalVoronoi(new Vector2(center.x, center.z), runtime.localRegionDebugExtent);
                 world.AddWorker(0);
+                sharedPhysicsRegion = runtime.localSharedPhysicsRegion;
+                physicsRegion = runtime.localPhysicsRegion;
+                physicsRegionPadding = Mathf.Max(0f, runtime.localPhysicsRegionPadding);
             }
             transport = CreateTransport(server);
             transport.Connected += OnConnected;

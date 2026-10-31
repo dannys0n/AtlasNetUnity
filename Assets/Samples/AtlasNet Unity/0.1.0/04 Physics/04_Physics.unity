@@ -378,6 +378,10 @@ PrefabInstance:
       value: 
       objectReference: {fileID: 0}
     - target: {fileID: 3833728367039662728, guid: a59d880e91ff11144a641fd7d11c92ef, type: 3}
+      propertyPath: localSharedPhysicsRegion
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 3833728367039662728, guid: a59d880e91ff11144a641fd7d11c92ef, type: 3}
       propertyPath: networkPrefabsLists.Array.size
       value: 2
       objectReference: {fileID: 0}
