@@ -6,19 +6,22 @@ EditorBuildSettings:
   serializedVersion: 2
   m_Scenes:
   - enabled: 1
-    path: Assets/Samples/AtlasNet Unity/0.1.0/Simple Authority/Scenes/ClientCrossServer.unity
+    path: Assets/Samples/AtlasNet Unity/0.1.0/01 QuickStart/01_QuickStart.unity
+    guid: 8bf089e0e2d13b94eb74b172d6280e74
+  - enabled: 1
+    path: Assets/Samples/AtlasNet Unity/0.1.0/02 ClientAuthority/02_ClientAuthority.unity
     guid: c2000000000000000000000000000004
   - enabled: 1
-    path: Assets/Samples/AtlasNet Unity/0.1.0/Simple Authority/Scenes/ServerCrossServer.unity
+    path: Assets/Samples/AtlasNet Unity/0.1.0/03 ServerAuthority/03_ServerAuthority.unity
     guid: c2000000000000000000000000000005
   - enabled: 1
-    path: Assets/Samples/AtlasNet Unity/0.1.0/Simple Authority/Scenes/ScaleDemo.unity
+    path: Assets/Samples/AtlasNet Unity/0.1.0/04 Physics/04_Physics.unity
+    guid: cd36c23d90394c7f8d50fae0b3afeaa4
+  - enabled: 1
+    path: Assets/Samples/AtlasNet Unity/0.1.0/05 InterestAndScale/05_InterestAndScale.unity
     guid: c2000000000000000000000000000003
   - enabled: 1
-    path: Assets/Samples/AtlasNet Unity/0.1.0/Simple Authority/Scenes/PhysicsDemo.unity
-    guid: cd36c23d90394c7f8d50fae0b3afeaa4
-  - enabled: 0
-    path: Assets/Scenes/SampleScene.unity
-    guid: 99c9720ab356a0642a771bea13969a05
+    path: Assets/Samples/AtlasNet Unity/0.1.0/06 AnimatorSync/06_AnimatorSync.unity
+    guid: a686211a0a4f4bc44bf232278bee74be
   m_configObjects:
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: 052faaac586de48259a63d0c4782560b, type: 3}

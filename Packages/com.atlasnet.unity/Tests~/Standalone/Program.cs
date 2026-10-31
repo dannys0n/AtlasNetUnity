@@ -13,6 +13,7 @@ static class Program
     static void Main()
     {
         HandoffChecks.Run();
+        PartitionChecks.Run();
         var entity = new AtlasNet.EntityId(829381);
         var session = new SessionId(42);
         using (var writer = new NetWriter())
@@ -123,3 +124,4 @@ static class Program
         return new LocalVoronoi.Seed(x / vertices.Length, z / vertices.Length);
     }
 }
+

@@ -13,9 +13,39 @@
   },
   "samples": [
     {
-      "displayName": "Simple Authority Demo",
-      "description": "Client/server authority, local worker handoff, scale, and physics examples.",
-      "path": "Samples~/SimpleAuthority"
+      "displayName": "00 Shared",
+      "description": "Import this first. Shared scripts, prefabs, primitive animation assets, and URP materials required by every AtlasNet sample.",
+      "path": "Samples~/Shared"
+    },
+    {
+      "displayName": "01 QuickStart",
+      "description": "Requires 00 Shared. Minimal host/join, owner movement, spawning, synchronized counters, and RPCs.",
+      "path": "Samples~/QuickStart"
+    },
+    {
+      "displayName": "02 ClientAuthority",
+      "description": "Requires 00 Shared. Owner-written movement and development dummy-backend worker handoffs.",
+      "path": "Samples~/ClientAuthority"
+    },
+    {
+      "displayName": "03 ServerAuthority",
+      "description": "Requires 00 Shared. Server-simulated movement, owner input, and development dummy-backend worker handoffs.",
+      "path": "Samples~/ServerAuthority"
+    },
+    {
+      "displayName": "04 Physics",
+      "description": "Requires 00 Shared. Server-authoritative rigidbodies, replicated poses, and applied impulses.",
+      "path": "Samples~/Physics"
+    },
+    {
+      "displayName": "05 InterestAndScale",
+      "description": "Requires 00 Shared. Adjustable entity count, interest boundaries, and development worker distribution.",
+      "path": "Samples~/InterestAndScale"
+    },
+    {
+      "displayName": "06 AnimatorSync",
+      "description": "Requires 00 Shared. Primitive animated players with owner-written movement parameters, network triggers, and late-join state.",
+      "path": "Samples~/AnimatorSync"
     }
   ]
 }

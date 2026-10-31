@@ -8,7 +8,7 @@ namespace AtlasNetDemo.Tests
 {
     public sealed class AtlasNetAssetTests
     {
-        private const string Sample = "Assets/Samples/AtlasNet Unity/0.1.0/Simple Authority/";
+        private const string Sample = "Assets/Samples/AtlasNet Unity/0.1.0/00 Shared/";
 
         [Test]
         public void IdentityAndPayloadRoundTrip()
@@ -77,13 +77,13 @@ namespace AtlasNetDemo.Tests
             }
         }
 
-        [TestCase("ClientCrossServer.unity", TransformWriter.Owner)]
-        [TestCase("ServerCrossServer.unity", TransformWriter.Server)]
-        [TestCase("ScaleDemo.unity", TransformWriter.Server)]
-        [TestCase("PhysicsDemo.unity", TransformWriter.Server)]
+        [TestCase("02 ClientAuthority/02_ClientAuthority.unity", TransformWriter.Owner)]
+        [TestCase("03 ServerAuthority/03_ServerAuthority.unity", TransformWriter.Server)]
+        [TestCase("05 InterestAndScale/05_InterestAndScale.unity", TransformWriter.Server)]
+        [TestCase("04 Physics/04_Physics.unity", TransformWriter.Server)]
         public void SceneRegistryAndPlayerWiring(string sceneName, TransformWriter expectedPositionWriter)
         {
-            EditorSceneManager.OpenScene(Sample + "Scenes/" + sceneName);
+            EditorSceneManager.OpenScene("Assets/Samples/AtlasNet Unity/0.1.0/" + sceneName);
             var manager = Object.FindAnyObjectByType<NetworkManager>();
             Assert.IsNotNull(manager);
             Assert.DoesNotThrow(() => manager.ValidateRegistry());
@@ -94,8 +94,8 @@ namespace AtlasNetDemo.Tests
             Assert.IsNotNull(player);
             Assert.AreEqual(GlobalObjectId.GetGlobalObjectIdSlow(player).ToString(), player.PrefabId);
             Assert.AreSame(player, manager.PlayerPrefab);
-            Assert.AreEqual(sceneName == "PhysicsDemo.unity" ? 2 : 1, entries.arraySize);
-            bool scale = sceneName == "ScaleDemo.unity";
+            Assert.AreEqual(sceneName.EndsWith("04_Physics.unity") ? 2 : 1, entries.arraySize);
+            bool scale = sceneName.EndsWith("05_InterestAndScale.unity");
             var playerList = entries.GetArrayElementAtIndex(0).objectReferenceValue as NetworkPrefabsList;
             Assert.IsNotNull(playerList);
             CollectionAssert.Contains(playerList.Prefabs, player);
@@ -114,7 +114,7 @@ namespace AtlasNetDemo.Tests
             }
             else
             {
-                if (sceneName == "PhysicsDemo.unity")
+                if (sceneName.EndsWith("04_Physics.unity"))
                     Assert.IsNotNull(player.GetComponent<Rigidbody>());
                 else
                     Assert.IsNotNull(player.GetComponent<CharacterController>());
@@ -133,7 +133,7 @@ namespace AtlasNetDemo.Tests
         [Test]
         public void ScaleSceneRegistersScaleCubeAndSpawner()
         {
-            EditorSceneManager.OpenScene(Sample + "Scenes/ScaleDemo.unity");
+            EditorSceneManager.OpenScene("Assets/Samples/AtlasNet Unity/0.1.0/05 InterestAndScale/05_InterestAndScale.unity");
             var manager = Object.FindAnyObjectByType<NetworkManager>();
             var entries = new SerializedObject(manager).FindProperty("networkPrefabsLists");
             Assert.AreEqual(1, entries.arraySize);
@@ -152,7 +152,7 @@ namespace AtlasNetDemo.Tests
         [Test]
         public void PhysicsSceneRegistersDynamicCubeAndSpawner()
         {
-            EditorSceneManager.OpenScene(Sample + "Scenes/PhysicsDemo.unity");
+            EditorSceneManager.OpenScene("Assets/Samples/AtlasNet Unity/0.1.0/04 Physics/04_Physics.unity");
             var manager = Object.FindAnyObjectByType<NetworkManager>();
             var managerData = new SerializedObject(manager);
             var entries = managerData.FindProperty("networkPrefabsLists");
@@ -265,3 +265,4 @@ namespace AtlasNetDemo.Tests
         }
     }
 }
+

@@ -1,0 +1,16 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9c162503b3eb4a6aa3bc74763b22a024, type: 3}
+  m_Name: AnimatorPlayerNetworkPrefabs
+  m_EditorClassIdentifier: AtlasNet.Unity::AtlasNet.NetworkPrefabsList
+  prefabs:
+  - {fileID: 7632955344992680494, guid: c33455c5576f0984b89033b8989f09dc, type: 3}
