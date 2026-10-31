@@ -7,7 +7,7 @@ using Debug = UnityEngine.Debug;
 namespace AtlasNet
 {
     // Development implementation of the semantic backend interface. Wire packets stay here.
-    internal sealed partial class LocalWorldBackend : IWorldBackend
+    internal sealed partial class LocalWorldBackend : IWorldBackend, IHandoffDebugProvider, IFlushableWorldBackend
     {
         private enum Packet : byte { Welcome = 1, Spawn = 2, Despawn = 3, Variable = 4, Rpc = 5, Transform = 6, Hide = 7, Animator = 8,
             ClientHello = 9, WorkerHello = 10, WorkerWelcome = 11, WorkerSpawn = 12, WorkerPrepare = 13,
@@ -16,7 +16,7 @@ namespace AtlasNet
             WorkerExportRequest = 21, WorkerExport = 22, WorkerAbort = 23, WorkerAnimator = 24,
             WorkerRegion = 25, WorkerRegionRequest = 26, WorkerSpawnRequest = 27, WorkerDespawnRequest = 28,
             WorkerInteractionRpc = 29, ClientDebugRegionRequest = 30, ClientDebugRegion = 31, WorkerState = 32, NamedMessage = 33, ClientReady = 34, ClientRoster = 35 }
-        private const ushort LocalProtocolVersion = 11;
+        private const ushort LocalProtocolVersion = 12;
         private readonly NetworkManager runtime;
         private NetworkObject playerPrefab => runtime.playerPrefab;
         private NetworkPrefabsList[] networkPrefabsLists => runtime.networkPrefabsLists;
@@ -24,8 +24,6 @@ namespace AtlasNet
         private int port => runtime.port;
         private string localAddress => runtime.localAddress;
         private bool automaticLocalHandoffs => runtime.automaticLocalHandoffs;
-        private Vector2 localWorldMin => runtime.localWorldMin;
-        private Vector2 localWorldMax => runtime.localWorldMax;
         private float localBoundaryMargin => runtime.localBoundaryMargin;
 
         private readonly Dictionary<string, NetworkObject> registry = new Dictionary<string, NetworkObject>();
@@ -142,7 +140,8 @@ namespace AtlasNet
             ILocalAuthorityPlacement world = null;
             if (server)
             {
-                world = new LocalVoronoi(localWorldMin.x, localWorldMax.x, localWorldMin.y, localWorldMax.y);
+                var center = runtime.localPartitionCenter != null ? runtime.localPartitionCenter.position : Vector3.zero;
+                world = new LocalVoronoi(new Vector2(center.x, center.z), runtime.localRegionDebugExtent);
                 world.AddWorker(0);
             }
             transport = CreateTransport(server);
@@ -443,7 +442,7 @@ namespace AtlasNet
         {
             if (isWorker)
             {
-                Debug.LogWarning("AtlasNet local coordinator disconnected");
+                if (runtime.ShouldLog(LogType.Warning)) runtime.Log(LogType.Warning, "AtlasNet local coordinator disconnected");
                 Stop();
                 return;
             }
@@ -455,7 +454,7 @@ namespace AtlasNet
                 localWorld?.RemoveWorker(session.Value);
                 RefreshWorkerInterest();
                 BroadcastLocalRegions();
-                Debug.LogWarning($"AtlasNet worker {session} disconnected; its entities remain frozen until authority is recovered");
+                if (runtime.ShouldLog(LogType.Warning)) runtime.Log(LogType.Warning, $"AtlasNet worker {session} disconnected; its entities remain frozen until authority is recovered");
                 return;
             }
             bool admitted = clientSessions.Remove(session);
@@ -475,7 +474,7 @@ namespace AtlasNet
             }
             else
             {
-                Debug.LogWarning("AtlasNet local server disconnected");
+                if (runtime.ShouldLog(LogType.Warning)) runtime.Log(LogType.Warning, "AtlasNet local server disconnected");
                 Stop();
             }
         }
@@ -810,7 +809,7 @@ namespace AtlasNet
             }
             catch (Exception error)
             {
-                Debug.LogError($"AtlasNet rejected packet: {error}");
+                if (runtime.ShouldLog(LogType.Error)) runtime.Log(LogType.Error, $"AtlasNet rejected packet: {error}");
             }
         }
 

@@ -247,6 +247,15 @@ namespace AtlasNet
                 return count;
             }
         }
+        public HandoffDebugState GetHandoffStateForDebug(NetworkObject obj)
+        {
+            if (!IsServer || obj == null || obj.Manager != runtime || !pendingHandoffs.TryGetValue(obj.EntityId, out var pending))
+                return HandoffDebugState.None;
+            if (pending.Source.Value == localWorkerId) return HandoffDebugState.Exiting;
+            if (pending.Destination.Value == localWorkerId) return HandoffDebugState.Entering;
+            return HandoffDebugState.None;
+        }
+
         public int GhostCount => IsServer ? SpawnedCount - LocalAuthorityCount : 0;
 
         /// <summary>Sample diagnostics only; the coordinator directory is not a Unity replica.</summary>
@@ -368,7 +377,7 @@ namespace AtlasNet
             localWorld?.AddWorker(session.Value);
             RefreshWorkerInterest();
             BroadcastLocalRegions();
-            Debug.Log($"AtlasNet local worker {session} joined with {workerResidents[session].Count} relevant entities");
+            if (runtime.ShouldLog(LogType.Log)) runtime.Log(LogType.Log, $"AtlasNet local worker {session} joined with {workerResidents[session].Count} relevant entities");
         }
 
         private void EnsureWorkerResident(SessionId worker, CanonicalEntity entity)
@@ -577,7 +586,7 @@ namespace AtlasNet
         // to the coordinator's data directory without a permanent Unity ghost there.
         private void SendWorkerSnapshots()
         {
-            if (!isWorker || localWorkerId == ulong.MaxValue) return;
+            if (!isWorker || localWorkerId == ulong.MaxValue || Tick % (uint)Math.Max(1, tickRate / 5) != 0) return;
             foreach (var obj in spawned.Values)
             {
                 if (obj == null || !obj.HasAuthority) continue;
@@ -607,10 +616,12 @@ namespace AtlasNet
             Quaternion rotation = reader.ReadQuaternion();
             byte[] publicState = reader.ReadBytes();
             byte[] ownerState = reader.ReadBytes();
-            if (reader.HasRemaining || !workerSessions.Contains(sender) ||
-                !directory.TryGetValue(id, out var entity) || entity.Worker != sender.Value ||
-                entity.Epoch != epoch)
-                throw new InvalidOperationException($"Stale or unauthorized worker state for entity {id}");
+            if (reader.HasRemaining || !workerSessions.Contains(sender))
+                throw new InvalidOperationException($"Unauthorized worker state for entity {id}");
+            // Replaceable snapshots may arrive after a reliable commit or despawn.
+            if (!directory.TryGetValue(id, out var entity) || epoch < entity.Epoch) return;
+            if (entity.Worker != sender.Value || entity.Epoch != epoch)
+                throw new InvalidOperationException($"Unauthorized worker state for entity {id}");
             entity.Position = position;
             entity.Rotation = rotation;
             entity.PublicSnapshot = publicState;
@@ -703,7 +714,7 @@ namespace AtlasNet
                 }
             }
             pendingHandoffs.Add(entity.Id, pending);
-            if (entity.Worker == 0) obj.NotifySimulationAuthorityChanged();
+            obj.NotifySimulationAuthorityChanged(); // Refresh entering diagnostics on the coordinator too.
             if (entity.Worker != 0)
             {
                 using (var request = new NetWriter())
@@ -715,7 +726,7 @@ namespace AtlasNet
                     request.Write(destinationWorker);
                     SendTo(pending.Source, request.ToArray());
                 }
-                Debug.Log($"AtlasNet requested handoff state for {entity.Id} from worker {pending.Source}");
+                if (runtime.ShouldLog(LogType.Log)) runtime.Log(LogType.Log, $"AtlasNet requested handoff state for {entity.Id} from worker {pending.Source}");
                 return;
             }
             using (var packet = new NetWriter())
@@ -727,7 +738,7 @@ namespace AtlasNet
                 packet.WriteBytes(localState);
                 SendTo(destination, packet.ToArray());
             }
-            Debug.Log($"AtlasNet preparing handoff of {entity.Id} to worker {destinationWorker}, epoch {nextEpoch}");
+            if (runtime.ShouldLog(LogType.Log)) runtime.Log(LogType.Log, $"AtlasNet preparing handoff of {entity.Id} to worker {destinationWorker}, epoch {nextEpoch}");
         }
 
         private static byte[] CaptureOwnerState(NetworkObject obj)
@@ -819,7 +830,8 @@ namespace AtlasNet
                     new SessionId(localWorkerId), obj.AuthorityEpoch, Tick, waitingForExport: false,
                     proposedEpoch: epoch));
             }
-            Debug.Log($"AtlasNet prepared entity {id} at source tick {snapshotTick}, epoch {epoch}");
+            obj.NotifySimulationAuthorityChanged();
+            if (runtime.ShouldLog(LogType.Log)) runtime.Log(LogType.Log, $"AtlasNet prepared entity {id} at source tick {snapshotTick}, epoch {epoch}");
             using (var ack = new NetWriter())
             {
                 ack.Write((byte)Packet.WorkerPrepared);
@@ -945,7 +957,7 @@ namespace AtlasNet
                 SendToWorkers(id, commit.ToArray());
             }
             FlushAuthorityRpcs(id, pending.Destination.Value);
-            Debug.Log($"AtlasNet committed handoff of {id} to worker {pending.Destination}, epoch {epoch}");
+            if (runtime.ShouldLog(LogType.Log)) runtime.Log(LogType.Log, $"AtlasNet committed handoff of {id} to worker {pending.Destination}, epoch {epoch}");
         }
 
         private void AbortPendingHandoffs(SessionId destination)
@@ -999,7 +1011,7 @@ namespace AtlasNet
                         SendTo(participant, packet.ToArray());
                     }
                 }
-                Debug.LogWarning($"AtlasNet aborted uncommitted handoff of {id}; epoch remains unchanged");
+                if (runtime.ShouldLog(LogType.Warning)) runtime.Log(LogType.Warning, $"AtlasNet aborted uncommitted handoff of {id}; epoch remains unchanged");
                 FlushAuthorityRpcs(id, pending.Source.Value);
             }
         }

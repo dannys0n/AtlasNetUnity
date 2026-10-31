@@ -3,6 +3,14 @@ using UnityEngine;
 
 namespace AtlasNet
 {
+    public enum HandoffDebugState { None, Entering, Exiting }
+
+    /// <summary>Optional local diagnostics; never used to decide authority.</summary>
+    public interface IHandoffDebugProvider
+    {
+        HandoffDebugState GetHandoffStateForDebug(NetworkObject obj);
+    }
+
     public sealed partial class NetworkManager
     {
         public bool IsWorker => Backend.IsWorker;
@@ -18,6 +26,9 @@ namespace AtlasNet
         public int ClientDebugRegionVersion => Backend.ClientDebugRegionVersion;
         public int LocalAuthorityCount => Backend.LocalAuthorityCount;
         public int GhostCount => Backend.GhostCount;
+
+        public HandoffDebugState GetHandoffStateForDebug(NetworkObject obj)
+            => Backend is IHandoffDebugProvider debug ? debug.GetHandoffStateForDebug(obj) : HandoffDebugState.None;
 
         public bool SetClientDebugRegionEnabled(NetworkObject ownedPlayer, bool enabled) => Backend.SetClientDebugRegionEnabled(ownedPlayer, enabled);
         public bool RequestLocalRegionForDebug() => Backend.RequestLocalRegionForDebug();

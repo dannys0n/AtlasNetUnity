@@ -12,6 +12,7 @@ namespace AtlasNet.Editor
         {
             serializedObject.Update();
             EditorGUILayout.LabelField("Network Settings", EditorStyles.boldLabel);
+            EditorGUILayout.PropertyField(serializedObject.FindProperty("logLevel"), new GUIContent("Log Level"));
             EditorGUILayout.PropertyField(serializedObject.FindProperty("tickRate"), new GUIContent("Tick Rate"));
             EditorGUILayout.PropertyField(serializedObject.FindProperty("localAddress"), new GUIContent("Local Address"));
             EditorGUILayout.PropertyField(serializedObject.FindProperty("port"), new GUIContent("Port"));
@@ -23,10 +24,10 @@ namespace AtlasNet.Editor
             EditorGUILayout.HelpBox("Default server accepts UDP and WebSocket clients simultaneously on the same port number. TCP-only mode is optional. Browsers use WebSocket. An empty backend override uses the local dummy.",MessageType.None);
 
             EditorGUILayout.Space();
-            EditorGUILayout.LabelField("Local Worker Regions", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField("Dummy Backend Partitioning", EditorStyles.boldLabel);
             EditorGUILayout.PropertyField(serializedObject.FindProperty("automaticLocalHandoffs"), new GUIContent("Automatic Handoffs"));
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("localWorldMin"), new GUIContent("World Minimum X/Z"));
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("localWorldMax"), new GUIContent("World Maximum X/Z"));
+            EditorGUILayout.PropertyField(serializedObject.FindProperty("localPartitionCenter"), new GUIContent("Partition Center", "The coordinating server samples this Transform at session start."));
+            EditorGUILayout.PropertyField(serializedObject.FindProperty("localRegionDebugExtent"), new GUIContent("Debug View Extent", "Rendering crop only. Authority regions extend indefinitely."));
             EditorGUILayout.PropertyField(serializedObject.FindProperty("localBoundaryMargin"), new GUIContent("Boundary Margin"));
 
             EditorGUILayout.Space();

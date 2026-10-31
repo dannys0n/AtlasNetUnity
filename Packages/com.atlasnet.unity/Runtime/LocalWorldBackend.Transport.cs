@@ -3,6 +3,7 @@ namespace AtlasNet
 {
     internal sealed partial class LocalWorldBackend
     {
+        public void FlushSend() => (transport as IFlushableMessageTransport)?.FlushSend();
         public TransportCapabilities GetTransportCapabilities(SessionId peer)=>transport?.Capabilities(peer)??0;
         IMessageTransport CreateTransport(bool server)
         {
@@ -24,6 +25,11 @@ namespace AtlasNet
         {
             if(packet==null||packet.Length==0)throw new ArgumentException("Empty network message.");
             var type=(Packet)packet[0];
+            if(type==Packet.WorkerState)
+            {
+                using var state=new NetReader(packet);state.ReadByte();
+                return (NetworkDelivery.UnreliableSequenced,unchecked(state.ReadEntityId().Value*1099511628211UL^(ulong)Packet.WorkerState));
+            }
             if(type!=Packet.Rpc&&type!=Packet.WorkerOutboundRpc&&type!=Packet.WorkerAuthorityRpc&&type!=Packet.WorkerInteractionRpc)
                 return (NetworkDelivery.ReliableOrdered,0);
             using var reader=new NetReader(packet);reader.ReadByte();

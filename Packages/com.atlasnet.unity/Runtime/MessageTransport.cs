@@ -9,6 +9,9 @@ namespace AtlasNet
     public enum ServerTransport { UdpAndWebSocket, Tcp }
     [Flags] public enum TransportCapabilities { ReliableOrdered=1, Unreliable=2, Sequenced=4 }
 
+    // Optional send-only phase: flush after gameplay without polling callbacks again.
+    internal interface IFlushableMessageTransport { void FlushSend(); }
+
     // Transport handles stay private to each adapter. Gameplay addresses logical sessions.
     public interface IMessageTransport : IDisposable
     {

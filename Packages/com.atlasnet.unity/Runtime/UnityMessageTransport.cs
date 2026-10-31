@@ -9,14 +9,17 @@ namespace AtlasNet
 {
     // One process, multiple listeners. A client chooses one driver; the backend
     // sees logical sessions and messages, never UDP/WebSocket connection handles.
-    internal sealed class UnityMessageTransport : IMessageTransport
+    internal sealed class UnityMessageTransport : IMessageTransport, IFlushableMessageTransport
     {
-        const int HeaderSize=13,MaxPayload=65536-HeaderSize,MaxQueuedBytes=4*1024*1024;
+        const int HeaderSize=13,MaxPayload=65536-HeaderSize,MaxQueuedBytes=4*1024*1024,MaxBatchBytes=1100;
+        const byte BatchMarker=255;
         sealed class Pending { public byte[] bytes;public NetworkDelivery delivery;public ulong stream;public uint sequence; }
         sealed class Peer
         {
             public SessionId session;public NetworkConnection connection;public bool webSocket;
-            public readonly Queue<Pending> reliable=new();public int queuedBytes;
+            public readonly Queue<Pending> reliable=new();
+            public readonly List<Pending> batch=new(64);
+            public int queuedBytes;
         }
         MultiNetworkDriver driver;
         NetworkPipeline reliablePipeline,datagramPipeline;
@@ -31,6 +34,10 @@ namespace AtlasNet
         public int PeerCount=>peers.Count;
         public IEnumerable<SessionId> Sessions=>peers.Keys;
         public long BytesSent {get;private set;}
+        internal long SendOperations {get;private set;}
+        internal int LargestBatchBytes {get;private set;}
+        internal long FailedBatchAttempts {get;private set;}
+        bool sendPending;
         public UnityMessageTransport(bool server,string address,int port,string bindAddress,ClientTransport client,int simulatedLoss=0)
         {
             this.server=server;this.simulatedLoss=simulatedLoss;
@@ -90,6 +97,7 @@ namespace AtlasNet
         {
             if(!driver.IsCreated)return;
             driver.ScheduleUpdate().Complete();
+            sendPending=true; // Include transport-generated ACKs and retransmissions in the poll flush.
             if(server)
             {
                 NetworkConnection connection;
@@ -107,36 +115,88 @@ namespace AtlasNet
                 if(kind==NetworkEvent.Type.Connect){Connected?.Invoke(id);continue;}
                 if(kind==NetworkEvent.Type.Disconnect){disconnected.Add(id);continue;}
                 if(kind!=NetworkEvent.Type.Data)continue;
-                if(reader.Length<HeaderSize){disconnected.Add(id);continue;}
-                var delivery=(NetworkDelivery)reader.ReadByte();ulong stream=reader.ReadULong();uint serial=reader.ReadUInt();
-                if(delivery>NetworkDelivery.UnreliableSequenced){disconnected.Add(id);continue;}
-                if(delivery==NetworkDelivery.UnreliableSequenced&&!sequence.Accept(id,stream,serial))continue;
-                var bytes=new byte[reader.Length-HeaderSize];
-                using(var buffer=new NativeArray<byte>(bytes.Length,Allocator.Temp)){reader.ReadBytes(buffer);buffer.CopyTo(bytes);}
-                Received?.Invoke(id,bytes);
+                var start=reader;
+                if(reader.Length==0){disconnected.Add(id);continue;}
+                if(reader.ReadByte()==BatchMarker)
+                {
+                    while(driver.IsCreated&&peers.ContainsKey(id)&&reader.GetBytesRead()<reader.Length)
+                    {
+                        if(reader.Length-reader.GetBytesRead()<2){disconnected.Add(id);break;}
+                        int length=reader.ReadUShort();
+                        if(!ReceiveFrame(id,ref reader,length)){disconnected.Add(id);break;}
+                    }
+                }
+                else {reader=start;if(!ReceiveFrame(id,ref reader,reader.Length))disconnected.Add(id);}
             }
             foreach(var id in disconnected)RemovePeer(id);disconnected.Clear();
             if(!driver.IsCreated)return;
-            // Callbacks may disconnect peers; enumerate after processing events.
-            foreach(var peer in peers.Values)Flush(peer);
-            driver.ScheduleFlushSend().Complete();
+            FlushSend();
+        }
+        public void FlushSend()
+        {
+            if(!driver.IsCreated)return;
+            // Build batches afresh from the ordered message queue. Failed sends
+            // keep their messages there, so later messages fill the same bounded batches.
+            foreach(var peer in peers.Values)if(peer.reliable.Count>0)Flush(peer);
+            if(sendPending){driver.ScheduleFlushSend().Complete();sendPending=false;}
+        }
+        bool ReceiveFrame(SessionId id,ref DataStreamReader reader,int length)
+        {
+            if(length<=HeaderSize||length>reader.Length-reader.GetBytesRead())return false;
+            var delivery=(NetworkDelivery)reader.ReadByte();ulong stream=reader.ReadULong();uint serial=reader.ReadUInt();
+            if(delivery>NetworkDelivery.UnreliableSequenced)return false;
+            bool accept=delivery!=NetworkDelivery.UnreliableSequenced||sequence.Accept(id,stream,serial);
+            var bytes=new byte[length-HeaderSize];
+            using(var buffer=new NativeArray<byte>(bytes.Length,Allocator.Temp)){reader.ReadBytes(buffer);buffer.CopyTo(bytes);}
+            if(accept)Received?.Invoke(id,bytes);
+            return true;
+        }
+        static void WriteFrame(ref DataStreamWriter writer,Pending message)
+        {
+            writer.WriteByte((byte)message.delivery);writer.WriteULong(message.stream);writer.WriteUInt(message.sequence);
+            using(var bytes=new NativeArray<byte>(message.bytes,Allocator.Temp))writer.WriteBytes(bytes);
         }
         bool TrySend(Peer peer,Pending message)
         {
             if(driver.GetConnectionState(peer.connection)!=NetworkConnection.State.Connected)return false;
             var pipe=message.delivery==NetworkDelivery.ReliableOrdered?reliablePipeline:datagramPipeline;
-            int result=driver.BeginSend(pipe,peer.connection,out var writer,message.bytes.Length+HeaderSize);
-            if(result!=0)return false;
-            writer.WriteByte((byte)message.delivery);writer.WriteULong(message.stream);writer.WriteUInt(message.sequence);
-            using(var bytes=new NativeArray<byte>(message.bytes,Allocator.Temp))writer.WriteBytes(bytes);
-            int written=driver.EndSend(writer);if(written<0)return false;BytesSent+=written;return true;
+            if(driver.BeginSend(pipe,peer.connection,out var writer,message.bytes.Length+HeaderSize)!=0)return false;
+            WriteFrame(ref writer,message);
+            int written=driver.EndSend(writer);if(written<0)return false;BytesSent+=written;SendOperations++;sendPending=true;return true;
+        }
+        bool TrySendBatch(Peer peer,List<Pending> batch,int length)
+        {
+            if(driver.GetConnectionState(peer.connection)!=NetworkConnection.State.Connected)return false;
+            if(length>MaxBatchBytes)throw new InvalidOperationException("Batch exceeds packet budget.");
+            if(driver.BeginSend(reliablePipeline,peer.connection,out var writer,length)!=0){FailedBatchAttempts++;return false;}
+            writer.WriteByte(BatchMarker);
+            foreach(var message in batch){writer.WriteUShort((ushort)(HeaderSize+message.bytes.Length));WriteFrame(ref writer,message);}
+            int written=driver.EndSend(writer);if(written<0){FailedBatchAttempts++;return false;}
+            LargestBatchBytes=Math.Max(LargestBatchBytes,written);BytesSent+=written;SendOperations++;sendPending=true;return true;
         }
         void Flush(Peer peer)
         {
             while(peer.reliable.Count>0)
             {
-                var message=peer.reliable.Peek();if(!TrySend(peer,message))break;
-                peer.reliable.Dequeue();peer.queuedBytes-=message.bytes.Length;
+                var first=peer.reliable.Peek();
+                if(first.bytes.Length+HeaderSize+3>MaxBatchBytes)
+                {
+                    if(!TrySend(peer,first))break;
+                    peer.reliable.Dequeue();peer.queuedBytes-=first.bytes.Length;continue;
+                }
+                // Preserve message order while packing below the UDP packet budget.
+                // Large messages retain the existing fragmentation path.
+                var batch=peer.batch;batch.Clear();int length=1;
+                foreach(var message in peer.reliable)
+                {
+                    int size=2+HeaderSize+message.bytes.Length;
+                    if(length+size>MaxBatchBytes)break;
+                    batch.Add(message);length+=size;
+                }
+                bool sent=TrySendBatch(peer,batch,length);
+                if(sent)foreach(var message in batch){peer.reliable.Dequeue();peer.queuedBytes-=message.bytes.Length;}
+                batch.Clear();
+                if(!sent)break;
             }
         }
         void Send(Peer peer,byte[] bytes,NetworkDelivery delivery,ulong stream)

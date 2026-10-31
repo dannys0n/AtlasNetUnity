@@ -4,6 +4,8 @@ using UnityEngine;
 
 namespace AtlasNet
 {
+    public enum NetworkLogLevel { Full, Warnings, Errors, None }
+
     /// <summary>Unity component and gameplay API. Backend routing is an internal implementation detail.</summary>
     [AddComponentMenu("AtlasNet/Network Manager")]
     [DisallowMultipleComponent]
@@ -12,12 +14,35 @@ namespace AtlasNet
         [SerializeField, InspectorName("Player Prefab")] internal NetworkObject playerPrefab;
         [SerializeField, InspectorName("Network Prefabs Lists")] internal NetworkPrefabsList[] networkPrefabsLists;
         [SerializeField, Range(10, 120)] internal int tickRate = 30;
+        [SerializeField, Tooltip("AtlasNet messages only. Warnings includes errors; None suppresses explicit AtlasNet logging, not Unity engine diagnostics or thrown exceptions.")]
+        private NetworkLogLevel logLevel = NetworkLogLevel.Warnings;
+        public NetworkLogLevel LogLevel
+        {
+            get => logLevel;
+            set
+            {
+                if (value < NetworkLogLevel.Full || value > NetworkLogLevel.None) throw new ArgumentOutOfRangeException(nameof(value));
+                logLevel = value;
+            }
+        }
+        public bool ShouldLog(LogType severity)
+        {
+            if (logLevel == NetworkLogLevel.None) return false;
+            if (severity == LogType.Error || severity == LogType.Exception || severity == LogType.Assert) return true;
+            if (severity == LogType.Warning) return logLevel <= NetworkLogLevel.Warnings;
+            return logLevel == NetworkLogLevel.Full;
+        }
+        // Guard interpolated messages with ShouldLog at the call site to avoid formatting suppressed logs.
+        public void Log(LogType severity, string message)
+        {
+            if (ShouldLog(severity)) Debug.unityLogger.Log(severity, (object)message, this);
+        }
         [SerializeField] internal int port = 7777;
         [SerializeField] internal string localAddress = "127.0.0.1";
         [SerializeField, Tooltip("Development-only: hand off server-owned objects between joined local workers by X/Z region.")]
         internal bool automaticLocalHandoffs;
-        [SerializeField] internal Vector2 localWorldMin = new Vector2(-20, -20);
-        [SerializeField] internal Vector2 localWorldMax = new Vector2(20, 20);
+        [SerializeField, Tooltip("Dummy backend only. Its position is sampled when the coordinating server starts; null uses world zero.")] internal Transform localPartitionCenter;
+        [SerializeField, Min(1), Tooltip("Half-size of the debug polygon window. This does not limit ownership or interest.")] internal float localRegionDebugExtent = 10000f;
         [SerializeField, Min(0)] internal float localBoundaryMargin = 0.75f;
 
 
@@ -93,6 +118,7 @@ namespace AtlasNet
 
         private void Awake() => ValidateRegistry();
         private void Update() => Backend.PollAndTick(Time.deltaTime);
+        private void LateUpdate() => (backend as IFlushableWorldBackend)?.FlushSend();
         private void OnDestroy() { if (backend != null) backend.Stop(); }
 
         public void ValidateRegistry() => Backend.ValidateRegistry();

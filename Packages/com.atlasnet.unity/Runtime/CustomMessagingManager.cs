@@ -35,7 +35,7 @@ namespace AtlasNet
         {
             if (string.IsNullOrEmpty(name))
             {
-                Debug.LogError("[RegisterNamedMessageHandler] Cannot register a named message of type null or empty!");
+                if (manager.ShouldLog(LogType.Error)) manager.Log(LogType.Error, "[RegisterNamedMessageHandler] Cannot register a named message of type null or empty!");
                 return;
             }
             if (callback == null) throw new ArgumentNullException(nameof(callback));
@@ -46,7 +46,7 @@ namespace AtlasNet
         {
             if (string.IsNullOrEmpty(name))
             {
-                Debug.LogError("[UnregisterNamedMessageHandler] Cannot unregister a named message of type null or empty!");
+                if (manager.ShouldLog(LogType.Error)) manager.Log(LogType.Error, "[UnregisterNamedMessageHandler] Cannot unregister a named message of type null or empty!");
                 return;
             }
             ulong id = MessageId(name);

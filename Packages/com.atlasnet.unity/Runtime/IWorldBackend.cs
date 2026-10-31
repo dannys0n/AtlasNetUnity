@@ -4,6 +4,8 @@ using UnityEngine;
 
 namespace AtlasNet
 {
+    internal interface IFlushableWorldBackend { void FlushSend(); }
+
     // Semantic Unity/backend boundary, not a native ABI or a transport interface.
     // All operations and callbacks execute on Unity's main thread. A native bridge
     // must drain its inbound queue from PollAndTick before invoking Unity lifecycle code.
