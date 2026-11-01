@@ -160,7 +160,7 @@ namespace AtlasNet.Samples.Soccer
             var control=stick.gameObject.AddComponent<SoccerStick>();
             control.handle=Circle(stick,"Handle",new Vector2(.5f,.5f),Vector2.zero,new Vector2(80,80),new Color(.8f,.9f,1,.65f));control.handle.GetComponent<SoccerStickGraphic>().raycastTarget=false;
             Button(canvas.transform,"Disconnect",new Vector2(-90,-30),new Vector2(150,35),()=>manager.Stop()).GetComponent<RectTransform>().anchorMin=new Vector2(1,1);
-            var wave = Button(canvas.transform,"Wave / Space",new Vector2(-210,90),new Vector2(360,100),()=>
+            var wave = Button(canvas.transform,"Wave Button",new Vector2(-210,90),new Vector2(360,100),()=>
             {
                 if (local && local.IsSpawned && local.IsOwner) local.GetComponent<SoccerPlayer>().RequestWave();
             });

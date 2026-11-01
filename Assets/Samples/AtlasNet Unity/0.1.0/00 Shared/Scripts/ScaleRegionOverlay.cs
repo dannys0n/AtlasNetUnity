@@ -11,6 +11,11 @@ public sealed class ScaleRegionOverlay : MonoBehaviour
     private int shownVersion = -1;
     private bool requested;
 
+    public Material RegionMaterial => regionRenderer ? regionRenderer.sharedMaterial : null;
+    public void Configure(MeshFilter mesh, MeshRenderer renderer)
+    {
+        regionMeshFilter = mesh; regionRenderer = renderer;
+    }
     public NetworkManager InspectedManager => manager;
     public Renderer DebugRenderer => regionRenderer;
     public void InspectManager(NetworkManager value)

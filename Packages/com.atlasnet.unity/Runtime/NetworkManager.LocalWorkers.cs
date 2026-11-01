@@ -20,6 +20,22 @@ namespace AtlasNet
 
     public sealed partial class NetworkManager
     {
+        /// <summary>Configure a stopped, embedded development worker from a local coordinator.</summary>
+        public void ConfigureLocalDemoWorker(NetworkManager coordinator)
+        {
+            if (IsRunning) throw new System.InvalidOperationException("Stop the worker before configuring it.");
+            if (coordinator.backendProvider != null) throw new System.InvalidOperationException("Local workers require the default dummy backend.");
+            playerPrefab = coordinator.playerPrefab;
+            networkPrefabsLists = coordinator.networkPrefabsLists;
+            tickRate = coordinator.tickRate; logLevel = coordinator.logLevel;
+            localPartitionCenter = coordinator.localPartitionCenter;
+            localRegionDebugExtent = coordinator.localRegionDebugExtent;
+            localBoundaryMargin = coordinator.localBoundaryMargin;
+            transportProvider = coordinator.transportProvider;
+            ConfigureConnection("127.0.0.1", coordinator.Port);
+        }
+        public void SetLocalDemoHandoffs(bool enabled) => automaticLocalHandoffs = enabled;
+
         public bool BeginLocalWorkerDrain(ulong worker) => Backend is ILocalWorkerDrainProvider drain && drain.BeginWorkerDrain(worker);
         public bool IsLocalWorkerDrained(ulong worker) => Backend is ILocalWorkerDrainProvider drain && drain.IsWorkerDrained(worker);
         public bool IsWorker => Backend.IsWorker;

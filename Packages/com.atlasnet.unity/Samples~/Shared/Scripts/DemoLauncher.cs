@@ -249,7 +249,7 @@ public sealed class DemoLauncher : MonoBehaviour
             waveStyle.fontSize = 28;
             waveStyle.alignment = TextAnchor.MiddleCenter;
             float width=Mathf.Min(360,Screen.width-32);
-            if (GUI.Button(new Rect((Screen.width-width)*.5f,Screen.height-140,width,100),"Wave / Space",waveStyle))animationInput.Wave();
+            if (GUI.Button(new Rect((Screen.width-width)*.5f,Screen.height-140,width,100),"Wave Button",waveStyle))animationInput.Wave();
         }
     }
 
