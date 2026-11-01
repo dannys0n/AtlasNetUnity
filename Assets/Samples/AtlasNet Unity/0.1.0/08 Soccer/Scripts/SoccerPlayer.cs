@@ -17,7 +17,7 @@ namespace AtlasNet.Samples.Soccer
             colorViewer = viewer; hasColorViewer = true; ApplyTeamColor();
         }
         public const float Speed = 16f;
-        public const float Size = 1.6f;
+        public const float Size = 1.6f * 4f / 3f;
         public Vector3 AttackingGoal => new Vector3(Team == 0 ? 52 : -52, 0, 0);
         public Vector2 MoveInput { get; private set; }
         public readonly NetworkVariable<int> TeamIndex = new(-1);

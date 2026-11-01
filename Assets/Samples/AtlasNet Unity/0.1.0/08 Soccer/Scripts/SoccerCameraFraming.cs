@@ -12,7 +12,7 @@ namespace AtlasNet.Samples.Soccer
             Vector3 position = focus + offset;
             // The near, upper corner of the goal has the narrowest horizontal view.
             // Use that depth so the whole mouth, including the posts, remains visible.
-            Vector3 nearGoalTop = new(focus.x, SoccerBall.GoalHeight, -10);
+            Vector3 nearGoalTop = new(focus.x, SoccerBall.GoalHeight, -SoccerBall.GoalHalfWidth - 2);
             float depth = Mathf.Max(view.nearClipPlane, Vector3.Dot(nearGoalTop - position, rotation * Vector3.forward));
             float halfWidth = view.orthographic ? view.orthographicSize * view.aspect :
                 depth * Mathf.Tan(view.fieldOfView * .5f * Mathf.Deg2Rad) * view.aspect;

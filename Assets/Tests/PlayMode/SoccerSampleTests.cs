@@ -95,7 +95,13 @@ namespace AtlasNetDemo.Tests
                 Authority(ball.EntityId).GetComponent<Rigidbody>().position=new Vector3(direction*52,1f,0);
                 yield return Until(()=>Score(Authority(ball.EntityId),team==0?"BlueScore":"OrangeScore")==1,"goal scored at horizontal end");
                 yield return Until(()=>Vector3.ProjectOnPlane(Authority(ball.EntityId).transform.position,Vector3.up).sqrMagnitude<.01f,"goal resets ball");
-                for(int i=0;i<8;i++){Input(Vector2.right);yield return Step();}
+                float celebrationDeadline=Time.realtimeSinceStartup+1f;
+                while(Time.realtimeSinceStartup<celebrationDeadline)
+                {
+                    Input(Vector2.right);yield return Step();
+                    var animation=Authority(local.EntityId).GetComponent<Animator>();
+                    if(animation.GetCurrentAnimatorStateInfo(0).IsName("Walk")&&animation.GetCurrentAnimatorStateInfo(1).IsName("Wave"))break;
+                }
                 var celebrating=Authority(local.EntityId).GetComponent<Animator>();
                 Assert.IsTrue(celebrating.GetCurrentAnimatorStateInfo(0).IsName("Walk"),"goal celebration retains walking base layer");
                 Assert.IsTrue(celebrating.GetCurrentAnimatorStateInfo(1).IsName("Wave"),"scoring team automatically waves");
@@ -126,7 +132,11 @@ namespace AtlasNetDemo.Tests
             {
                 manager.StartServer();var ball=manager.Spawn(ballPrefab,Vector3.up,Quaternion.identity);var body=ball.GetComponent<Rigidbody>();SceneManager.MoveGameObjectToScene(ball.gameObject,scene);
                 var dirs=new[]{Vector2.right,Vector2.left,Vector2.up,Vector2.down};var players=new NetworkObject[4];
-                float ring=player.GetComponent<CapsuleCollider>().radius*player.transform.localScale.x+1f-.02f;
+                var capsule=player.GetComponent<CapsuleCollider>();
+                float worldRadius=capsule.radius*player.transform.localScale.x;
+                // Keep an upward escape corridor past the capsule's widest cross-section.
+                // Contact offsets still generate contacts at the lower rounded caps.
+                float ring=worldRadius+1f;
                 for(int j=0;j<4;j++)
                 {
                     players[j]=manager.Spawn(player,new Vector3(-dirs[j].x*ring,0,-dirs[j].y*ring),Quaternion.identity);SceneManager.MoveGameObjectToScene(players[j].gameObject,scene);
