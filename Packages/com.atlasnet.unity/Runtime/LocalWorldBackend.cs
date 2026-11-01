@@ -189,6 +189,7 @@ namespace AtlasNet
             }
             spawned.Clear();
             directory.Clear();
+            recentlyDespawnedOwners.Clear();despawnedOwnerOrder.Clear();
             hidden.Clear();
             clientSessions.Clear();
             clientResidents.Clear();
@@ -329,9 +330,27 @@ namespace AtlasNet
             DespawnCanonical(obj.EntityId);
         }
 
+        // Short-lived, bounded tombstones distinguish valid in-flight owner calls from unknown entities.
+        private readonly Dictionary<EntityId, (SessionId Owner, BehaviourSchema[] Schemas, uint RemovedAt)> recentlyDespawnedOwners = new();
+        private readonly Queue<EntityId> despawnedOwnerOrder = new();
+        private bool IsStaleOwnerRpc(EntityId id, SessionId sender, byte index, uint method, RpcDestination destination)
+        {
+            if (!recentlyDespawnedOwners.TryGetValue(id, out var old) ||
+                unchecked(Tick-old.RemovedAt) > (uint)(tickRate*5) || old.Owner != sender ||
+                destination != RpcDestination.Authority || index >= old.Schemas.Length) return false;
+            return old.Schemas[index].Rpcs.TryGetValue(method, out var rpc) &&
+                rpc.Destination == destination && rpc.Permission != RpcInvokePermission.Server;
+        }
+
         private void DespawnCanonical(EntityId id)
         {
-            if (!directory.ContainsKey(id)) throw new InvalidOperationException($"Unknown entity {id}");
+            if (!directory.TryGetValue(id, out var departing)) throw new InvalidOperationException($"Unknown entity {id}");
+            if (departing.Owner.Value != 0)
+            {
+                while (despawnedOwnerOrder.Count >= 256) recentlyDespawnedOwners.Remove(despawnedOwnerOrder.Dequeue());
+                recentlyDespawnedOwners[id] = (departing.Owner, departing.Behaviours, Tick);
+                despawnedOwnerOrder.Enqueue(id);
+            }
             spawned.TryGetValue(id, out var obj);
             using (var writer = new NetWriter())
             {
@@ -955,8 +974,12 @@ namespace AtlasNet
             byte[] payload = reader.ReadBytes();
             if (IsServer && !isWorker)
             {
-                if (!clientSessions.Contains(sender) || !directory.TryGetValue(id, out var entity))
-                    throw new InvalidOperationException($"Unknown RPC sender or entity {id}");
+                if (!clientSessions.Contains(sender)) throw new InvalidOperationException($"Unknown RPC sender {sender}");
+                if (!directory.TryGetValue(id, out var entity))
+                {
+                    if (IsStaleOwnerRpc(id, sender, index, method, destination)) return;
+                    throw new InvalidOperationException($"Unknown RPC entity {id}");
+                }
                 var rpc = RpcSchemaFor(Schema(id, index), method);
                 bool ownerCall = entity.Owner == sender;
                 bool allowed = (destination == RpcDestination.Authority && ownerCall &&
