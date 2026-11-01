@@ -268,6 +268,7 @@ MonoBehaviour:
   - Assets/M2/Scenes/M2_InterestAndScale.unity
   - Assets/M2/Scenes/M2_AnimatorSync.unity
   - Assets/M2/Scenes/M2_Soccer.unity
+  - Assets/M2/Scenes/M2_SoccerClientAuthority.unity
   webBaseUrl: http://localhost:8094/
 --- !u!114 &7569544250775736723
 MonoBehaviour:

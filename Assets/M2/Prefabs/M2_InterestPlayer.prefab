@@ -122,7 +122,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 7632955344992680494, guid: c33455c5576f0984b89033b8989f09dc, type: 3}
       propertyPath: prefabId
-      value: atlasnet.soccer.player
+      value: GlobalObjectId_V1-1-df17c2e5aa9085c47b7506ae3840fcf1-1675724102576497413-0
       objectReference: {fileID: 0}
     - target: {fileID: 7757712013863239065, guid: c33455c5576f0984b89033b8989f09dc, type: 3}
       propertyPath: m_Layer
@@ -248,6 +248,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 389bdfe22f0dfd64ebc84c209ed9b3e2, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::AtlasNet.Samples.Soccer.SoccerPlayer
+  allowMovement: 1
+  colorByOwnership: 0
 --- !u!114 &3737930693999699046
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -269,7 +271,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 2987457324121112335}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: a2000000000000000000000000000009, type: 3}
   m_Name: 

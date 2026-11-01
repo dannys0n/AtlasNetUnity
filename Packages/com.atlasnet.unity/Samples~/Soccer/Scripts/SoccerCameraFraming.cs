@@ -10,14 +10,14 @@ namespace AtlasNet.Samples.Soccer
             // Keep the existing sideline framing; horizontal travel depends on the viewport.
             Vector3 focus = new(target.x, 0, Mathf.Clamp(target.z, -18, 18));
             Vector3 position = focus + offset;
-            // The near, upper corner of the goal has the narrowest horizontal view.
-            // Use that depth so the whole mouth, including the posts, remains visible.
-            Vector3 nearGoalTop = new(focus.x, SoccerBall.GoalHeight, -SoccerBall.GoalHalfWidth - 2);
-            float depth = Mathf.Max(view.nearClipPlane, Vector3.Dot(nearGoalTop - position, rotation * Vector3.forward));
+            // The near touchline is narrower in perspective than the goal mouth.
+            // Frame its ground-level corners so the camera can follow farther toward either end.
+            Vector3 nearTouchline = new(focus.x, 0, -33);
+            float depth = Mathf.Max(view.nearClipPlane, Vector3.Dot(nearTouchline - position, rotation * Vector3.forward));
             float halfWidth = view.orthographic ? view.orthographicSize * view.aspect :
                 depth * Mathf.Tan(view.fieldOfView * .5f * Mathf.Deg2Rad) * view.aspect;
-            // Leave eight percent of the viewport beyond the goal for comfortable framing.
-            float limit = Mathf.Max(0, SoccerBall.GoalLineX - halfWidth * .84f);
+            // Leave eight percent of the viewport beyond the near field edge.
+            float limit = Mathf.Max(0, 52.5f - halfWidth * .84f);
             focus.x = Mathf.Clamp(focus.x, -limit, limit);
             view.transform.SetPositionAndRotation(focus + offset, rotation);
         }

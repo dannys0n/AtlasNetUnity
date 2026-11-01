@@ -1,4 +1,4 @@
-"""Serve Soccer desktop/mobile Web builds on one LAN address. Ctrl+C stops the server."""
+"""Serve M2 desktop/mobile Web builds on one LAN address. Ctrl+C stops the server."""
 import argparse
 import functools
 import gzip
@@ -10,7 +10,7 @@ import socket
 from urllib.parse import parse_qsl, urlencode, urlsplit
 
 ROOT = Path(__file__).resolve().parent
-BUILDS = {"desktop": ROOT / "Soccer-Desktop", "mobile": ROOT / "Soccer-Mobile"}
+BUILDS = {"desktop": ROOT / "M2-Desktop", "mobile": ROOT / "M2-Mobile"}
 
 class Handler(http.server.SimpleHTTPRequestHandler):
     extensions_map = {**http.server.SimpleHTTPRequestHandler.extensions_map, ".wasm": "application/wasm", ".data": "application/octet-stream", ".js": "application/javascript"}
@@ -62,7 +62,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("demo",nargs="?",default="soccer",choices=("soccer","m2"))
+    parser.add_argument("demo",nargs="?",default="m2",choices=("soccer","m2"))
     parser.add_argument("--port",type=int,default=8094)
     parser.add_argument("--game-port",type=int,default=7777)
     args=parser.parse_args()
@@ -70,7 +70,11 @@ def main():
     prefix="M2" if args.demo=="m2" else "Soccer"
     BUILDS={"desktop":ROOT/(prefix+"-Desktop"),"mobile":ROOT/(prefix+"-Mobile")}
     if not all(1<=p<=65535 for p in (args.port,args.game_port)): parser.error("Ports must be 1-65535")
-    if not any((b/"index.html").is_file() for b in BUILDS.values()): parser.error("No Soccer builds found next to this script")
+    if not any((b/"index.html").is_file() for b in BUILDS.values()):
+        parser.error("No " + prefix + " Web builds found. Expected index.html in:\n" + "\n".join(str(b) for b in BUILDS.values()))
+    print("Serving " + prefix + " Web builds:", flush=True)
+    for kind, build in BUILDS.items():
+        print(f"  {kind.title()}: {build}" + ("" if (build/"index.html").is_file() else " [not built yet]"), flush=True)
     # Precompress existing build files without slowing Unity's development build pipeline.
     for build in BUILDS.values():
         for source in (build/"Build").glob("*"):

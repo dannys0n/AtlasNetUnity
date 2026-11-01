@@ -37,6 +37,9 @@ MonoBehaviour:
   - m_enabled: 1
     m_path: Assets/M2/Scenes/M2_Soccer.unity
     m_guid: c6e79ba5b42931a46a7f1ffafec2f486
+  - m_enabled: 1
+    m_path: Assets/M2/Scenes/M2_SoccerClientAuthority.unity
+    m_guid: f6f81700c69865140a5cf3680264fd47
   m_HasScriptingDefines: 0
   m_ScriptingDefines: []
   m_PlayerSettingsYaml:

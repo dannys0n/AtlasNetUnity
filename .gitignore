@@ -10,6 +10,7 @@
 /[Bb]uilds/*
 !/Builds/Serve.cmd
 !/Builds/Enable-Firewall.cmd
+!/Builds/Disable-Firewall.cmd
 !/Builds/serve_web.py
 /[Ll]ogs/
 /[Uu]ser[Ss]ettings/

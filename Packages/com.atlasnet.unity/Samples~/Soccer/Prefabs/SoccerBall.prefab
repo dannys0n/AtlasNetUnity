@@ -150,6 +150,8 @@ MonoBehaviour:
   positionWriter: 0
   rotationWriter: 0
   interpolate: 1
+  sendIntervalTicks: 1
+  interpolationBufferTicks: 3
 --- !u!54 &7648394084561034851
 Rigidbody:
   m_ObjectHideFlags: 0
@@ -215,8 +217,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 021a24411b129ce40a063f535d4d4fde, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::AtlasNet.Samples.Soccer.SoccerBall
-  contactSpeed: 18
-  maxSpeed: 28
+  contactSpeed: 36
+  maxSpeed: 56
   upwardSpeed: 4
   maxUpwardSpeed: 12
 --- !u!114 &5512138180863316996

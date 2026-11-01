@@ -122,7 +122,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 7632955344992680494, guid: c33455c5576f0984b89033b8989f09dc, type: 3}
       propertyPath: prefabId
-      value: atlasnet.soccer.player
+      value: GlobalObjectId_V1-1-aca46a03e0761e640aaecd5393487d7d-3644946963898891550-0
       objectReference: {fileID: 0}
     - target: {fileID: 7757712013863239065, guid: c33455c5576f0984b89033b8989f09dc, type: 3}
       propertyPath: m_Layer
@@ -260,7 +260,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 910212393657016596}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: a2000000000000000000000000000009, type: 3}
   m_Name: 

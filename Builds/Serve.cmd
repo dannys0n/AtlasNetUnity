@@ -1,8 +1,8 @@
 @echo off
 setlocal
-title AtlasNet Soccer Web Server
+title AtlasNet M2 Web Server
 set "PYTHON_EXE=%USERPROFILE%\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe"
-where py >nul 2>nul
+py -3 -c "import sys" >nul 2>nul
 if not errorlevel 1 (
     py -3 "%~dp0serve_web.py" %*
     goto finished
