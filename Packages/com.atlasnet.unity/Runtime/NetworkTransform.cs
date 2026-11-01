@@ -13,19 +13,18 @@ namespace AtlasNet
         [SerializeField] private bool syncRotation = true;
         [SerializeField] private TransformWriter positionWriter = TransformWriter.Server;
         [SerializeField] private TransformWriter rotationWriter = TransformWriter.Owner;
-        [SerializeField, Tooltip("Interpolate remote client copies over one network tick. The owner and server never smooth their simulation transform.")]
+        [SerializeField, Tooltip("Buffer and interpolate remote client copies. The owner and server never smooth their simulation transform.")]
         private bool interpolate = true;
-        [SerializeField, Range(1,30), Tooltip("Send changed transforms once per this many network ticks. Remote interpolation uses the same interval.")]
+        [SerializeField, Range(1,30), Tooltip("Send changed transforms once per this many network ticks. Remote interpolation accounts for this interval.")]
         private int sendIntervalTicks = 1;
         public int SendIntervalTicks => Mathf.Max(1,sendIntervalTicks);
         private Vector3 lastPosition;
         private Quaternion lastRotation;
-        private Vector3 positionFrom;
-        private Vector3 positionTo;
-        private Quaternion rotationFrom;
-        private Quaternion rotationTo;
-        private float positionBlend = 1f;
-        private float rotationBlend = 1f;
+        [SerializeField, Min(1), Tooltip("Buffered display delay in network ticks for joined clients. Low send rates use at least two send intervals.")]
+        private int interpolationBufferTicks = 3;
+        private readonly BufferedInterpolator<Vector3> positions = new(Vector3.Lerp);
+        private readonly BufferedInterpolator<Quaternion> rotations = new(Quaternion.Slerp);
+        private bool positionBuffered, rotationBuffered;
 
         public TransformWriter PositionWriter => positionWriter;
         public TransformWriter RotationWriter => rotationWriter;
@@ -38,24 +37,18 @@ namespace AtlasNet
             if (target == null) target = transform;
             lastPosition = target.position;
             lastRotation = target.rotation;
-            positionFrom = positionTo = lastPosition;
-            rotationFrom = rotationTo = lastRotation;
+            positions.Reset(Time.unscaledTimeAsDouble, lastPosition);
+            rotations.Reset(Time.unscaledTimeAsDouble, lastRotation);
+            positionBuffered = rotationBuffered = false;
         }
 
         private void Update()
         {
             if (!IsSpawned || NetworkManager.IsServer || !interpolate) return;
-            float step = Time.deltaTime * NetworkManager.TickRate / SendIntervalTicks;
-            if (positionBlend < 1f)
-            {
-                positionBlend = Mathf.Min(1f, positionBlend + step);
-                target.position = Vector3.Lerp(positionFrom, positionTo, positionBlend);
-            }
-            if (rotationBlend < 1f)
-            {
-                rotationBlend = Mathf.Min(1f, rotationBlend + step);
-                target.rotation = Quaternion.Slerp(rotationFrom, rotationTo, rotationBlend);
-            }
+            double displayTime = Time.unscaledTimeAsDouble -
+                (double)Mathf.Max(interpolationBufferTicks, SendIntervalTicks * 2) / NetworkManager.TickRate;
+            if (positionBuffered) target.position = positions.Evaluate(displayTime);
+            if (rotationBuffered) target.rotation = rotations.Evaluate(displayTime);
         }
 
         public override void OnNetworkTick()
@@ -94,9 +87,8 @@ namespace AtlasNet
             {
                 if (interpolate && !NetworkManager.IsServer)
                 {
-                    positionFrom = target.position;
-                    positionTo = position;
-                    positionBlend = 0f;
+                    positions.Add(Time.unscaledTimeAsDouble, position);
+                    positionBuffered = true;
                 }
                 else target.position = position;
             }
@@ -104,9 +96,8 @@ namespace AtlasNet
             {
                 if (interpolate && !NetworkManager.IsServer)
                 {
-                    rotationFrom = target.rotation;
-                    rotationTo = rotation;
-                    rotationBlend = 0f;
+                    rotations.Add(Time.unscaledTimeAsDouble, rotation);
+                    rotationBuffered = true;
                 }
                 else target.rotation = rotation;
             }
@@ -125,9 +116,9 @@ namespace AtlasNet
             target.rotation = reader.ReadQuaternion();
             lastPosition = target.position;
             lastRotation = target.rotation;
-            positionFrom = positionTo = lastPosition;
-            rotationFrom = rotationTo = lastRotation;
-            positionBlend = rotationBlend = 1f;
+            positions.Reset(Time.unscaledTimeAsDouble, lastPosition);
+            rotations.Reset(Time.unscaledTimeAsDouble, lastRotation);
+            positionBuffered = rotationBuffered = false;
         }
 
         internal override void WriteExtraOwnerState(NetWriter writer)
@@ -152,15 +143,15 @@ namespace AtlasNet
             {
                 target.position = reader.ReadVector3();
                 lastPosition = target.position;
-                positionFrom = positionTo = lastPosition;
-                positionBlend = 1f;
+                positions.Reset(Time.unscaledTimeAsDouble, lastPosition);
+                positionBuffered = false;
             }
             if ((flags & 2) != 0)
             {
                 target.rotation = reader.ReadQuaternion();
                 lastRotation = target.rotation;
-                rotationFrom = rotationTo = lastRotation;
-                rotationBlend = 1f;
+                rotations.Reset(Time.unscaledTimeAsDouble, lastRotation);
+                rotationBuffered = false;
             }
         }
     }

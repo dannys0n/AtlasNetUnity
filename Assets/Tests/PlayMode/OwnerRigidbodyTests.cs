@@ -89,6 +89,9 @@ namespace AtlasNetDemo.Tests
                 yield return Until(()=>local.AuthorityEpoch>epoch,"logical authority handoff while client continues simulation");
                 Assert.Greater(local.transform.position.x,.5f);Assert.IsFalse(body.isKinematic);
                 var observer=host?udp:web;
+                // Remote views intentionally trail moving owners by the interpolation buffer.
+                // Stop before checking eventual convergence rather than demanding zero display lag.
+                Set(movement,"input",Vector2.zero); body.linearVelocity=Vector3.zero;
                 yield return Until(()=>observer.TryGet(local.EntityId,out var remote)&&Vector3.Distance(remote.transform.position,local.transform.position)<.3f,"remote pose catches up");
                 // The real sample movement queues a physical jump only on its writer.
                 body.position=new Vector3(body.position.x,1,body.position.z);body.useGravity=true;
