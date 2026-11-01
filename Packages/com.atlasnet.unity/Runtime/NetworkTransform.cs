@@ -15,6 +15,9 @@ namespace AtlasNet
         [SerializeField] private TransformWriter rotationWriter = TransformWriter.Owner;
         [SerializeField, Tooltip("Interpolate remote client copies over one network tick. The owner and server never smooth their simulation transform.")]
         private bool interpolate = true;
+        [SerializeField, Range(1,30), Tooltip("Send changed transforms once per this many network ticks. Remote interpolation uses the same interval.")]
+        private int sendIntervalTicks = 1;
+        public int SendIntervalTicks => Mathf.Max(1,sendIntervalTicks);
         private Vector3 lastPosition;
         private Quaternion lastRotation;
         private Vector3 positionFrom;
@@ -42,7 +45,7 @@ namespace AtlasNet
         private void Update()
         {
             if (!IsSpawned || NetworkManager.IsServer || !interpolate) return;
-            float step = Time.deltaTime * NetworkManager.TickRate;
+            float step = Time.deltaTime * NetworkManager.TickRate / SendIntervalTicks;
             if (positionBlend < 1f)
             {
                 positionBlend = Mathf.Min(1f, positionBlend + step);
@@ -57,6 +60,7 @@ namespace AtlasNet
 
         public override void OnNetworkTick()
         {
+            if(NetworkManager.Tick % (uint)SendIntervalTicks != 0)return;
             bool writePosition = syncPosition && (HasAuthority
                 ? positionWriter == TransformWriter.Server || (positionWriter == TransformWriter.Owner && IsOwner)
                 : positionWriter == TransformWriter.Owner && IsOwner);

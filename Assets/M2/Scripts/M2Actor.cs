@@ -13,7 +13,7 @@ namespace AtlasNet.M2
             // Embedded workers share this local presenter. Color relative to the
             // actual viewer, not to whichever replica currently simulates the actor.
             var p=M2Presentation.Instance;
-            if (player) player.KeyboardInput = ReadMovement;
+            if (player) { player.KeyboardInput = ReadMovement; player.WaveKeyEnabled = !NetworkManager.IsServer; }
             if(player&&p)player.SetColorViewer(p.manager.IsClient?p.manager.LocalSession:default);
         }
         void Update()

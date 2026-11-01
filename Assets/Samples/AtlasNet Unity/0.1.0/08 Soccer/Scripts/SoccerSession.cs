@@ -94,12 +94,8 @@ namespace AtlasNet.Samples.Soccer
         void LateUpdate()
         {
             if (!view || !manager.IsClient || !local) return;
-            Vector3 focus = local.transform.position;
-            focus.x = Mathf.Clamp(focus.x, -35, 35); focus.z = Mathf.Clamp(focus.z, -18, 18);
-            Vector3 desired = focus + new Vector3(0, 32, -26);
-            // Follow the already-interpolated render pose; a second smoothing pass adds movement lag.
-            view.transform.position = desired;
-            view.transform.rotation = Quaternion.Euler(51, 0, 0);
+            // Follow the interpolated render pose without adding another smoothing delay.
+            SoccerCameraFraming.Follow(view, local.transform.position, new Vector3(0, 32, -26), Quaternion.Euler(51, 0, 0));
         }
         void RefreshJoin()
         {

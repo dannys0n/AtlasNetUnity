@@ -595,7 +595,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f43688423fc81a143bc57b847d0fe5c0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::AtlasNet.M2.M2Stage
-  index: 0
+  index: 1
+  kind: 1
+  hasLiveDemo: 1
   title: Interest / scale
   playerPrefab: {fileID: 3690700341716489596, guid: 088a841c2c5b0f54d88a45e56186d490, type: 3}
   extraPrefab: {fileID: 8457633124402026282, guid: 7e04f8488b9a3c448966b752c67ce6b5, type: 3}
@@ -607,6 +609,20 @@ MonoBehaviour:
   goalPointer: {fileID: 0}
   blueConfetti: {fileID: 0}
   orangeConfetti: {fileID: 0}
+  slides:
+  - title: "Scale and interest \u2014 components"
+    layout: 0
+    panelWidth: 0.55
+    image: {fileID: 2800000, guid: def35ea655c1c724cb89794117eaac60, type: 3}
+    frames: []
+    framesPerSecond: 12
+  - title: "Scale and interest \u2014 code"
+    layout: 0
+    panelWidth: 0.55
+    image: {fileID: 2800000, guid: 5d79a728dda1b93429c9d08d3cd12886, type: 3}
+    frames: []
+    framesPerSecond: 12
+  previewSlidesWhenEmpty: 0
   screenshots: []
 --- !u!4 &1440075000
 Transform:

@@ -1150,7 +1150,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f43688423fc81a143bc57b847d0fe5c0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::AtlasNet.M2.M2Stage
-  index: 2
+  index: 3
+  kind: 3
+  hasLiveDemo: 1
+  slidesAfterDemo: 1
   title: Soccer
   playerPrefab: {fileID: 3244903758523380490, guid: 0a22eb4889054d745a73e0b62cafda5f, type: 3}
   extraPrefab: {fileID: 183332087030116623, guid: 0e635d2ae5520904db48a7a68fc4d5ab, type: 3}
@@ -1162,6 +1165,16 @@ MonoBehaviour:
   goalPointer: {fileID: 681766071}
   blueConfetti: {fileID: 1116024884}
   orangeConfetti: {fileID: 1540631593}
+  slides:
+  - title: "Polygon Shooter \u2014 Milestone 3"
+    layout: 1
+    panelWidth: 0.55
+    portraitPanelHeight: 0
+    image: {fileID: 0}
+    videoPath: M2/PolygonShooterPreview.mp4
+    frames: []
+    framesPerSecond: 12
+  previewSlidesWhenEmpty: 0
   screenshots: []
 --- !u!4 &681766073
 Transform:

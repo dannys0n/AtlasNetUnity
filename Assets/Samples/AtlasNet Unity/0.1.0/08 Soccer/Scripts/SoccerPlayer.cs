@@ -42,6 +42,7 @@ namespace AtlasNet.Samples.Soccer
         NetworkAnimator networkAnimator;
         float inputReceived, nextInput;
         // Applications may reserve arrow keys for menus/presentation without changing network movement.
+        public bool WaveKeyEnabled { get; set; } = true;
         public System.Func<Vector2> KeyboardInput { private get; set; }
         Vector2 lastSent;
         readonly Dictionary<ulong,float> kickedBalls = new();
@@ -88,7 +89,7 @@ namespace AtlasNet.Samples.Soccer
         {
             if (!IsSpawned) return;
             if (!IsOwner) return;
-            if (UnityEngine.Input.GetKeyDown(KeyCode.Space)) RequestWave();
+            if (WaveKeyEnabled && UnityEngine.Input.GetKeyDown(KeyCode.Space)) RequestWave();
             if (!allowMovement) return;
             Vector2 input = SoccerStick.Input;
             if (input.sqrMagnitude < .001f) input = KeyboardInput != null ? KeyboardInput() : new Vector2(UnityEngine.Input.GetAxisRaw("Horizontal"), UnityEngine.Input.GetAxisRaw("Vertical"));

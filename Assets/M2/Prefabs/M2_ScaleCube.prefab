@@ -139,6 +139,7 @@ MonoBehaviour:
   positionWriter: 0
   rotationWriter: 0
   interpolate: 1
+  sendIntervalTicks: 3
 --- !u!114 &1993296665035828521
 MonoBehaviour:
   m_ObjectHideFlags: 0

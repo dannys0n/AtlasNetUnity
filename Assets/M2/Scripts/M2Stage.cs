@@ -4,9 +4,15 @@ using UnityEngine;
 
 namespace AtlasNet.M2
 {
+    public enum M2StageKind { Install, InterestAndScale, AnimatorSync, Soccer }
+
     public sealed class M2Stage : MonoBehaviour
     {
         public int index;
+        public M2StageKind kind;
+        public bool hasLiveDemo = true;
+        [Tooltip("Present the live demo before its media slides.")]
+        public bool slidesAfterDemo;
         public string title;
         public NetworkObject playerPrefab;
         public NetworkObject extraPrefab;

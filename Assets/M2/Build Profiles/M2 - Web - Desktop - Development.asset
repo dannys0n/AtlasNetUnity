@@ -26,6 +26,9 @@ MonoBehaviour:
     m_path: Assets/M2/M2_Launcher.unity
     m_guid: 21e8686cc49e5a444a4703271950216e
   - m_enabled: 1
+    m_path: Assets/M2/Scenes/M2_InstallUPM.unity
+    m_guid: 8c2f1d7a2cf28454baf424a2d3a75eb7
+  - m_enabled: 1
     m_path: Assets/M2/Scenes/M2_InterestAndScale.unity
     m_guid: 427b65e1032afa848b1aadf0d487cd0c
   - m_enabled: 1

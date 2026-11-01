@@ -596,7 +596,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f43688423fc81a143bc57b847d0fe5c0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::AtlasNet.M2.M2Stage
-  index: 1
+  index: 2
+  kind: 2
+  hasLiveDemo: 1
+  slidesAfterDemo: 0
   title: Animator sync
   playerPrefab: {fileID: 3644946963898891550, guid: aca46a03e0761e640aaecd5393487d7d, type: 3}
   extraPrefab: {fileID: 0}
@@ -608,6 +611,22 @@ MonoBehaviour:
   goalPointer: {fileID: 0}
   blueConfetti: {fileID: 0}
   orangeConfetti: {fileID: 0}
+  slides:
+  - title: "Animator sync \u2014 components"
+    layout: 2
+    panelWidth: 0.33333334
+    portraitPanelHeight: 0.6666667
+    image: {fileID: 2800000, guid: 518b8c3ec29b3ab4796cbd7f0cb27fdf, type: 3}
+    frames: []
+    framesPerSecond: 12
+  - title: "Animator sync \u2014 code"
+    layout: 1
+    panelWidth: 0.33333334
+    portraitPanelHeight: 0.6666667
+    image: {fileID: 2800000, guid: a2a6800ef52cced4fac80a5c428623ef, type: 3}
+    frames: []
+    framesPerSecond: 12
+  previewSlidesWhenEmpty: 0
   screenshots: []
 --- !u!4 &1440075000
 Transform:

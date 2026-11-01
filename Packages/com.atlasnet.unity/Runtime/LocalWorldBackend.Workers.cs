@@ -214,7 +214,7 @@ namespace AtlasNet
             return false;
         }
 
-        private bool ShouldWorkerHold(SessionId worker, CanonicalEntity target, bool alreadyResident)
+        private bool ShouldWorkerHold(SessionId worker, CanonicalEntity target, bool alreadyResident, bool includeViewerInterest = true)
         {
             bool handoffPending = pendingHandoffs.TryGetValue(target.Id, out var pending);
             if (target.Worker == worker.Value ||
@@ -228,6 +228,7 @@ namespace AtlasNet
                         float reach = source.PhysicsRadius + target.PhysicsRadius + (alreadyResident ? 3f : 2f);
                         if ((source.Position - target.Position).sqrMagnitude <= reach * reach) return true;
                     }
+            if (!includeViewerInterest) return false;
             foreach (var source in directory.Values)
             {
                 if (source.Id == target.Id || source.Owner.Value == 0 ||
@@ -317,10 +318,10 @@ namespace AtlasNet
             if (!directory.TryGetValue(obj.EntityId, out var entity)) return false;
             // The coordinator also creates temporary replicas solely to relay handoffs
             // between OTHER workers. Residency for routing is not visual interest.
-            bool hostView = IsClient && (playerPrefab == null ||
+            bool hostView = runtime.ShowViewerInterestForDebug && IsClient && (playerPrefab == null ||
                 playerPrefab.GetComponent<NetworkInterestSource>() == null ||
                 ShouldClientHold(LocalSession, entity, true));
-            return ShouldWorkerHold(default, entity, true) || hostView;
+            return ShouldWorkerHold(default, entity, true, runtime.ShowViewerInterestForDebug) || hostView;
         }
 
         /// <summary>Join the first local server as another Unity simulation worker.</summary>

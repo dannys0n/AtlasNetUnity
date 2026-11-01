@@ -32,7 +32,9 @@ namespace AtlasNet.M2
         public double SlideElapsed => Math.Max(0, Time.unscaledTimeAsDouble - slideStarted);
         Scene content;
         NetworkObject owner;
-        NetworkObject cameraTarget;
+        NetworkObject cameraTarget, animatorPlaceholder;
+        bool enterFromEnd;
+        public M2StageKind ActiveKind => Stage ? Stage.kind : M2StageKind.Install;
         double nextCameraPick;
         bool wasRunning;
         const string StateMessage="M2.Presentation.State", HelloMessage="M2.Presentation.Hello", ReadyMessage="M2.Presentation.Ready";
@@ -40,6 +42,7 @@ namespace AtlasNet.M2
         void Awake()
         {
             Instance=this; DontDestroyOnLoad(gameObject);
+            manager.ShowViewerInterestForDebug=false;
             manager.PlayerSpawnPosition=s=>SpawnPosition(s);
             manager.OnClientConnectedCallback+=Joined;
             manager.SessionLeft+=Left;
@@ -127,14 +130,46 @@ namespace AtlasNet.M2
         }
         public void ChangeSlide(int direction)
         {
-            if(!manager.IsServer||manager.IsWorker||Loading||!Stage)return;
+            if(direction!=0){AdvancePresentation(direction);return;}
+            if(!CanPresent)return;
+            if(slideIndex>=0)CloseSlides();else if(hud.SlideCount>0)ShowSlide(0);
+        }
+        bool CanPresent => manager.IsServer&&!manager.IsWorker&&!Loading&&Stage;
+        void ShowSlide(int index)
+        {
+            slideIndex=index;slideRevision++;slideStarted=Time.unscaledTimeAsDouble;
+            hud.ApplySlideState(slideIndex,0);BroadcastState();
+        }
+        public void AdvancePresentation(int direction)
+        {
+            if(!CanPresent||direction==0)return;
             int count=hud.SlideCount;
-            if(count==0)return;
-            if(direction==0&&slideIndex>=0) { CloseSlides();return; }
-            slideIndex=slideIndex<0 ? (direction<0?count-1:0) : (slideIndex+Math.Sign(direction)+count)%count;
-            slideRevision++;slideStarted=Time.unscaledTimeAsDouble;
-            hud.ApplySlideState(slideIndex,0);
-            BroadcastState();
+            if(Stage.slidesAfterDemo&&Stage.hasLiveDemo)
+            {
+                if(direction>0)
+                {
+                    if(slideIndex<count-1)ShowSlide(slideIndex+1);
+                    else if(ActiveIndex<scenes.Length-1)Select(ActiveIndex+1);
+                }
+                else if(slideIndex>=0)
+                {
+                    if(slideIndex==0)CloseSlides();else ShowSlide(slideIndex-1);
+                }
+                else if(ActiveIndex>0)Select(ActiveIndex-1,true);
+                return;
+            }
+            if(direction>0)
+            {
+                if(slideIndex>=0&&slideIndex<count-1)ShowSlide(slideIndex+1);
+                else if(slideIndex>=0&&Stage.hasLiveDemo)CloseSlides();
+                else if(ActiveIndex<scenes.Length-1)Select(ActiveIndex+1);
+            }
+            else
+            {
+                if(slideIndex>0)ShowSlide(slideIndex-1);
+                else if(slideIndex<0&&count>0)ShowSlide(count-1);
+                else if(ActiveIndex>0)Select(ActiveIndex-1,true);
+            }
         }
         public void CloseSlides()
         {
@@ -143,11 +178,11 @@ namespace AtlasNet.M2
             hud.CloseSlideLocally();BroadcastState();
         }
 
-        public void Select(int index)
+        public void Select(int index, bool fromEnd=false)
         {
             if(!manager.IsServer||manager.IsWorker||index<0||index>=scenes.Length)return;
             requestedIndex=index;requestedRevision++;ready.Clear();
-            slideIndex=-1;slideRevision=0;slideStarted=Time.unscaledTimeAsDouble;
+            enterFromEnd=fromEnd;slideIndex=fromEnd?-1:0;slideRevision=0;slideStarted=Time.unscaledTimeAsDouble;
             BroadcastState();
             // IDs survive interest eviction and worker handoff; Unity references do not.
             foreach(var id in stageEntities)manager.TryDespawn(id);
@@ -170,14 +205,22 @@ namespace AtlasNet.M2
                     Stage=content.GetRootGameObjects().SelectMany(g=>g.GetComponentsInChildren<M2Stage>(true)).Single();
                     if(previous.IsValid()&&previous.isLoaded)yield return SceneManager.UnloadSceneAsync(previous);
                 }
-                ActiveIndex=index;AppliedRevision=revision;owner=null;cameraTarget=null;nextCameraPick=0;
+                ActiveIndex=index;AppliedRevision=revision;owner=null;cameraTarget=null;animatorPlaceholder=null;nextCameraPick=0;
                 if(Stage.goalPointer){Stage.goalPointer.manager=manager;Stage.goalPointer.enabled=true;}
                 var confetti=GetComponent<SoccerGoalConfetti>();confetti.manager=manager;confetti.blueGoal=Stage.blueConfetti;confetti.orangeGoal=Stage.orangeConfetti;
                 if(revision!=requestedRevision)continue;
                 if(manager.IsServer)
                 {
+                    int resolved=enterFromEnd
+                        ? (Stage.hasLiveDemo&&!Stage.slidesAfterDemo ? -1 : hud.SlideCount-1)
+                        : (Stage.slidesAfterDemo||hud.SlideCount==0 ? -1 : slideIndex);
+                    enterFromEnd=false;
+                    if(resolved!=slideIndex){slideIndex=resolved;slideRevision++;BroadcastState();}
+                }
+                if(manager.IsServer)
+                {
                     foreach(var session in manager.ConnectedClientsIds)SpawnPlayer(session);
-                    if(index==2&&Stage.extraPrefab)extras.Add(Track(manager.Spawn(Stage.extraPrefab,new Vector3(0,SoccerBall.Radius,0),Quaternion.identity)).EntityId);
+                    if(Stage.kind==M2StageKind.Soccer&&Stage.extraPrefab)extras.Add(Track(manager.Spawn(Stage.extraPrefab,new Vector3(0,SoccerBall.Radius,0),Quaternion.identity)).EntityId);
                     if(manager.IsClient)ready[manager.LocalSession]=revision;
                 }
                 else if(manager.IsConnectedClient)
@@ -190,9 +233,9 @@ namespace AtlasNet.M2
         }
         Vector3 SpawnPosition(SessionId session)
         {
-            if(ActiveIndex==0)return Vector3.zero;
+            if(ActiveKind==M2StageKind.Install||ActiveKind==M2StageKind.InterestAndScale)return Vector3.zero;
             int index=SoccerPlayer.RosterIndex(manager,session);
-            if(ActiveIndex==1)return new Vector3(index*3.5f,0,0);
+            if(ActiveKind==M2StageKind.AnimatorSync)return new Vector3(index*3.5f,0,0);
             return new Vector3((index&1)==0?-15:15,0,(index/2%5-2)*3f);
         }
         void SpawnPlayer(SessionId session)
@@ -218,7 +261,8 @@ namespace AtlasNet.M2
             if(wasRunning&&!manager.IsRunning){ready.Clear();extras.Clear();stageEntities.Clear();owner=null;slideIndex=-1;slideRevision=0;hud.CloseSlideLocally();Error=manager.DisconnectReason;}
             wasRunning=manager.IsRunning;
             if(!manager.IsRunning||Loading||!Stage)return;
-            if(manager.IsServer&&!manager.IsWorker&&ActiveIndex==0)
+            EnsureAnimatorPlaceholder();
+            if(manager.IsServer&&!manager.IsWorker&&ActiveKind==M2StageKind.InterestAndScale)
             {
                 for(int i=0;i<4&&extras.Count!=Stage.entityCount;i++)
                 {
@@ -229,16 +273,43 @@ namespace AtlasNet.M2
             if(UnityEngine.EventSystems.EventSystem.current&&UnityEngine.EventSystems.EventSystem.current.currentSelectedGameObject?.GetComponent<TMPro.TMP_InputField>())return;
             if(manager.IsServer)
             {
-                if(Input.GetKeyDown(KeyCode.Alpha1))Select(0);if(Input.GetKeyDown(KeyCode.Alpha2))Select(1);if(Input.GetKeyDown(KeyCode.Alpha3))Select(2);
+                if(Input.GetKeyDown(KeyCode.Alpha1))Select(0);if(Input.GetKeyDown(KeyCode.Alpha2))Select(1);if(Input.GetKeyDown(KeyCode.Alpha3))Select(2);if(Input.GetKeyDown(KeyCode.Alpha4))Select(3);
                 if(Input.GetKeyDown(KeyCode.I))hud.ToggleScreenshot(0);
-                if(Input.GetKeyDown(KeyCode.RightArrow)||Input.GetKeyDown(KeyCode.PageDown))hud.ToggleScreenshot(1);
-                if(Input.GetKeyDown(KeyCode.LeftArrow)||Input.GetKeyDown(KeyCode.PageUp))hud.ToggleScreenshot(-1);
+                bool space=Input.GetKeyDown(KeyCode.Space),shift=Input.GetKey(KeyCode.LeftShift)||Input.GetKey(KeyCode.RightShift);
+                if(Input.GetKeyDown(KeyCode.LeftArrow)||Input.GetKeyDown(KeyCode.UpArrow)||Input.GetKeyDown(KeyCode.PageUp)||(space&&shift))AdvancePresentation(-1);
+                else if(Input.GetKeyDown(KeyCode.RightArrow)||Input.GetKeyDown(KeyCode.DownArrow)||Input.GetKeyDown(KeyCode.PageDown)||(space&&!shift))AdvancePresentation(1);
                 if(Input.GetKeyDown(KeyCode.Escape))hud.HideScreenshot();
             }
         }
+        void EnsureAnimatorPlaceholder()
+        {
+            if(!manager.IsServer||manager.IsWorker||ActiveKind!=M2StageKind.AnimatorSync)return;
+            bool viewers=manager.ConnectedClientsIds.Any(s=>s!=manager.LocalSession);
+            if(viewers&&animatorPlaceholder)
+            {
+                var id=animatorPlaceholder.EntityId;manager.TryDespawn(id);stageEntities.Remove(id);animatorPlaceholder=null;
+            }
+            else if(!viewers&&!Owner&&!animatorPlaceholder)
+                animatorPlaceholder=Track(manager.Spawn(Stage.playerPrefab,Vector3.zero,Quaternion.identity));
+        }
         NetworkObject PresenterCameraTarget()
         {
-            bool valid=cameraTarget&&cameraTarget.IsSpawned&&manager.ConnectedClientsIds.Contains(cameraTarget.OwnerSession);
+            bool valid=cameraTarget&&cameraTarget.IsSpawned&&(cameraTarget==animatorPlaceholder||manager.ConnectedClientsIds.Contains(cameraTarget.OwnerSession));
+            if(ActiveKind==M2StageKind.AnimatorSync)
+            {
+                // Finish watching the current gesture before considering another player.
+                if(valid&&cameraTarget.TryGetComponent<SampleWaveLayer>(out var currentWave)&&currentWave.IsBusy)
+                    return cameraTarget;
+                foreach(var candidate in manager.SpawnedObjects)
+                {
+                    if(!candidate||!candidate.IsSpawned||candidate==cameraTarget||
+                        !manager.ConnectedClientsIds.Contains(candidate.OwnerSession)||
+                        !candidate.TryGetComponent<SampleWaveLayer>(out var wave)||!wave.IsBusy)continue;
+                    cameraTarget=candidate;
+                    nextCameraPick=Time.unscaledTimeAsDouble+5;
+                    return cameraTarget;
+                }
+            }
             if(valid&&Time.unscaledTimeAsDouble<nextCameraPick)return cameraTarget;
             NetworkObject selected=null;
             int count=0;
@@ -251,7 +322,7 @@ namespace AtlasNet.M2
                     (valid&&candidate.OwnerSession==cameraTarget.OwnerSession))continue;
                 if(UnityEngine.Random.Range(0,++count)==0)selected=candidate;
             }
-            cameraTarget=selected ? selected : valid ? cameraTarget : Owner;
+            cameraTarget=selected ? selected : valid ? cameraTarget : Owner ? Owner : animatorPlaceholder;
             nextCameraPick=Time.unscaledTimeAsDouble+5;
             return cameraTarget;
         }
@@ -261,8 +332,9 @@ namespace AtlasNet.M2
             var target=manager.IsServer&&!manager.IsWorker ? PresenterCameraTarget() : Owner;
             if(!target)return;
             Vector3 focus=target.transform.position;
-            if(ActiveIndex==2&&!hud.HasPartialSlide){focus.x=Mathf.Clamp(focus.x,-35,35);focus.z=Mathf.Clamp(focus.z,-18,18);}
-            Stage.view.transform.SetPositionAndRotation(new Vector3(focus.x,0,focus.z)+Stage.cameraOffset,Quaternion.Euler(Stage.cameraAngles));
+            if(ActiveKind==M2StageKind.Soccer&&!hud.HasPartialSlide)
+                SoccerCameraFraming.Follow(Stage.view, focus, Stage.cameraOffset, Quaternion.Euler(Stage.cameraAngles));
+            else Stage.view.transform.SetPositionAndRotation(new Vector3(focus.x,0,focus.z)+Stage.cameraOffset,Quaternion.Euler(Stage.cameraAngles));
         }
     }
 }

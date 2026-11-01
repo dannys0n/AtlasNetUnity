@@ -41,6 +41,8 @@ namespace AtlasNet
 
         public bool SetClientDebugRegionEnabled(NetworkObject ownedPlayer, bool enabled) => Backend.SetClientDebugRegionEnabled(ownedPlayer, enabled);
         public bool RequestLocalRegionForDebug() => Backend.RequestLocalRegionForDebug();
+        /// <summary>Include coordinator replicas held only for viewer interest in the local debug view. Does not change subscriptions.</summary>
+        public bool ShowViewerInterestForDebug { get; set; } = true;
         public bool ShouldRenderWorkerCopyForDebug(NetworkObject obj) => Backend.ShouldRenderWorkerCopyForDebug(obj);
     }
 }

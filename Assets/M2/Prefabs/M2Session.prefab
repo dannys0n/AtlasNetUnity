@@ -264,6 +264,7 @@ MonoBehaviour:
   manager: {fileID: 5825246945700393174}
   hud: {fileID: 7569544250775736723}
   scenes:
+  - Assets/M2/Scenes/M2_InstallUPM.unity
   - Assets/M2/Scenes/M2_InterestAndScale.unity
   - Assets/M2/Scenes/M2_AnimatorSync.unity
   - Assets/M2/Scenes/M2_Soccer.unity
@@ -282,6 +283,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::AtlasNet.M2.M2Hud
   presentation: {fileID: 5259931731028960689}
   font: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
+  videoTextBlurMaterial: {fileID: 2100000, guid: 4cb6341c294466e4da3c80d287be9114, type: 2}
 --- !u!114 &2529180910955555228
 MonoBehaviour:
   m_ObjectHideFlags: 0

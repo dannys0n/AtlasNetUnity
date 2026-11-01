@@ -146,6 +146,7 @@ namespace AtlasNet.Editor
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("Interpolation", EditorStyles.boldLabel);
             EditorGUILayout.PropertyField(serializedObject.FindProperty("interpolate"), new GUIContent("Interpolate Remote Copies"));
+            EditorGUILayout.PropertyField(serializedObject.FindProperty("sendIntervalTicks"), new GUIContent("Send Interval (Ticks)"));
             serializedObject.ApplyModifiedProperties();
         }
     }

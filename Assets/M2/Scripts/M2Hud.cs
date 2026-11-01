@@ -15,9 +15,10 @@ namespace AtlasNet.M2
     {
         public M2Presentation presentation;
         public TMP_FontAsset font;
+        public Material videoTextBlurMaterial;
         TMP_InputField address;
         TMP_Text status,linkLabel,score;
-        GameObject connection,join,controls,stick,waveButton;
+        GameObject connection,join,stick,waveButton;
         M2Slides slides;
         RectTransform gameHud, fixedHud, joinHud;
         int waveStage = -1;
@@ -31,20 +32,20 @@ namespace AtlasNet.M2
         void Update()
         {
             var p=presentation;var m=p.manager;bool running=m.IsRunning;
-            connection.SetActive(!running);join.SetActive(running&&m.IsServer);controls.SetActive(running&&m.IsServer&&!(slides&&slides.Visible));
-            stick.SetActive(running&&m.IsClient&&!p.Loading&&p.ActiveIndex==2&&p.Owner);
-            waveButton.SetActive(running&&m.IsClient&&!p.Loading&&(p.ActiveIndex==1||p.ActiveIndex==2)&&p.Owner);
+            connection.SetActive(!running);join.SetActive(running&&m.IsServer);
+            stick.SetActive(running&&m.IsClient&&!p.Loading&&p.ActiveKind==M2StageKind.Soccer&&p.Owner);
+            waveButton.SetActive(running&&m.IsClient&&!p.Loading&&(p.ActiveKind==M2StageKind.AnimatorSync||p.ActiveKind==M2StageKind.Soccer)&&p.Owner);
             if (waveStage != p.ActiveIndex)
             {
                 waveStage = p.ActiveIndex;
                 var rect = waveButton.GetComponent<RectTransform>();
-                rect.SetParent(p.ActiveIndex == 2 ? fixedHud : gameHud, false);
-                Anchor(rect, new Vector2(p.ActiveIndex == 2 ? 1 : .5f, 0));
-                rect.anchoredPosition = new Vector2(p.ActiveIndex == 2 ? -210 : 0, 90);
+                rect.SetParent(p.ActiveKind == M2StageKind.Soccer ? fixedHud : gameHud, false);
+                Anchor(rect, new Vector2(p.ActiveKind == M2StageKind.Soccer ? 1 : .5f, 0));
+                rect.anchoredPosition = new Vector2(p.ActiveKind == M2StageKind.Soccer ? -210 : 0, 90);
             }
-            status.text=!running?(string.IsNullOrEmpty(p.Error)?"ATLASNET - MILESTONE 2":p.Error):p.Loading?"LOADING DEMO...":!m.IsServer&&!m.IsConnectedClient?"CONNECTING-":$"M2 - {p.Stage?.title ?? "Preparing"} - {m.ConnectedClientsIds.Count} {(p.ActiveIndex==0?"viewers":"players")}";
+            status.text=!running?(string.IsNullOrEmpty(p.Error)?"ATLASNET - MILESTONE 2":p.Error):p.Loading?"LOADING DEMO...":!m.IsServer&&!m.IsConnectedClient?"CONNECTING-":$"M2 - {p.Stage?.title ?? "Preparing"} - {m.ConnectedClientsIds.Count} {((p.ActiveKind==M2StageKind.Install||p.ActiveKind==M2StageKind.InterestAndScale)?"viewers":"players")}";
             score.text="";
-            if(running&&p.ActiveIndex==2)
+            if(running&&p.ActiveKind==M2StageKind.Soccer)
             {
                 var match=m.SpawnedObjects.Select(o=>o.GetComponent<SoccerMatch>()).FirstOrDefault(o=>o);
                 if(match)score.text=$"<color=#3C9BFF>{match.BlueScore.Value}</color>    {DateTime.Now:HH:mm:ss}    <color=#FF781E>{match.OrangeScore.Value}</color>";
@@ -112,20 +113,16 @@ namespace AtlasNet.M2
             Button(lobby,"Host",new Vector2(-105,-18),new Vector2(190,44),()=>presentation.Connect(0));
             Button(lobby,"Join",new Vector2(105,-18),new Vector2(190,44),()=>presentation.Connect(2));
             Button(lobby,"Start server only",new Vector2(0,-79),new Vector2(400,42),()=>presentation.Connect(3));
-            var share=Panel(joinHud,"Join QR",new Vector2(0,1),new Vector2(170,-235),new Vector2(310,370));join=share.gameObject;
+            var share=Panel(joinHud,"Join QR",new Vector2(1,1),new Vector2(-170,-235),new Vector2(310,370));join=share.gameObject;
             Text(share,"Join title","JOIN THIS SESSION",new Vector2(0,155),new Vector2(290,32),21);
             var qrObject=new GameObject("QR",typeof(RectTransform),typeof(UnityEngine.UI.RawImage));qrObject.transform.SetParent(share,false);qrView=qrObject.GetComponent<UnityEngine.UI.RawImage>();qrView.color=Color.white;qrView.rectTransform.sizeDelta=new Vector2(235,235);qrView.rectTransform.anchoredPosition=new Vector2(0,16);qrView.raycastTarget=false;
             linkLabel=Text(share,"Address","",new Vector2(0,-126),new Vector2(290,48),20);linkLabel.textWrappingMode=TextWrappingModes.Normal;
             Button(share,"Copy address",new Vector2(0,-164),new Vector2(280,30),()=>GUIUtility.systemCopyBuffer=link);
-            var buttons=Panel(gameHud,"Presenter controls",new Vector2(1,1),new Vector2(-260,-155),new Vector2(490,185));controls=buttons.gameObject;
-            for(int i=0;i<3;i++){int index=i;Button(buttons,new[]{"1 - Interest / scale","2 - Animator sync","3 - Soccer"}[i],new Vector2(0,54-i*49),new Vector2(460,43),()=>presentation.Select(index));}
-            Text(buttons,"Slide keys","Left / Right: slides - I: toggle - Esc: close",new Vector2(0,-76),new Vector2(470,26),14);
-            var disconnect=Button(fixedHud,"Disconnect",new Vector2(-92,-30),new Vector2(160,35),()=>presentation.manager.Stop());Anchor(disconnect.GetComponent<RectTransform>(),new Vector2(1,1));
             var circle=new GameObject("Movement",typeof(RectTransform),typeof(SoccerStickGraphic));circle.transform.SetParent(fixedHud,false);var rect=circle.GetComponent<RectTransform>();Anchor(rect,Vector2.zero);rect.anchoredPosition=new Vector2(220,210);rect.sizeDelta=new Vector2(220,220);circle.GetComponent<SoccerStickGraphic>().color=new Color(.1f,.2f,.3f,.65f);stick=circle;
             var knob=new GameObject("Handle",typeof(RectTransform),typeof(SoccerStickGraphic));knob.transform.SetParent(rect,false);var handle=knob.GetComponent<RectTransform>();handle.sizeDelta=new Vector2(80,80);knob.GetComponent<SoccerStickGraphic>().color=new Color(.7f,.85f,1,.9f);knob.GetComponent<SoccerStickGraphic>().raycastTarget=false;circle.AddComponent<SoccerStick>().handle=handle;
             var wave=Button(gameHud,"Wave / Space",new Vector2(0,90),new Vector2(360,100),()=>{var owner=presentation.Owner;if(owner)owner.GetComponent<M2Actor>().Wave();});Anchor(wave.GetComponent<RectTransform>(),new Vector2(.5f,0));wave.GetComponentInChildren<TMP_Text>().fontSize=28;waveButton=wave.gameObject;
             slides = gameObject.AddComponent<M2Slides>();
-            slides.Initialize(presentation, canvas.transform, font);
+            slides.Initialize(presentation, canvas.transform, font, videoTextBlurMaterial);
             // Join information and Soccer input remain above the presentation media.
             fixedHud.SetAsLastSibling();
             joinHud.SetAsLastSibling();
