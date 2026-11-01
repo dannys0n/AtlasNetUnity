@@ -18,3 +18,8 @@ The local backend is not the production AtlasNet C++ integration; client-side pr
 
 ## Documentation
 [visit the documentation website](https://dannys0n.github.io/AtlasNetUnity/)
+
+
+M2 presentation assets are separate from the UPM package in `Assets/M2`. Open `M2_Launcher`, activate either M2 Web profile, and start Host or Start server only. Presenter keys 1/2/3 select Interest/Scale, Animator Sync, and Soccer. The persistent network manager keeps client connections and session IDs; avatars respawn for the selected demonstration. This first presentation foundation runs on one coordinating server. Existing standalone samples remain the multi-worker demonstrations. Add screenshot textures to each content scene's `M2 Stage Configuration > Screenshots`; I toggles the image, Page Up/Down cycles, and Escape hides it. Screenshots are local presenter overlays. Late joiners receive the current scene command.
+
+Deployment scripts are in `Builds`: run `Enable-Firewall.cmd` once with administrator approval, then `Serve.cmd` for Soccer or `Serve.cmd m2` for M2. Both serve desktop/mobile at port 8094, with precompressed gzip delivery prepared by the server script, automatically choosing a build for the device; explicit `/desktop/` and `/mobile/` paths are also available. Run the matching scene in the Editor on game port 7777. Builds themselves are ignored by Git. Use the Soccer Web profiles for `Builds/Soccer-Desktop` and `Builds/Soccer-Mobile`, or M2 Web profiles for `Builds/M2-Desktop` and `Builds/M2-Mobile`.
