@@ -94,12 +94,8 @@ namespace AtlasNet.Samples.Soccer
         void LateUpdate()
         {
             if (!view || !manager.IsClient || !local) return;
-            Vector3 focus = local.transform.position;
-            focus.x = Mathf.Clamp(focus.x, -35, 35); focus.z = Mathf.Clamp(focus.z, -18, 18);
-            Vector3 desired = focus + new Vector3(0, 32, -26);
-            // Follow the already-interpolated render pose; a second smoothing pass adds movement lag.
-            view.transform.position = desired;
-            view.transform.rotation = Quaternion.Euler(51, 0, 0);
+            // Follow the interpolated render pose without adding another smoothing delay.
+            SoccerCameraFraming.Follow(view, local.transform.position, new Vector3(0, 32, -26), Quaternion.Euler(51, 0, 0));
         }
         void RefreshJoin()
         {
@@ -166,7 +162,7 @@ namespace AtlasNet.Samples.Soccer
             Button(canvas.transform,"Disconnect",new Vector2(-90,-30),new Vector2(150,35),()=>manager.Stop()).GetComponent<RectTransform>().anchorMin=new Vector2(1,1);
             var wave = Button(canvas.transform,"Wave / Space",new Vector2(-210,90),new Vector2(360,100),()=>
             {
-                if (local && local.IsSpawned && local.IsOwner) local.GetComponent<SoccerPlayer>().RequestWaveRpc();
+                if (local && local.IsSpawned && local.IsOwner) local.GetComponent<SoccerPlayer>().RequestWave();
             });
             var waveRect = wave.GetComponent<RectTransform>();
             waveRect.anchorMin = waveRect.anchorMax = new Vector2(1,0);

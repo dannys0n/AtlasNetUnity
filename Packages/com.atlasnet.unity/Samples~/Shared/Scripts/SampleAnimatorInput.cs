@@ -7,9 +7,11 @@ public sealed class SampleAnimatorInput : NetworkBehaviour
     [SerializeField] private Animator animator;
     [SerializeField] private NetworkAnimator networkAnimator;
     [SerializeField] private SamplePlanarMovement movement;
+    SampleWaveLayer wave;
 
     public override void OnNetworkSpawn()
     {
+        wave=GetComponent<SampleWaveLayer>();
         var viewer=NetworkManager;
 #if UNITY_EDITOR
         var console=Object.FindAnyObjectByType<AtlasNet.Demos.LocalWorkerDemo>();
@@ -26,11 +28,11 @@ public sealed class SampleAnimatorInput : NetworkBehaviour
     {
         if (!IsSpawned || !IsOwner) return;
         animator.SetFloat("Speed", movement.MoveAmount);
-        if (Input.GetKeyDown(KeyCode.Space)) networkAnimator.SetTrigger("Wave");
+        if (Input.GetKeyDown(KeyCode.Space)) Wave();
     }
 
     public void Wave()
     {
-        if (IsSpawned && IsOwner) networkAnimator.SetTrigger("Wave");
+        if (IsSpawned && IsOwner) wave.TryWave(networkAnimator);
     }
 }

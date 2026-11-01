@@ -336,8 +336,8 @@ namespace AtlasNet.Demos
                 GUI.enabled = primary && primary.IsRunning && worlds.Count < 3;
                 if (GUILayout.Button("Add local worker"))
                     try { AddWorker(); } catch (Exception ex) { status = ex.Message; Debug.LogException(ex); }
-                GUI.enabled = worlds.Count > 0;
-                if (GUILayout.Button("Stop whole local session")) StopSession();
+                GUI.enabled = primary && primary.IsRunning;
+                if (primary) primary.ShowViewerInterestForDebug = GUILayout.Toggle(primary.ShowViewerInterestForDebug, "Show viewer-interest replicas (Server 0)");
                 GUI.enabled = true;
                 var servers = new[] { primary }.Concat(worlds.Select(w => w.Manager)).Where(m => m && m.IsRunning).ToArray();
                 if (servers.Length > 0)

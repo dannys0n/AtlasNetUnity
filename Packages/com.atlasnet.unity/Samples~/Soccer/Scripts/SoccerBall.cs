@@ -7,6 +7,7 @@ namespace AtlasNet.Samples.Soccer
     {
         public const float Radius = 1f;
         public const float GoalHeight = 5.4f;
+        public const float GoalHalfWidth = 8f;
         public const float GoalLineX = 51.7f;
         [SerializeField, Min(0)] float contactSpeed = 18f;
         [SerializeField, Min(0)] float maxSpeed = 28f;
@@ -53,7 +54,7 @@ namespace AtlasNet.Samples.Soccer
                 body.AddForce(next-body.linearVelocity,ForceMode.VelocityChange);pendingImpulse=Vector3.zero;
             }
             // Use the painted line: the solid goal face stops the ball before the old threshold.
-            if (Mathf.Abs(body.position.x) < GoalLineX - Radius || Mathf.Abs(body.position.z) > 6f - Radius || body.position.y > GoalHeight - Radius) return;
+            if (Mathf.Abs(body.position.x) < GoalLineX - Radius || Mathf.Abs(body.position.z) > GoalHalfWidth - Radius || body.position.y > GoalHeight - Radius) return;
             match.RecordGoal(body.position.x > 0 ? 0 : 1);
             body.position = new Vector3(0, Radius, 0);
             body.linearVelocity = Vector3.zero; body.angularVelocity = Vector3.zero;

@@ -17,12 +17,13 @@ namespace AtlasNet.Samples.Soccer
             colorViewer = viewer; hasColorViewer = true; ApplyTeamColor();
         }
         public const float Speed = 16f;
-        public const float Size = 1.6f;
+        public const float Size = 1.6f * 4f / 3f;
         public Vector3 AttackingGoal => new Vector3(Team == 0 ? 52 : -52, 0, 0);
         public Vector2 MoveInput { get; private set; }
         public readonly NetworkVariable<int> TeamIndex = new(-1);
         public int Team => Mathf.Max(0, TeamIndex.Value);
         Renderer[] renderers;
+        SampleWaveLayer wave;
         SoccerNetworkIndicator indicator;
         public static int RosterIndex(NetworkManager manager, SessionId owner)
         {
@@ -40,6 +41,9 @@ namespace AtlasNet.Samples.Soccer
         Animator animator;
         NetworkAnimator networkAnimator;
         float inputReceived, nextInput;
+        // Applications may reserve arrow keys for menus/presentation without changing network movement.
+        public bool WaveKeyEnabled { get; set; } = true;
+        public System.Func<Vector2> KeyboardInput { private get; set; }
         Vector2 lastSent;
         readonly Dictionary<ulong,float> kickedBalls = new();
         public override void OnNetworkSpawn()
@@ -47,6 +51,7 @@ namespace AtlasNet.Samples.Soccer
             body = GetComponent<Rigidbody>();
             animator = GetComponentInChildren<Animator>();
             networkAnimator = GetComponent<NetworkAnimator>();
+            wave = GetComponent<SampleWaveLayer>();
             renderers = GetComponentsInChildren<Renderer>();
             indicator = GetComponent<SoccerNetworkIndicator>();
             TeamIndex.Changed += TeamChanged;
@@ -84,10 +89,10 @@ namespace AtlasNet.Samples.Soccer
         {
             if (!IsSpawned) return;
             if (!IsOwner) return;
-            if (UnityEngine.Input.GetKeyDown(KeyCode.Space)) RequestWaveRpc();
+            if (WaveKeyEnabled && UnityEngine.Input.GetKeyDown(KeyCode.Space)) RequestWave();
             if (!allowMovement) return;
             Vector2 input = SoccerStick.Input;
-            if (input.sqrMagnitude < .001f) input = new Vector2(UnityEngine.Input.GetAxisRaw("Horizontal"), UnityEngine.Input.GetAxisRaw("Vertical"));
+            if (input.sqrMagnitude < .001f) input = KeyboardInput != null ? KeyboardInput() : new Vector2(UnityEngine.Input.GetAxisRaw("Horizontal"), UnityEngine.Input.GetAxisRaw("Vertical"));
             input = Vector2.ClampMagnitude(input, 1);
             if (Time.unscaledTime >= nextInput || input != lastSent)
             {
@@ -100,12 +105,16 @@ namespace AtlasNet.Samples.Soccer
             if (!HasAuthority || !float.IsFinite(input.x) || !float.IsFinite(input.y)) return;
             MoveInput = allowMovement ? Vector2.ClampMagnitude(input, 1) : Vector2.zero; inputReceived = Time.unscaledTime;
         }
+        public void RequestWave()
+        {
+            if (IsSpawned && IsOwner && !wave.IsBusy) RequestWaveRpc();
+        }
         [Rpc(SendTo.Authority, InvokePermission = RpcInvokePermission.Owner)]
         public void RequestWaveRpc() { Celebrate(); }
 
         public void Celebrate()
         {
-            if (HasAuthority) networkAnimator.SetTrigger("Wave");
+            if (HasAuthority) wave.TryWave(networkAnimator);
         }
         void OnCollisionEnter(Collision collision) => TryKick(collision);
         void OnCollisionStay(Collision collision) => TryKick(collision);
