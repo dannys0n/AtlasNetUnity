@@ -130,6 +130,8 @@ namespace AtlasNet
         public NetworkObject Spawn(NetworkObject prefab, Vector3 position, Quaternion rotation, SessionId owner = default) => Backend.Spawn(prefab, position, rotation, owner);
         public void RequestSpawn(NetworkObject source, NetworkObject prefab, Vector3 position, Quaternion rotation, SessionId owner = default) => Backend.RequestSpawn(source, prefab, position, rotation, owner);
         public void Despawn(NetworkObject obj) => Backend.Despawn(obj);
+        /// <summary>Coordinator-only despawn, including entities whose Unity replica is resident on another worker.</summary>
+        public bool TryDespawn(EntityId id) => Backend.TryDespawn(id);
         public void HideFrom(NetworkObject obj, SessionId session) => Backend.HideFrom(obj, session);
         public void ShowTo(NetworkObject obj, SessionId session) => Backend.ShowTo(obj, session);
         internal bool CanSimulate(NetworkObject obj) => Backend.CanSimulate(obj);

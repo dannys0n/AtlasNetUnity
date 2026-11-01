@@ -146,6 +146,64 @@ namespace AtlasNetDemo.Tests
         }
 
         [UnityTest]
+        public IEnumerator DrainingWorkerPreservesEntityAndPhysicsBeforeDisconnect()
+        {
+            using var world = new World();
+            yield return world.Ready();
+            var id = world.Spawn(new Vector3(10, 1, 0));
+            yield return world.Until(() => world.Authority(id)?.SimulationWorker > 0, "body reaches worker");
+            var before = world.Authority(id);
+            uint epoch = before.AuthorityEpoch;
+            float startX = before.transform.position.x;
+            before.GetComponent<Rigidbody>().linearVelocity = Vector3.right;
+            ulong worker = world.Worker.LocalWorkerId;
+            Assert.IsFalse(world.Server.BeginLocalWorkerDrain(0), "Coordinator cannot retire itself");
+            Assert.IsTrue(world.Server.BeginLocalWorkerDrain(worker));
+            yield return world.Until(() => world.Server.IsLocalWorkerDrained(worker) && world.Worker.LocalAuthorityCount == 0 &&
+                world.Worker.PendingHandoffCount == 0, "worker exports all authority");
+            Assert.IsTrue(world.Server.TryGet(id, out var restored));
+            Assert.IsTrue(restored.HasAuthority);
+            Assert.Greater(restored.AuthorityEpoch, epoch);
+            Assert.That(restored.GetComponent<Rigidbody>().linearVelocity.x, Is.EqualTo(1).Within(.1));
+            world.Worker.Stop();
+            yield return world.Until(() => world.Server.WorkerCount == 1, "retired worker disconnects");
+            yield return world.Step(10);
+            Assert.Greater(restored.transform.position.x, startX, "Body continues simulating after scale-down");
+            Assert.IsTrue(world.Client.TryGet(id, out _), "Client keeps the same entity");
+        }
+
+        [UnityTest]
+        public IEnumerator CoordinatorDespawnByIdRetiresWorkerTrafficWithoutAcceptingUnknownSenders()
+        {
+            using var world = new World();
+            yield return world.Ready();
+            var id = world.Spawn(new Vector3(10, 1, 0), ordinary: true);
+            yield return world.Until(() => world.Authority(id)?.SimulationWorker > 0, "entity reaches worker");
+            var actor = world.Authority(id);
+            uint epoch = actor.AuthorityEpoch;
+            byte index = (byte)Array.FindIndex(actor.GetComponents<NetworkBehaviour>(), b => b is NetworkTransform);
+            var sender = new SessionId(world.Worker.LocalWorkerId);
+            var backend = typeof(NetworkManager).GetField("backend", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(world.Server);
+            var receive = backend.GetType().GetMethod("ReceiveWorkerTransform", BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.IsTrue(world.Server.TryDespawn(id));
+            Assert.IsFalse(world.Server.TryDespawn(id), "Repeated despawn is idempotent");
+            void Deliver(EntityId entity, SessionId session, uint generation)
+            {
+                using var writer = new NetWriter();
+                writer.Write(entity); writer.Write(generation); writer.Write(index); writer.Write((byte)1); writer.Write(Vector3.one);
+                using var reader = new NetReader(writer.ToArray());
+                receive.Invoke(backend, new object[] { session, reader });
+            }
+            Assert.DoesNotThrow(() => Deliver(id, sender, epoch), "Valid in-flight retired worker update is discarded");
+            Assert.Throws<TargetInvocationException>(() => Deliver(id, world.Client.LocalSession, epoch));
+            Assert.Throws<TargetInvocationException>(() => Deliver(id, sender, epoch + 1));
+            Assert.Throws<TargetInvocationException>(() => Deliver(new EntityId(ulong.MaxValue), sender, epoch));
+            yield return world.Step(15);
+            Assert.IsFalse(world.Server.TryGet(id, out _));
+            Assert.IsFalse(world.Worker.TryGet(id, out _));
+        }
+
+        [UnityTest]
         public IEnumerator RemotePlayerPushMovesBoxWithoutCoLocatingPlayer()
         {
             using var world = new World(); yield return world.Ready();

@@ -11,8 +11,17 @@ namespace AtlasNet
         HandoffDebugState GetHandoffStateForDebug(NetworkObject obj);
     }
 
+    /// <summary>Optional graceful scale-down support for the local development backend.</summary>
+    public interface ILocalWorkerDrainProvider
+    {
+        bool BeginWorkerDrain(ulong worker);
+        bool IsWorkerDrained(ulong worker);
+    }
+
     public sealed partial class NetworkManager
     {
+        public bool BeginLocalWorkerDrain(ulong worker) => Backend is ILocalWorkerDrainProvider drain && drain.BeginWorkerDrain(worker);
+        public bool IsLocalWorkerDrained(ulong worker) => Backend is ILocalWorkerDrainProvider drain && drain.IsWorkerDrained(worker);
         public bool IsWorker => Backend.IsWorker;
         public ulong LocalWorkerId => Backend.LocalWorkerId;
         public int WorkerCount => Backend.WorkerCount;

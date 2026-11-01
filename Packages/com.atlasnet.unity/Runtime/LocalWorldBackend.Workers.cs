@@ -108,6 +108,36 @@ namespace AtlasNet
         private uint clientDebugRegionEpoch;
         private int clientDebugRegionVersion;
 
+        // A scene can despawn an entity while its former worker has packets in flight.
+        // These records discard only authenticated, exact-epoch traffic for recently retired IDs.
+        private sealed class RetiredWorkerEntity
+        {
+            public ulong Worker, Destination;
+            public uint Epoch, ProposedEpoch, RemovedAt;
+            public BehaviourSchema[] Schemas;
+        }
+        private readonly Dictionary<EntityId, RetiredWorkerEntity> retiredWorkers = new();
+        private readonly Queue<EntityId> retiredWorkerOrder = new();
+        private void RememberRetiredWorker(CanonicalEntity entity)
+        {
+            pendingHandoffs.TryGetValue(entity.Id, out var transfer);
+            if (entity.Worker == 0 && transfer == null) return;
+            while (retiredWorkerOrder.Count >= 256) retiredWorkers.Remove(retiredWorkerOrder.Dequeue());
+            retiredWorkers[entity.Id] = new RetiredWorkerEntity {
+                Worker = entity.Worker, Epoch = entity.Epoch, RemovedAt = Tick,
+                Destination = transfer?.Destination.Value ?? 0, ProposedEpoch = transfer?.Epoch ?? 0,
+                Schemas = entity.Behaviours };
+            retiredWorkerOrder.Enqueue(entity.Id);
+        }
+        private bool TryGetRetiredWorker(EntityId id, SessionId sender, uint epoch, out RetiredWorkerEntity retired)
+        {
+            if (retiredWorkers.TryGetValue(id, out retired) && !directory.ContainsKey(id) &&
+                workerSessions.Contains(sender) && retired.Worker == sender.Value && retired.Epoch == epoch &&
+                unchecked(Tick-retired.RemovedAt) <= (uint)(tickRate*5)) return true;
+            retired = null;
+            return false;
+        }
+
         private CanonicalEntity RegisterCanonical(NetworkObject obj)
         {
             var source = obj.GetComponent<NetworkInterestSource>();
@@ -284,7 +314,13 @@ namespace AtlasNet
             if (!IsServer || obj == null || obj.Manager != runtime) return false;
             if (obj.HasAuthority) return true;
             if (isWorker) return true; // Workers only receive subscribed copies.
-            return true;
+            if (!directory.TryGetValue(obj.EntityId, out var entity)) return false;
+            // The coordinator also creates temporary replicas solely to relay handoffs
+            // between OTHER workers. Residency for routing is not visual interest.
+            bool hostView = IsClient && (playerPrefab == null ||
+                playerPrefab.GetComponent<NetworkInterestSource>() == null ||
+                ShouldClientHold(LocalSession, entity, true));
+            return ShouldWorkerHold(default, entity, true) || hostView;
         }
 
         /// <summary>Join the first local server as another Unity simulation worker.</summary>
@@ -912,6 +948,8 @@ namespace AtlasNet
             ulong destination = reader.ReadULong();
             uint snapshotTick = reader.ReadUInt();
             byte[] state = reader.ReadBytes();
+            if (TryGetRetiredWorker(id, sender, currentEpoch, out var retired) &&
+                retired.ProposedEpoch == nextEpoch && retired.Destination == destination) return;
             if (!workerSessions.Contains(sender) || !directory.TryGetValue(id, out var entity) ||
                 !pendingHandoffs.TryGetValue(id, out var pending) || pending.Source != sender ||
                 pending.Destination.Value != destination || pending.Epoch != nextEpoch ||
@@ -951,6 +989,9 @@ namespace AtlasNet
         {
             EntityId id = reader.ReadEntityId();
             uint epoch = reader.ReadUInt();
+            if (!directory.ContainsKey(id) && workerSessions.Contains(sender) &&
+                retiredWorkers.TryGetValue(id, out var retired) && retired.Destination == sender.Value &&
+                retired.ProposedEpoch == epoch && unchecked(Tick-retired.RemovedAt) <= (uint)(tickRate*5)) return;
             // TCP is ordered today; tolerate a duplicate ACK without committing twice.
             if (directory.TryGetValue(id, out var committed) && committed.Epoch >= epoch) return;
             if (!workerSessions.Contains(sender) || !pendingHandoffs.TryGetValue(id, out var pending) ||
@@ -1010,10 +1051,50 @@ namespace AtlasNet
             foreach (var id in expired) AbortPendingHandoff(id);
         }
 
+        private readonly HashSet<ulong> drainingWorkers = new();
+        private bool WorkerHasEntities(ulong worker)
+        {
+            foreach (var entity in directory.Values) if (entity.Worker == worker) return true;
+            return false;
+        }
+        public bool BeginWorkerDrain(ulong worker)
+        {
+            if (!IsServer || isWorker || worker == 0 || !workerSessions.Contains(new SessionId(worker)) || localWorld == null) return false;
+            if (drainingWorkers.Contains(worker)) return true;
+            foreach (var entity in directory.Values)
+                if (entity.Worker == worker && !entity.CanHandoff)
+                    throw new InvalidOperationException($"Entity {entity.Id} does not support handoff; worker {worker} cannot safely drain.");
+            // Exclude the worker from future placement, but keep its transport alive
+            // until all exports, commits and outstanding transactions finish normally.
+            drainingWorkers.Add(worker);
+            localWorld.RemoveWorker(worker);
+            BroadcastLocalRegions();
+            return true;
+        }
+        public bool IsWorkerDrained(ulong worker)
+        {
+            if (!IsServer || isWorker || !drainingWorkers.Contains(worker) || WorkerHasEntities(worker)) return false;
+            foreach (var pending in pendingHandoffs.Values)
+                if (pending.Source.Value == worker || pending.Destination.Value == worker) return false;
+            return true;
+        }
+
         private void CheckAutomaticHandoffs()
         {
-            if (!automaticLocalHandoffs || !IsServer || isWorker || workerSessions.Count == 0 || localWorld == null) return;
+            if (!IsServer || isWorker || localWorld == null) return;
             int started = 0;
+            // Draining bypasses spatial hysteresis/cooldown, not the handoff protocol.
+            // Existing inbound transfers may finish, then are exported on the next tick.
+            if (drainingWorkers.Count > 0)
+                foreach (var entity in directory.Values)
+                {
+                    if (started >= 4) break;
+                    if (!drainingWorkers.Contains(entity.Worker) || pendingHandoffs.ContainsKey(entity.Id)) continue;
+                    if (!entity.CanHandoff) continue;
+                    HandoffToWorker(entity, localWorld.OwnerAt(entity.Position.x, entity.Position.z));
+                    started++;
+                }
+            if (!automaticLocalHandoffs || workerSessions.Count == 0) return;
             foreach (var entity in directory.Values)
             {
                 if (started >= 4) break;
@@ -1115,6 +1196,12 @@ namespace AtlasNet
             if (flags == 0 || (flags & ~3) != 0) throw new InvalidOperationException("Invalid worker transform flags");
             Vector3 position = (flags & 1) != 0 ? reader.ReadVector3() : default;
             Quaternion rotation = (flags & 2) != 0 ? reader.ReadQuaternion() : default;
+            if (TryGetRetiredWorker(id, sender, epoch, out var retired) && index < retired.Schemas.Length)
+            {
+                var old = retired.Schemas[index];
+                if (old.IsTransform && ((flags & 1) == 0 || (old.SyncPosition && old.PositionWriter == TransformWriter.Server)) &&
+                    ((flags & 2) == 0 || (old.SyncRotation && old.RotationWriter == TransformWriter.Server))) return;
+            }
             if (!workerSessions.Contains(sender) || !directory.TryGetValue(id, out var entity) ||
                 entity.Worker != sender.Value || entity.Epoch != epoch)
                 throw new InvalidOperationException($"Stale or unauthorized worker transform for entity {id}, epoch {epoch}");
@@ -1159,6 +1246,8 @@ namespace AtlasNet
             uint epoch = reader.ReadUInt();
             byte index = reader.ReadByte();
             byte[] payload = reader.ReadBytes();
+            if (TryGetRetiredWorker(id, sender, epoch, out var retired) && index < retired.Schemas.Length &&
+                retired.Schemas[index].IsAnimator && retired.Schemas[index].AnimatorWriter == AnimatorWriter.Server) return;
             if (!workerSessions.Contains(sender) || !directory.TryGetValue(id, out var entity) ||
                 entity.Worker != sender.Value || entity.Epoch != epoch ||
                 !Schema(id, index).IsAnimator || Schema(id, index).AnimatorWriter != AnimatorWriter.Server)
@@ -1259,6 +1348,8 @@ namespace AtlasNet
             byte index = reader.ReadByte();
             ushort variable = reader.ReadUShort();
             byte[] payload = reader.ReadBytes();
+            if (TryGetRetiredWorker(id, sender, epoch, out var retired) && index < retired.Schemas.Length &&
+                retired.Schemas[index].Variables.TryGetValue(variable, out var old) && old.Write == NetworkVariableWritePermission.Server) return;
             if (!workerSessions.Contains(sender) || !directory.TryGetValue(id, out var entity) ||
                 entity.Worker != sender.Value || entity.Epoch != epoch)
                 throw new InvalidOperationException($"Stale or unauthorized worker variable for entity {id}");

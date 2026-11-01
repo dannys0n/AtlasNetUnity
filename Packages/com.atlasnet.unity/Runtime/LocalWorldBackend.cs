@@ -7,7 +7,7 @@ using Debug = UnityEngine.Debug;
 namespace AtlasNet
 {
     // Development implementation of the semantic backend interface. Wire packets stay here.
-    internal sealed partial class LocalWorldBackend : IWorldBackend, IHandoffDebugProvider, IFlushableWorldBackend
+    internal sealed partial class LocalWorldBackend : IWorldBackend, IHandoffDebugProvider, IFlushableWorldBackend, ILocalWorkerDrainProvider
     {
         private enum Packet : byte { Welcome = 1, Spawn = 2, Despawn = 3, Variable = 4, Rpc = 5, Transform = 6, Hide = 7, Animator = 8,
             ClientHello = 9, WorkerHello = 10, WorkerWelcome = 11, WorkerSpawn = 12, WorkerPrepare = 13,
@@ -190,10 +190,12 @@ namespace AtlasNet
             spawned.Clear();
             directory.Clear();
             recentlyDespawnedOwners.Clear();despawnedOwnerOrder.Clear();
+            retiredWorkers.Clear(); retiredWorkerOrder.Clear();
             hidden.Clear();
             clientSessions.Clear();
             clientResidents.Clear();
             workerSessions.Clear();
+            drainingWorkers.Clear();
             workerResidents.Clear();
             pendingDisconnects.Clear();
             pendingHandoffs.Clear();
@@ -330,6 +332,14 @@ namespace AtlasNet
             DespawnCanonical(obj.EntityId);
         }
 
+        public bool TryDespawn(EntityId id)
+        {
+            if (!IsServer || isWorker) throw new InvalidOperationException("Only the coordinator can despawn by entity ID");
+            if (!directory.ContainsKey(id)) return false;
+            DespawnCanonical(id);
+            return true;
+        }
+
         // Short-lived, bounded tombstones distinguish valid in-flight owner calls from unknown entities.
         private readonly Dictionary<EntityId, (SessionId Owner, BehaviourSchema[] Schemas, uint RemovedAt)> recentlyDespawnedOwners = new();
         private readonly Queue<EntityId> despawnedOwnerOrder = new();
@@ -351,6 +361,7 @@ namespace AtlasNet
                 recentlyDespawnedOwners[id] = (departing.Owner, departing.Behaviours, Tick);
                 despawnedOwnerOrder.Enqueue(id);
             }
+            RememberRetiredWorker(departing);
             spawned.TryGetValue(id, out var obj);
             using (var writer = new NetWriter())
             {
@@ -482,13 +493,14 @@ namespace AtlasNet
             }
             if (workerSessions.Remove(session))
             {
+                bool drained = drainingWorkers.Remove(session.Value) && !WorkerHasEntities(session.Value);
                 AbortPendingHandoffs(session);
                 workerResidents.Remove(session);
                 debugRegionSubscribers.Remove(session);
                 localWorld?.RemoveWorker(session.Value);
                 RefreshWorkerInterest();
                 BroadcastLocalRegions();
-                if (runtime.ShouldLog(LogType.Warning)) runtime.Log(LogType.Warning, $"AtlasNet worker {session} disconnected; its entities remain frozen until authority is recovered");
+                if (!drained && runtime.ShouldLog(LogType.Warning)) runtime.Log(LogType.Warning, $"AtlasNet worker {session} disconnected; its entities remain frozen until authority is recovered");
                 return;
             }
             bool admitted = clientSessions.Remove(session);
@@ -903,7 +915,13 @@ namespace AtlasNet
             }
         }
 
-        private void RemoveLocal(EntityId id) => runtime.RemoveReplica(id);
+        private void RemoveLocal(EntityId id)
+        {
+            // A despawn/interest eviction also invalidates locally prepared handoff state.
+            pendingHandoffs.Remove(id);
+            queuedAuthorityRpcs.Remove(id);
+            runtime.RemoveReplica(id);
+        }
 
         private NetworkBehaviour FindBehaviour(EntityId id, byte index)
         {

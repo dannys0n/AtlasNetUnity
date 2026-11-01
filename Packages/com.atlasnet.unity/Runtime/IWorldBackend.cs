@@ -57,6 +57,7 @@ namespace AtlasNet
         NetworkObject Spawn(NetworkObject prefab, Vector3 position, Quaternion rotation, SessionId owner = default);
         void RequestSpawn(NetworkObject source, NetworkObject prefab, Vector3 position, Quaternion rotation, SessionId owner = default);
         void Despawn(NetworkObject obj);
+        bool TryDespawn(EntityId id);
         void HideFrom(NetworkObject obj, SessionId session);
         void ShowTo(NetworkObject obj, SessionId session);
         bool CanSimulate(NetworkObject obj);
