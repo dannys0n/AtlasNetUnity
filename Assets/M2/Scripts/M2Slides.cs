@@ -15,6 +15,7 @@ namespace AtlasNet.M2
     public sealed class M2Slide
     {
         public string title;
+        [TextArea(3, 12)] public string body;
         public M2SlideLayout layout;
         [Tooltip("Fraction of screen width in landscape, or height in portrait.")]
         [Range(.25f, .75f)] public float panelWidth = .55f;
@@ -232,6 +233,14 @@ namespace AtlasNet.M2
                 (current.layout == M2SlideLayout.FullScreen ? "The game stays running underneath." :
                 portrait ? "Your player remains in the game area " + (current.layout == M2SlideLayout.LeftPanel ? "below" : "above") + " this panel." :
                 "Your player remains in the game area beside this panel.");
+            bool textSlide = !string.IsNullOrEmpty(current.body);
+            if (textSlide) placeholder.text = current.body;
+            placeholder.alignment = textSlide ? TextAlignmentOptions.MidlineLeft : TextAlignmentOptions.Center;
+            placeholder.enableAutoSizing = textSlide;
+            placeholder.fontSizeMin = 18;
+            placeholder.fontSizeMax = 32;
+            placeholder.fontSize = textSlide ? 32 : 25;
+            SetRect(placeholder.rectTransform, new Vector2(.08f, .16f), new Vector2(.92f, .8f), Vector2.zero, Vector2.zero);
             SetRect(panel, min, max, Vector2.zero, Vector2.zero);
             if (view) view.rect = viewport;
             presentation.hud.SetPresentationViewport(viewport);

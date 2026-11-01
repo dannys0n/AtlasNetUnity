@@ -234,6 +234,7 @@ MonoBehaviour:
   index: 0
   kind: 0
   hasLiveDemo: 0
+  slidesAfterDemo: 0
   title: Install via UPM
   playerPrefab: {fileID: 3690700341716489596, guid: 088a841c2c5b0f54d88a45e56186d490, type: 3}
   extraPrefab: {fileID: 0}
@@ -246,16 +247,62 @@ MonoBehaviour:
   blueConfetti: {fileID: 0}
   orangeConfetti: {fileID: 0}
   slides:
-  - title: Install with Unity Package Manager
+  - title: AtlasNet Unity
+    body: 
     layout: 0
     panelWidth: 0.55
+    portraitPanelHeight: 0
+    image: {fileID: 2800000, guid: 266a4452fe50b604fa076d4c40996ca4, type: 3}
+    videoPath: 
+    frames: []
+    framesPerSecond: 12
+  - title: Install with Unity Package Manager
+    body: 
+    layout: 0
+    panelWidth: 0.55
+    portraitPanelHeight: 0
     image: {fileID: 2800000, guid: c28aece3b13e49341b6ea0a520ab2faa, type: 3}
+    videoPath: 
     frames: []
     framesPerSecond: 12
   - title: Development dummy backend
+    body: 
     layout: 0
     panelWidth: 0.55
+    portraitPanelHeight: 0
     image: {fileID: 2800000, guid: f974b62774c48f243b4d309d17b36fab, type: 3}
+    videoPath: 
+    frames: []
+    framesPerSecond: 12
+  - title: Networking features
+    body: '<b>UDP + WebSocket clients together</b>
+
+      Native and browser clients share one persistent world.
+
+
+      <b>Server scaling</b>
+
+      Add or remove workers as world simulation authority shifts between them.
+
+
+      <b>Animation synchronization</b>
+
+      Replicate Animator parameters and triggers across clients.
+
+
+      <b>Late-join state synchronization</b>
+
+      New clients receive the current replicated state.
+
+
+      <b>Buffered transform interpolation</b>
+
+      Remote movement is smoothed between received updates.'
+    layout: 0
+    panelWidth: 0.55
+    portraitPanelHeight: 0
+    image: {fileID: 0}
+    videoPath: 
     frames: []
     framesPerSecond: 12
   previewSlidesWhenEmpty: 0
