@@ -11,6 +11,17 @@ public sealed class ScaleRegionOverlay : MonoBehaviour
     private int shownVersion = -1;
     private bool requested;
 
+    public NetworkManager InspectedManager => manager;
+    public Renderer DebugRenderer => regionRenderer;
+    public void InspectManager(NetworkManager value)
+    {
+        if (manager == value) return;
+        manager = value;
+        if (regionRenderer != null) regionRenderer.enabled = false;
+        requested = false;
+        shownVersion = -1;
+    }
+
     private void LateUpdate()
     {
         if (manager == null || !manager.IsRunning)

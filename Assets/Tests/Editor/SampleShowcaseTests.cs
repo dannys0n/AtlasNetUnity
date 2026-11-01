@@ -33,6 +33,13 @@ namespace AtlasNetDemo.Tests
                 Assert.AreEqual(AnimatorWriter.Owner, player.GetComponent<NetworkAnimator>().Writer);
                 Assert.IsNotNull(player.GetComponent<Animator>().runtimeAnimatorController);
                 Assert.IsNotNull(player.GetComponent("SampleAnimatorInput"));
+                Assert.IsFalse(((Behaviour)player.GetComponent("SamplePlanarMovement")).enabled);
+                Assert.IsFalse(((Behaviour)player.GetComponent("SimpleRpcExample")).enabled);
+                Assert.IsNotNull(player.GetComponent("SampleWaveLayer"));
+                var controller=(UnityEditor.Animations.AnimatorController)player.GetComponent<Animator>().runtimeAnimatorController;
+                Assert.AreEqual(2,controller.layers.Length);
+                Assert.AreEqual(0,controller.layers[1].defaultWeight);
+                Assert.IsNotNull(controller.layers[1].avatarMask);
             }
         }
 

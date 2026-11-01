@@ -11,6 +11,7 @@ public sealed class ScaleInterestOverlay : MonoBehaviour
 
     private GameObject disc;
     private Mesh discMesh;
+    public Renderer DebugRenderer => disc ? disc.GetComponent<Renderer>() : null;
 
     private void LateUpdate()
     {

@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using AtlasNet;
+using EntityId = AtlasNet.EntityId;
 using UnityEngine;
 
 public sealed class ScaleSpawner : MonoBehaviour
@@ -7,7 +8,7 @@ public sealed class ScaleSpawner : MonoBehaviour
     [SerializeField] private NetworkManager manager;
     [SerializeField] private NetworkObject prefab;
     [SerializeField, Range(0, 200)] private int count = 50;
-    private readonly List<NetworkObject> entities = new List<NetworkObject>();
+    private readonly List<EntityId> entities = new List<EntityId>();
     public int Count { get => count; set => count = Mathf.Clamp(value, 0, 200); }
 
     private void Update()
@@ -21,7 +22,7 @@ public sealed class ScaleSpawner : MonoBehaviour
             {
                 var last = entities[entities.Count - 1];
                 entities.RemoveAt(entities.Count - 1);
-                if (last != null && last.IsSpawned) last.Despawn();
+                manager.TryDespawn(last);
                 continue;
             }
             int i = entities.Count;
@@ -33,7 +34,7 @@ public sealed class ScaleSpawner : MonoBehaviour
                 rows > 1 ? Mathf.Lerp(-11f, 11f, (float)(i / columns) / (rows - 1)) : 0);
             var obj = manager.Spawn(prefab, position, Quaternion.identity);
             obj.GetComponent<ScaleMotion>().SetMoving(true);
-            entities.Add(obj);
+            entities.Add(obj.EntityId);
         }
     }
 }

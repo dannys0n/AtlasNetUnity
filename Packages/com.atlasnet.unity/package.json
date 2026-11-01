@@ -14,7 +14,7 @@
   "samples": [
     {
       "displayName": "00 Shared",
-      "description": "Import this first. Shared scripts, prefabs, primitive animation assets, and URP materials required by every AtlasNet sample.",
+      "description": "Import this first. Shared scripts, prefabs, masked-wave animations, URP materials, and an Editor-only single-instance worker console required by the samples.",
       "path": "Samples~/Shared"
     },
     {
@@ -44,7 +44,7 @@
     },
     {
       "displayName": "06 AnimatorSync",
-      "description": "Requires 00 Shared. Primitive animated players with owner-written movement parameters, network triggers, and late-join state.",
+      "description": "Requires 00 Shared. Stationary owner-colored avatars with a large Wave button, masked network Animator triggers, and late-join state.",
       "path": "Samples~/AnimatorSync"
     },
     {

@@ -509,6 +509,8 @@ GameObject:
   - component: {fileID: 1502464712006546549}
   - component: {fileID: 917260955230851970}
   - component: {fileID: 4665974626701921602}
+  - component: {fileID: 7684071935149097231}
+  - component: {fileID: 1972624613932984108}
   m_Layer: 0
   m_Name: AnimatorPlayer
   m_TagString: Untagged
@@ -542,9 +544,9 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: a1000000000000000000000000000001, type: 3}
-  m_Name: 
+  m_Name:
   m_EditorClassIdentifier: AtlasNet.Unity::AtlasNet.NetworkObject
-  prefabId: 
+  prefabId:
 --- !u!114 &388381679865300868
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -555,7 +557,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: a1000000000000000000000000000003, type: 3}
-  m_Name: 
+  m_Name:
   m_EditorClassIdentifier: AtlasNet.Unity::AtlasNet.NetworkTransform
   target: {fileID: 0}
   syncPosition: 1
@@ -570,10 +572,10 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 6330230231365084708}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: ccebafdbc47688e46bd892cf1aeaf890, type: 3}
-  m_Name: 
+  m_Name:
   m_EditorClassIdentifier: Assembly-CSharp::SamplePlanarMovement
   speed: 4
 --- !u!114 &4888433393151153052
@@ -583,10 +585,10 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 6330230231365084708}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: a2000000000000000000000000000005, type: 3}
-  m_Name: 
+  m_Name:
   m_EditorClassIdentifier: Assembly-CSharp::SimpleRpcExample
 --- !u!95 &1502464712006546549
 Animator:
@@ -598,14 +600,14 @@ Animator:
   m_GameObject: {fileID: 6330230231365084708}
   m_Enabled: 1
   m_Avatar: {fileID: 0}
-  m_Controller: {fileID: 9100000, guid: af029c423115e394eba96cdbeac4bb15, type: 2}
+  m_Controller: {fileID: 9100000, guid: 560f5adc699114b4383ed3feae4b0e8c, type: 2}
   m_CullingMode: 0
   m_UpdateMode: 0
   m_ApplyRootMotion: 0
   m_LinearVelocityBlending: 0
   m_StabilizeFeet: 0
   m_AnimatePhysics: 0
-  m_WarningMessage: 
+  m_WarningMessage:
   m_HasTransformHierarchy: 1
   m_AllowConstantClipSamplingOptimization: 1
   m_KeepAnimatorStateOnDisable: 0
@@ -620,7 +622,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: caedc8230d75ceb489644b3b5bfb65d5, type: 3}
-  m_Name: 
+  m_Name:
   m_EditorClassIdentifier: AtlasNet.Unity::AtlasNet.NetworkAnimator
   animator: {fileID: 1502464712006546549}
   writer: 1
@@ -634,11 +636,36 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 0a54e17637b57db49b70d6b4d945e0a4, type: 3}
-  m_Name: 
+  m_Name:
   m_EditorClassIdentifier: Assembly-CSharp::SampleAnimatorInput
   animator: {fileID: 1502464712006546549}
   networkAnimator: {fileID: 917260955230851970}
   movement: {fileID: 427391155585899300}
+--- !u!114 &7684071935149097231
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6330230231365084708}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 24af41211e5b05d4d80f540f66cf2907, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::SampleWaveLayer
+--- !u!114 &1972624613932984108
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6330230231365084708}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 74b29b64be5b4b8384a0035d2fe3f4de, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::SampleOwnerMarker
+  material: {fileID: 2100000, guid: f10036a7836743a69e8d2ad89c5504ec, type: 2}
 --- !u!1 &7757712013863239065
 GameObject:
   m_ObjectHideFlags: 0

@@ -1,5 +1,6 @@
 using System;
 using AtlasNet;
+using EntityId = AtlasNet.EntityId;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -12,7 +13,9 @@ public sealed class DemoLauncher : MonoBehaviour
     private string error;
     private string joinAddress,joinPort;
     private int joinTransport;
-    private NetworkObject extra;
+    private EntityId? extra;
+    private bool animationDemo;
+    [NonSerialized] private GUIStyle waveStyle;
     private bool reportedOwner;
     [SerializeField] private bool advancedDiagnostics = true;
     private bool autoFire;
@@ -23,6 +26,7 @@ public sealed class DemoLauncher : MonoBehaviour
     private void Awake()
     {
         Application.runInBackground = true;
+        animationDemo=SceneManager.GetActiveScene().name.Contains("AnimatorSync");
         if (manager == null) manager = GetComponent<NetworkManager>();
         joinAddress=manager.Address;joinPort=manager.Port.ToString();
         joinTransport=Application.platform==RuntimePlatform.WebGLPlayer?1:(int)manager.ClientConnection;
@@ -106,6 +110,8 @@ public sealed class DemoLauncher : MonoBehaviour
             if (overviewCamera.TryGetComponent<AudioListener>(out var listener))
                 listener.enabled = overview && manager.IsRunning;
         }
+        if (manager.IsClient && (localPlayer == null || !localPlayer.IsSpawned || !localPlayer.IsOwner))
+            reportedOwner = false;
         if (!reportedOwner && manager.IsClient)
         {
             foreach (var obj in manager.SpawnedObjects)
@@ -113,7 +119,7 @@ public sealed class DemoLauncher : MonoBehaviour
                 if (!obj.IsOwner) continue;
                 localPlayer = obj;
                 if (manager.ShouldLog(LogType.Log)) manager.Log(LogType.Log, $"AtlasNet local player spawned: entity {obj.EntityId}, prefab {obj.PrefabId}");
-                if (autoFire) obj.GetComponent<SimpleRpcExample>()?.Fire();
+                if (autoFire && !animationDemo) obj.GetComponent<SimpleRpcExample>()?.Fire();
                 reportedOwner = true;
                 break;
             }
@@ -124,7 +130,7 @@ public sealed class DemoLauncher : MonoBehaviour
             if (manager.ShouldLog(LogType.Log)) manager.Log(LogType.Log, $"AtlasNet metrics: role={(manager.IsWorker ? "worker" : manager.IsServer ? "server" : "client")} worker={manager.LocalWorkerId} tick={manager.Tick} tracked={manager.TrackedEntityCount} localReplicas={manager.SpawnedCount} authority={manager.LocalAuthorityCount} ghosts={manager.GhostCount} pending={manager.PendingHandoffCount} observers={manager.ObserverCopies} tickMs={manager.LastTickMilliseconds:F3} allocated={AllocationText()} bytesLastTick={manager.BytesSentLastTick}");
         }
         if (!manager.IsServer || manager.IsWorker) return;
-        if (manager.PlayerPrefab != null || playerPrefab != null)
+        if (!animationDemo && (manager.PlayerPrefab != null || playerPrefab != null))
         {
             if (Input.GetKeyDown(KeyCode.P)) SpawnExtra();
             if (Input.GetKeyDown(KeyCode.O)) DespawnExtra();
@@ -133,14 +139,14 @@ public sealed class DemoLauncher : MonoBehaviour
 
     private void SpawnExtra()
     {
-        if (extra == null)
+        if (!extra.HasValue)
             extra = manager.Spawn(manager.PlayerPrefab != null ? manager.PlayerPrefab : playerPrefab,
-                new Vector3(0, 1, 5), Quaternion.identity);
+                new Vector3(0, 1, 5), Quaternion.identity).EntityId;
     }
 
     private void DespawnExtra()
     {
-        if (extra != null) extra.Despawn();
+        if (extra.HasValue) manager.TryDespawn(extra.Value);
         extra = null;
     }
 
@@ -148,10 +154,9 @@ public sealed class DemoLauncher : MonoBehaviour
     {
         GUILayout.BeginArea(new Rect(10, 10, 420, 480), GUI.skin.box);
         GUILayout.Label(SceneManager.GetActiveScene().name.Replace("_", " "));
-        GUILayout.Label("WASD: move | F: RPC counter | P/O: spawn/despawn extra");
+        GUILayout.Label(animationDemo ? "Stationary avatars | Space or button: wave" : SceneManager.GetActiveScene().name=="05_InterestAndScale" ? "Presenter: adjust entity count | Clients: observe" : "WASD: move | F: RPC counter | P/O: spawn/despawn extra");
         if (SceneManager.GetActiveScene().name == "07_ClientPhysics")
             GUILayout.Label("Client simulates its Rigidbody. Cubes stay server-authoritative.");
-        if (SceneManager.GetActiveScene().name.Contains("AnimatorSync")) GUILayout.Label("Space: wave (replicated Animator trigger)");
         if (!manager.IsRunning)
         {
             GUILayout.Label("Server address / port");
@@ -221,12 +226,10 @@ public sealed class DemoLauncher : MonoBehaviour
                 foreach (var obj in manager.SpawnedObjects)
                 {
                     var counter = obj.GetComponent<SimpleRpcExample>();
-                    if (counter != null) GUILayout.Label($"Entity {obj.EntityId}: RPC count {counter.Count}");
+                    if (!animationDemo && counter != null) GUILayout.Label($"Entity {obj.EntityId}: RPC count {counter.Count}");
                 }
-                if (localPlayer != null && localPlayer.TryGetComponent<SampleAnimatorInput>(out var animationInput))
-                    if (GUILayout.Button("Wave (Space)")) animationInput.Wave();
             }
-            if (manager.IsServer && !manager.IsWorker && (manager.PlayerPrefab != null || playerPrefab != null))
+            if (!animationDemo && manager.IsServer && !manager.IsWorker && (manager.PlayerPrefab != null || playerPrefab != null))
             {
                 if (GUILayout.Button("Spawn extra (P)")) SpawnExtra();
                 if (GUILayout.Button("Despawn extra (O)")) DespawnExtra();
@@ -237,6 +240,17 @@ public sealed class DemoLauncher : MonoBehaviour
         }
         if (!string.IsNullOrEmpty(error)) GUILayout.Label(error);
         GUILayout.EndArea();
+        if (animationDemo && manager.IsClient && localPlayer != null && localPlayer.IsSpawned &&
+            localPlayer.TryGetComponent<SampleAnimatorInput>(out var animationInput))
+        {
+            // GUIStyle native state is not safe to serialize across script reloads.
+            if (waveStyle == null || waveStyle.normal.background == null)
+                waveStyle = new GUIStyle(GUI.skin.button);
+            waveStyle.fontSize = 28;
+            waveStyle.alignment = TextAnchor.MiddleCenter;
+            float width=Mathf.Min(360,Screen.width-32);
+            if (GUI.Button(new Rect((Screen.width-width)*.5f,Screen.height-140,width,100),"Wave / Space",waveStyle))animationInput.Wave();
+        }
     }
 
     private string AllocationText() => manager.AllocatedBytesLastTick < 0

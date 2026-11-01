@@ -8,6 +8,20 @@ public sealed class SampleAnimatorInput : NetworkBehaviour
     [SerializeField] private NetworkAnimator networkAnimator;
     [SerializeField] private SamplePlanarMovement movement;
 
+    public override void OnNetworkSpawn()
+    {
+        var viewer=NetworkManager;
+#if UNITY_EDITOR
+        var console=Object.FindAnyObjectByType<AtlasNet.Demos.LocalWorkerDemo>();
+        if(console && console.Primary && console.Primary.IsRunning)viewer=console.Primary;
+#endif
+        bool localOwner=viewer.IsClient && viewer.LocalSession==OwnerSession;
+        var tint=new MaterialPropertyBlock();
+        Color color=localOwner?new Color(1f,.4f,.07f):new Color(.12f,.48f,1f);
+        tint.SetColor("_Color",color);tint.SetColor("_BaseColor",color);
+        foreach(var renderer in GetComponentsInChildren<Renderer>())renderer.SetPropertyBlock(tint);
+    }
+
     private void LateUpdate()
     {
         if (!IsSpawned || !IsOwner) return;

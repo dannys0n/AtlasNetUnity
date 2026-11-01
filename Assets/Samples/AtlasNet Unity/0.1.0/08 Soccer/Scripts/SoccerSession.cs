@@ -22,7 +22,7 @@ namespace AtlasNet.Samples.Soccer
         TMP_Text blueScore, orangeScore, notice, joinLabel, clock;
         long clockSecond = -1;
         TMP_InputField address;
-        GameObject connectionPanel, joinPanel;
+        GameObject connectionPanel, joinPanel, waveButton;
         RawImage qrView;
         Texture2D qr;
         string lastLink;
@@ -74,6 +74,7 @@ namespace AtlasNet.Samples.Soccer
             }
             connectionPanel.SetActive(!manager.IsRunning);
             joinPanel.SetActive(manager.IsRunning && manager.IsServer);
+            waveButton.SetActive(manager.IsClient && local && local.IsSpawned);
             if (!manager.IsRunning) { match = null; local = null; createdBall = false; return; }
             if (!match)
                 foreach (var obj in manager.SpawnedObjects)
@@ -163,6 +164,14 @@ namespace AtlasNet.Samples.Soccer
             var control=stick.gameObject.AddComponent<SoccerStick>();
             control.handle=Circle(stick,"Handle",new Vector2(.5f,.5f),Vector2.zero,new Vector2(80,80),new Color(.8f,.9f,1,.65f));control.handle.GetComponent<SoccerStickGraphic>().raycastTarget=false;
             Button(canvas.transform,"Disconnect",new Vector2(-90,-30),new Vector2(150,35),()=>manager.Stop()).GetComponent<RectTransform>().anchorMin=new Vector2(1,1);
+            var wave = Button(canvas.transform,"Wave / Space",new Vector2(-210,90),new Vector2(360,100),()=>
+            {
+                if (local && local.IsSpawned && local.IsOwner) local.GetComponent<SoccerPlayer>().RequestWave();
+            });
+            var waveRect = wave.GetComponent<RectTransform>();
+            waveRect.anchorMin = waveRect.anchorMax = new Vector2(1,0);
+            wave.GetComponentInChildren<TMP_Text>().fontSize = 28;
+            waveButton = wave.gameObject;
             var stop=canvas.transform.Find("Disconnect").GetComponent<RectTransform>();stop.anchorMax=new Vector2(1,1);stop.anchoredPosition=new Vector2(-90,-30);
         }
         RectTransform Circle(Transform parent,string name,Vector2 anchor,Vector2 pos,Vector2 size,Color color)

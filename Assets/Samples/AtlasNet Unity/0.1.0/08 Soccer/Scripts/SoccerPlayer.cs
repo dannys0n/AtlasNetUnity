@@ -7,6 +7,15 @@ namespace AtlasNet.Samples.Soccer
     // Owners send input only. One simulation worker moves the body and drives the Animator.
     public sealed class SoccerPlayer : NetworkBehaviour
     {
+        [SerializeField] bool allowMovement = true;
+        public bool AllowMovement => allowMovement;
+        [SerializeField] bool colorByOwnership;
+        SessionId colorViewer;
+        bool hasColorViewer;
+        public void SetColorViewer(SessionId viewer)
+        {
+            colorViewer = viewer; hasColorViewer = true; ApplyTeamColor();
+        }
         public const float Speed = 16f;
         public const float Size = 1.6f;
         public Vector3 AttackingGoal => new Vector3(Team == 0 ? 52 : -52, 0, 0);
@@ -14,6 +23,7 @@ namespace AtlasNet.Samples.Soccer
         public readonly NetworkVariable<int> TeamIndex = new(-1);
         public int Team => Mathf.Max(0, TeamIndex.Value);
         Renderer[] renderers;
+        SampleWaveLayer wave;
         SoccerNetworkIndicator indicator;
         public static int RosterIndex(NetworkManager manager, SessionId owner)
         {
@@ -25,12 +35,14 @@ namespace AtlasNet.Samples.Soccer
         public override void OnNetworkTick()
         {
             // The admitted roster is shared with workers. A departure rebalances both sides.
-            if (HasAuthority) TeamIndex.Value = RosterIndex(NetworkManager, OwnerSession) & 1;
+            if (HasAuthority && !colorByOwnership) TeamIndex.Value = RosterIndex(NetworkManager, OwnerSession) & 1;
         }
         Rigidbody body;
         Animator animator;
         NetworkAnimator networkAnimator;
         float inputReceived, nextInput;
+        // Applications may reserve arrow keys for menus/presentation without changing network movement.
+        public System.Func<Vector2> KeyboardInput { private get; set; }
         Vector2 lastSent;
         readonly Dictionary<ulong,float> kickedBalls = new();
         public override void OnNetworkSpawn()
@@ -38,11 +50,12 @@ namespace AtlasNet.Samples.Soccer
             body = GetComponent<Rigidbody>();
             animator = GetComponentInChildren<Animator>();
             networkAnimator = GetComponent<NetworkAnimator>();
+            wave = GetComponent<SampleWaveLayer>();
             renderers = GetComponentsInChildren<Renderer>();
             indicator = GetComponent<SoccerNetworkIndicator>();
             TeamIndex.Changed += TeamChanged;
             ApplyAuthority();
-            if (HasAuthority) TeamIndex.Value = RosterIndex(NetworkManager, OwnerSession) & 1;
+            if (HasAuthority && !colorByOwnership) TeamIndex.Value = RosterIndex(NetworkManager, OwnerSession) & 1;
             ApplyTeamColor();
         }
         public override void OnNetworkDespawn() => TeamIndex.Changed -= TeamChanged;
@@ -51,7 +64,10 @@ namespace AtlasNet.Samples.Soccer
         {
             if (renderers == null) return;
             var tint = new MaterialPropertyBlock();
-            Color color = Team == 0 ? SoccerSession.Blue : SoccerSession.Orange;
+            bool localOwner = hasColorViewer ? colorViewer.Value != 0 && OwnerSession == colorViewer : IsOwner;
+            Color color = colorByOwnership
+                ? (localOwner ? SoccerSession.Orange : SoccerSession.Blue)
+                : (Team == 0 ? SoccerSession.Blue : SoccerSession.Orange);
             tint.SetColor("_BaseColor", color); tint.SetColor("_Color", color);
             foreach (var renderer in renderers)
                 if (!indicator || renderer != indicator.bodyRenderer) renderer.SetPropertyBlock(tint);
@@ -64,14 +80,18 @@ namespace AtlasNet.Samples.Soccer
             body.isKinematic = !HasAuthority;
             // NetworkTransform interpolates clients. Rigidbody interpolation is for local simulation only.
             body.interpolation = HasAuthority ? RigidbodyInterpolation.Interpolate : RigidbodyInterpolation.None;
-            body.detectCollisions = NetworkManager.IsServer;
+            body.detectCollisions = NetworkManager.IsServer && allowMovement;
+            if (!allowMovement) body.constraints = RigidbodyConstraints.FreezeAll;
             if (HasAuthority) { body.position = transform.position; body.linearVelocity = new Vector3(MoveInput.x, 0, MoveInput.y) * Speed; }
         }
         void Update()
         {
-            if (!IsSpawned || !IsOwner) return;
+            if (!IsSpawned) return;
+            if (!IsOwner) return;
+            if (UnityEngine.Input.GetKeyDown(KeyCode.Space)) RequestWave();
+            if (!allowMovement) return;
             Vector2 input = SoccerStick.Input;
-            if (input.sqrMagnitude < .001f) input = new Vector2(UnityEngine.Input.GetAxisRaw("Horizontal"), UnityEngine.Input.GetAxisRaw("Vertical"));
+            if (input.sqrMagnitude < .001f) input = KeyboardInput != null ? KeyboardInput() : new Vector2(UnityEngine.Input.GetAxisRaw("Horizontal"), UnityEngine.Input.GetAxisRaw("Vertical"));
             input = Vector2.ClampMagnitude(input, 1);
             if (Time.unscaledTime >= nextInput || input != lastSent)
             {
@@ -82,11 +102,18 @@ namespace AtlasNet.Samples.Soccer
         public void SetMoveRpc(Vector2 input)
         {
             if (!HasAuthority || !float.IsFinite(input.x) || !float.IsFinite(input.y)) return;
-            MoveInput = Vector2.ClampMagnitude(input, 1); inputReceived = Time.unscaledTime;
+            MoveInput = allowMovement ? Vector2.ClampMagnitude(input, 1) : Vector2.zero; inputReceived = Time.unscaledTime;
         }
+        public void RequestWave()
+        {
+            if (IsSpawned && IsOwner && !wave.IsBusy) RequestWaveRpc();
+        }
+        [Rpc(SendTo.Authority, InvokePermission = RpcInvokePermission.Owner)]
+        public void RequestWaveRpc() { Celebrate(); }
+
         public void Celebrate()
         {
-            if (HasAuthority) networkAnimator.SetTrigger("Wave");
+            if (HasAuthority) wave.TryWave(networkAnimator);
         }
         void OnCollisionEnter(Collision collision) => TryKick(collision);
         void OnCollisionStay(Collision collision) => TryKick(collision);
@@ -117,6 +144,7 @@ namespace AtlasNet.Samples.Soccer
         {
             if (!IsSpawned || !HasAuthority) return;
             if (Time.unscaledTime - inputReceived > .25f) MoveInput = Vector2.zero;
+            if (!allowMovement) MoveInput = Vector2.zero;
             Vector3 desired = new Vector3(MoveInput.x, 0, MoveInput.y) * Speed;
             Vector3 pos = body.position;
             if ((pos.x <= -50.5f && desired.x < 0) || (pos.x >= 50.5f && desired.x > 0)) desired.x = 0;
