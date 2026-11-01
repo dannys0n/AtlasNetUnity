@@ -81,6 +81,7 @@ namespace AtlasNet
 
         private void Apply(T next)
         {
+            if (EqualityComparer<T>.Default.Equals(value, next)) return;
             T old = value;
             value = next;
             Changed?.Invoke(old, next);

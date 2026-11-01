@@ -159,6 +159,44 @@ namespace AtlasNetDemo.Tests
             finally {manager.Stop();Object.DestroyImmediate(manager.gameObject);unload=SceneManager.UnloadSceneAsync(scene);}
             if(unload!=null)yield return unload;
         }
+        [UnityTest]
+        public IEnumerator HandoffRestoresHistoricalScoresWithoutReplayingCelebration()
+        {
+            const string root="Assets/Samples/AtlasNet Unity/0.1.0/08 Soccer/Prefabs/";
+            var manager=new GameObject("Soccer celebration snapshot test").AddComponent<NetworkManager>();
+            Set(manager,"networkPrefabsLists",new[]{AssetDatabase.LoadAssetAtPath<NetworkPrefabsList>(root+"SoccerNetworkPrefabs.asset")});
+            manager.ConfigureConnection("127.0.0.1",17945);
+            var flags=BindingFlags.NonPublic|BindingFlags.Instance;
+            var write=typeof(NetworkObject).GetMethod("WriteHandoff",flags);
+            var read=typeof(NetworkObject).GetMethod("ReadHandoff",flags);
+            byte[] Capture(NetworkObject obj) { using var writer=new NetWriter();write.Invoke(obj,new object[]{writer});return writer.ToArray(); }
+            void Restore(NetworkObject obj,byte[] bytes) { using var reader=new NetReader(bytes);read.Invoke(obj,new object[]{reader});Assert.IsFalse(reader.HasRemaining); }
+            try
+            {
+                manager.StartServer();
+                var ball=manager.Spawn(AssetDatabase.LoadAssetAtPath<NetworkObject>(root+"SoccerBall.prefab"),new Vector3(0,1,0),Quaternion.identity);
+                var match=(NetworkBehaviour)ball.GetComponent("SoccerMatch");
+                var pending=match.GetType().GetField("pendingCelebration",flags);
+                match.GetType().GetMethod("RecordGoal").Invoke(match,new object[]{0});
+                Assert.IsTrue((bool)pending.GetValue(match),"A real goal schedules a celebration.");
+                byte[] unprocessed=Capture(ball);
+                match.OnNetworkTick();Assert.IsFalse((bool)pending.GetValue(match));
+                byte[] processed=Capture(ball);
+                // A stale resident may have missed a score delta before handoff.
+                var sequence=match.GetType().GetField("GoalSequence").GetValue(match);
+                using(var writer=new NetWriter()) { writer.Write(0);using var reader=new NetReader(writer.ToArray());((INetworkVariable)sequence).Read(reader); }
+                Restore(ball,processed);
+                Assert.AreEqual(1,Score(ball,"BlueScore"));
+                Assert.IsFalse((bool)pending.GetValue(match),"Historical score restoration must not schedule another wave.");
+                Restore(ball,processed);
+                Assert.IsFalse((bool)pending.GetValue(match),"An identical snapshot must not schedule another wave.");
+                Restore(ball,unprocessed);
+                Assert.IsTrue((bool)pending.GetValue(match),"A genuinely unprocessed celebration survives handoff.");
+                match.OnNetworkTick();Assert.IsFalse((bool)pending.GetValue(match));
+                yield return null;
+            }
+            finally { manager.Stop();Object.DestroyImmediate(manager.gameObject); }
+        }
         static int Score(NetworkObject obj,string name)
         {
             var component=obj.GetComponent("SoccerMatch");var variable=component.GetType().GetField(name).GetValue(component);
