@@ -17,21 +17,32 @@ namespace AtlasNet.M2
         public TMP_FontAsset font;
         TMP_InputField address;
         TMP_Text status,linkLabel,score;
-        GameObject connection,join,controls,stick,slide;
-        UnityEngine.UI.RawImage qrView,slideView;
-        UnityEngine.UI.AspectRatioFitter slideAspect;
+        GameObject connection,join,controls,stick,waveButton;
+        M2Slides slides;
+        RectTransform gameHud, fixedHud, joinHud;
+        int waveStage = -1;
+        UnityEngine.UI.RawImage qrView;
         Texture2D qr;
         string link;
-        int slideIndex;
+        public bool HasPartialSlide => slides && slides.Partial;
         public string Address { get=>address?address.text:"127.0.0.1";set{if(address)address.text=value;} }
         void Awake()=>Build();
         void OnDestroy(){if(qr)Destroy(qr);}
         void Update()
         {
             var p=presentation;var m=p.manager;bool running=m.IsRunning;
-            connection.SetActive(!running);join.SetActive(running&&m.IsServer);controls.SetActive(running&&m.IsServer);
-            stick.SetActive(running&&m.IsClient&&!p.Loading&&p.Owner);
-            status.text=!running?(string.IsNullOrEmpty(p.Error)?"ATLASNET · MILESTONE 2":p.Error):p.Loading?"LOADING DEMO…":!m.IsServer&&!m.IsConnectedClient?"CONNECTING…":$"M2 · {p.Stage?.title ?? "Preparing"} · {m.ConnectedClientsIds.Count} players";
+            connection.SetActive(!running);join.SetActive(running&&m.IsServer);controls.SetActive(running&&m.IsServer&&!(slides&&slides.Visible));
+            stick.SetActive(running&&m.IsClient&&!p.Loading&&p.ActiveIndex==2&&p.Owner);
+            waveButton.SetActive(running&&m.IsClient&&!p.Loading&&(p.ActiveIndex==1||p.ActiveIndex==2)&&p.Owner);
+            if (waveStage != p.ActiveIndex)
+            {
+                waveStage = p.ActiveIndex;
+                var rect = waveButton.GetComponent<RectTransform>();
+                rect.SetParent(p.ActiveIndex == 2 ? fixedHud : gameHud, false);
+                Anchor(rect, new Vector2(p.ActiveIndex == 2 ? 1 : .5f, 0));
+                rect.anchoredPosition = new Vector2(p.ActiveIndex == 2 ? -210 : 0, 90);
+            }
+            status.text=!running?(string.IsNullOrEmpty(p.Error)?"ATLASNET - MILESTONE 2":p.Error):p.Loading?"LOADING DEMO...":!m.IsServer&&!m.IsConnectedClient?"CONNECTING-":$"M2 - {p.Stage?.title ?? "Preparing"} - {m.ConnectedClientsIds.Count} {(p.ActiveIndex==0?"viewers":"players")}";
             score.text="";
             if(running&&p.ActiveIndex==2)
             {
@@ -61,44 +72,63 @@ namespace AtlasNet.M2
 #endif
             return "127.0.0.1";
         }
-        public void HideScreenshot(){if(slide)slide.SetActive(false);}
-        public void ToggleScreenshot(int direction)
+        public void SetPresentationViewport(Rect viewport)
         {
-            var images=presentation.Stage?presentation.Stage.screenshots:null;
-            if(images==null||images.Length==0)return;
-            if(direction==0&&slide.activeSelf){HideScreenshot();return;}
-            slideIndex=(slideIndex+direction+images.Length)%images.Length;
-            var image=images[slideIndex];if(!image)return;
-            slideView.texture=image;slideAspect.aspectRatio=(float)image.width/image.height;slide.SetActive(true);
+            if (!gameHud) return;
+            gameHud.anchorMin = viewport.min; gameHud.anchorMax = viewport.max;
+            gameHud.offsetMin = gameHud.offsetMax = Vector2.zero;
+            if (joinHud)
+            {
+                joinHud.anchorMin = viewport.min; joinHud.anchorMax = viewport.max;
+                joinHud.offsetMin = joinHud.offsetMax = Vector2.zero;
+            }
         }
+        public int SlideCount => slides ? slides.SlideCount : 0;
+        public void HideScreenshot() => presentation.CloseSlides();
+        public void ToggleScreenshot(int direction) => presentation.ChangeSlide(direction);
+        public void CloseSlideLocally() { if (slides) slides.Hide(); }
+        public void ApplySlideState(int index, double elapsed) { if (slides) slides.Apply(index, elapsed); }
         void Build()
         {
             if(!font)font=TMP_Settings.defaultFontAsset;
             var canvas=new GameObject("M2 HUD",typeof(Canvas),typeof(UnityEngine.UI.CanvasScaler),typeof(UnityEngine.UI.GraphicRaycaster));canvas.transform.SetParent(transform,false);canvas.GetComponent<Canvas>().renderMode=RenderMode.ScreenSpaceOverlay;
             var scaler=canvas.GetComponent<UnityEngine.UI.CanvasScaler>();scaler.uiScaleMode=UnityEngine.UI.CanvasScaler.ScaleMode.ScaleWithScreenSize;scaler.referenceResolution=new Vector2(1600,900);scaler.matchWidthOrHeight=.5f;
+            gameHud = new GameObject("Game HUD area", typeof(RectTransform)).GetComponent<RectTransform>();
+            gameHud.SetParent(canvas.transform, false);
+            SetPresentationViewport(new Rect(0, 0, 1, 1));
+            fixedHud = new GameObject("Fixed screen controls", typeof(RectTransform)).GetComponent<RectTransform>();
+            fixedHud.SetParent(canvas.transform, false);
+            fixedHud.anchorMin = Vector2.zero; fixedHud.anchorMax = Vector2.one;
+            fixedHud.offsetMin = fixedHud.offsetMax = Vector2.zero;
+            joinHud = new GameObject("Join information area", typeof(RectTransform)).GetComponent<RectTransform>();
+            joinHud.SetParent(canvas.transform, false);
+            SetPresentationViewport(new Rect(0, 0, 1, 1));
             if(!FindAnyObjectByType<EventSystem>()){var events=new GameObject("M2 EventSystem",typeof(EventSystem),typeof(StandaloneInputModule));events.transform.SetParent(transform,false);}
-            status=Text(canvas.transform,"Status","M2",new Vector2(0,-36),new Vector2(850,48),25);Anchor(status.rectTransform,new Vector2(.5f,1));
-            score=Text(canvas.transform,"Score","",new Vector2(0,-84),new Vector2(440,48),28);Anchor(score.rectTransform,new Vector2(.5f,1));
-            var lobby=Panel(canvas.transform,"Connection",new Vector2(.5f,.5f),Vector2.zero,new Vector2(450,280));connection=lobby.gameObject;
-            Text(lobby,"Title","ATLASNET · M2",new Vector2(0,105),new Vector2(420,42),28);
+            status=Text(gameHud,"Status","M2",new Vector2(0,-36),new Vector2(850,48),25);Anchor(status.rectTransform,new Vector2(.5f,1));
+            score=Text(gameHud,"Score","",new Vector2(0,-84),new Vector2(440,48),28);Anchor(score.rectTransform,new Vector2(.5f,1));
+            var lobby=Panel(gameHud,"Connection",new Vector2(.5f,.5f),Vector2.zero,new Vector2(450,280));connection=lobby.gameObject;
+            Text(lobby,"Title","ATLASNET - M2",new Vector2(0,105),new Vector2(420,42),28);
             address=Field(lobby,new Vector2(0,45),new Vector2(400,44));
             Button(lobby,"Host",new Vector2(-105,-18),new Vector2(190,44),()=>presentation.Connect(0));
             Button(lobby,"Join",new Vector2(105,-18),new Vector2(190,44),()=>presentation.Connect(2));
             Button(lobby,"Start server only",new Vector2(0,-79),new Vector2(400,42),()=>presentation.Connect(3));
-            var share=Panel(canvas.transform,"Join QR",new Vector2(0,1),new Vector2(170,-235),new Vector2(310,370));join=share.gameObject;
+            var share=Panel(joinHud,"Join QR",new Vector2(0,1),new Vector2(170,-235),new Vector2(310,370));join=share.gameObject;
             Text(share,"Join title","JOIN THIS SESSION",new Vector2(0,155),new Vector2(290,32),21);
             var qrObject=new GameObject("QR",typeof(RectTransform),typeof(UnityEngine.UI.RawImage));qrObject.transform.SetParent(share,false);qrView=qrObject.GetComponent<UnityEngine.UI.RawImage>();qrView.color=Color.white;qrView.rectTransform.sizeDelta=new Vector2(235,235);qrView.rectTransform.anchoredPosition=new Vector2(0,16);qrView.raycastTarget=false;
             linkLabel=Text(share,"Address","",new Vector2(0,-126),new Vector2(290,48),20);linkLabel.textWrappingMode=TextWrappingModes.Normal;
             Button(share,"Copy address",new Vector2(0,-164),new Vector2(280,30),()=>GUIUtility.systemCopyBuffer=link);
-            var buttons=Panel(canvas.transform,"Presenter controls",new Vector2(1,1),new Vector2(-260,-155),new Vector2(490,185));controls=buttons.gameObject;
-            for(int i=0;i<3;i++){int index=i;Button(buttons,new[]{"1 · Interest / scale","2 · Animator sync","3 · Soccer"}[i],new Vector2(0,54-i*49),new Vector2(460,43),()=>presentation.Select(index));}
-            Text(buttons,"Slide keys","I: screenshot · PgUp/PgDn: previous/next",new Vector2(0,-76),new Vector2(470,26),14);
-            var disconnect=Button(canvas.transform,"Disconnect",new Vector2(-92,-30),new Vector2(160,35),()=>presentation.manager.Stop());Anchor(disconnect.GetComponent<RectTransform>(),new Vector2(1,1));
-            var circle=new GameObject("Movement",typeof(RectTransform),typeof(SoccerStickGraphic));circle.transform.SetParent(canvas.transform,false);var rect=circle.GetComponent<RectTransform>();Anchor(rect,Vector2.zero);rect.anchoredPosition=new Vector2(220,210);rect.sizeDelta=new Vector2(220,220);circle.GetComponent<SoccerStickGraphic>().color=new Color(.1f,.2f,.3f,.65f);stick=circle;
+            var buttons=Panel(gameHud,"Presenter controls",new Vector2(1,1),new Vector2(-260,-155),new Vector2(490,185));controls=buttons.gameObject;
+            for(int i=0;i<3;i++){int index=i;Button(buttons,new[]{"1 - Interest / scale","2 - Animator sync","3 - Soccer"}[i],new Vector2(0,54-i*49),new Vector2(460,43),()=>presentation.Select(index));}
+            Text(buttons,"Slide keys","Left / Right: slides - I: toggle - Esc: close",new Vector2(0,-76),new Vector2(470,26),14);
+            var disconnect=Button(fixedHud,"Disconnect",new Vector2(-92,-30),new Vector2(160,35),()=>presentation.manager.Stop());Anchor(disconnect.GetComponent<RectTransform>(),new Vector2(1,1));
+            var circle=new GameObject("Movement",typeof(RectTransform),typeof(SoccerStickGraphic));circle.transform.SetParent(fixedHud,false);var rect=circle.GetComponent<RectTransform>();Anchor(rect,Vector2.zero);rect.anchoredPosition=new Vector2(220,210);rect.sizeDelta=new Vector2(220,220);circle.GetComponent<SoccerStickGraphic>().color=new Color(.1f,.2f,.3f,.65f);stick=circle;
             var knob=new GameObject("Handle",typeof(RectTransform),typeof(SoccerStickGraphic));knob.transform.SetParent(rect,false);var handle=knob.GetComponent<RectTransform>();handle.sizeDelta=new Vector2(80,80);knob.GetComponent<SoccerStickGraphic>().color=new Color(.7f,.85f,1,.9f);knob.GetComponent<SoccerStickGraphic>().raycastTarget=false;circle.AddComponent<SoccerStick>().handle=handle;
-            var wave=Button(canvas.transform,"Wave / Space",new Vector2(-120,92),new Vector2(200,65),()=>{var owner=presentation.Owner;if(owner)owner.GetComponent<M2Actor>().Wave();});Anchor(wave.GetComponent<RectTransform>(),new Vector2(1,0));
-            var overlay=Panel(canvas.transform,"Screenshot overlay",new Vector2(.5f,.5f),new Vector2(120,-15),new Vector2(1100,700));slide=overlay.gameObject;
-            var picture=new GameObject("Screenshot",typeof(RectTransform),typeof(UnityEngine.UI.RawImage),typeof(UnityEngine.UI.AspectRatioFitter));picture.transform.SetParent(overlay,false);slideView=picture.GetComponent<UnityEngine.UI.RawImage>();slideView.raycastTarget=false;slideAspect=picture.GetComponent<UnityEngine.UI.AspectRatioFitter>();slideAspect.aspectMode=UnityEngine.UI.AspectRatioFitter.AspectMode.FitInParent;HideScreenshot();
+            var wave=Button(gameHud,"Wave / Space",new Vector2(0,90),new Vector2(360,100),()=>{var owner=presentation.Owner;if(owner)owner.GetComponent<M2Actor>().Wave();});Anchor(wave.GetComponent<RectTransform>(),new Vector2(.5f,0));wave.GetComponentInChildren<TMP_Text>().fontSize=28;waveButton=wave.gameObject;
+            slides = gameObject.AddComponent<M2Slides>();
+            slides.Initialize(presentation, canvas.transform, font);
+            // Join information and Soccer input remain above the presentation media.
+            fixedHud.SetAsLastSibling();
+            joinHud.SetAsLastSibling();
         }
         static void Anchor(RectTransform r,Vector2 anchor){r.anchorMin=r.anchorMax=anchor;}
         RectTransform Panel(Transform parent,string name,Vector2 anchor,Vector2 pos,Vector2 size)

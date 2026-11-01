@@ -17,6 +17,10 @@ namespace AtlasNet.M2
         public Vector3 cameraAngles = new(51,0,0);
         public SoccerGoalPointer goalPointer;
         public ParticleSystem blueConfetti, orangeConfetti;
-        public Texture2D[] screenshots = System.Array.Empty<Texture2D>();
+        [Tooltip("Shared presentation slide set; only the host/server navigates this list.")]
+        public M2Slide[] slides = System.Array.Empty<M2Slide>();
+        [Tooltip("Show full/left/right layout previews until real media is assigned.")]
+        public bool previewSlidesWhenEmpty = true;
+        [HideInInspector] public Texture2D[] screenshots = System.Array.Empty<Texture2D>();
     }
 }

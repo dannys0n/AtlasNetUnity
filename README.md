@@ -1,25 +1,29 @@
 # AtlasNet Unity
 
-An early Unity networking framework with a local multi-worker backend for testing authority, interest, and handoff. The project targets Unity 6000.6.2f1.
+A Unity networking framework prototype exploring multi-worker worlds, spatial interest management, and authority handoffs through familiar GameObject and prefab workflows.
 
-## Install with Unity Package Manager
+## Highlights
+
+- Networked objects, transforms, Animator state, RPCs, and replicated variables.
+- Client- and server-authoritative gameplay with configurable transports.
+- Native UDP and browser WebSocket clients connected to the same server.
+- Spatial interest filtering and authority transfers between workers.
+- Interactive samples covering movement, physics, scaling, animation, and a small multiplayer soccer game.
+
+## Current status
+
+The project uses a **local dummy backend** to demonstrate and validate the framework while integration with the production AtlasNet C++ backend is pending. It is an experimental prototype; prediction, distributed physics, and production hardening remain future work.
+
+The Unity project targets **Unity 6000.6.2f1**. A separate M2 presentation demonstrates the framework with persistent client connections, QR/IP joining, and synchronized slides.
+
+## Install
+
+In Unity Package Manager, choose **Install package from Git URL**:
 
 ```text
 https://github.com/dannys0n/AtlasNetUnity.git?path=/Packages/com.atlasnet.unity#main
 ```
 
-Select **AtlasNet Unity** in Package Manager and import **00 Shared**, then whichever numbered samples you want from its Samples section. The package provides the framework runtime; the sample scenes are optional.
+Import **00 Shared** from the package's Samples section first, then the demonstrations you want to explore. Soccer additionally requires URP, Unity UI, and TMP Essential Resources.
 
-Install Unity's Multiplayer Play Mode package to test with multiple editor players, or use separate builds. Multiplayer Play Mode is a testing tool, not a dependency of the AtlasNet package.
-
-The samples include QuickStart, client- and server-authoritative movement, server and client Rigidbody physics, interest and scale, and Animator synchronization. The optional **08 Soccer** game sample requires **00 Shared**, URP, Unity UI, and imported TMP Essential Resources. Open `08_Soccer`, start **Host** or **Start server only** in one instance, then **Join** or **Join as worker** in others. Move with WASD/arrows or the larger circular on-screen stick, inset from the corner. Teams alternate over the admitted-player roster and rebalance after departures; worker sessions do not count. Soccer players use the Player tag and SoccerPlayer layer; its self-collision is disabled in the Physics collision matrix while ball and arena collisions remain enabled. Movement and animation are server-authoritative; the scoring team waves automatically after each goal. The pitch runs horizontally, with goals on the left and right. Solid moving-player contacts kick the ball forward and slightly upward. Gravity returns it to the pitch, and stalled contacts provide rate-limited lift to help release a trapped ball. Invisible inset walls and a ceiling contain the ball without exposed board ledges; goal walls are three times taller. Goals reset the ball to centre. Players are 1.6x scale and move at 16 m/s (2x the original speed); the ball has a 1 m radius and stronger kicks. Player torsos and the ball flash red during departure and green for 0.5 seconds after a successful handoff, then return to their normal team/white colors. A local arrow at the ball's centre height points to each player's attacking goal. A team-colored screen-edge arrow points from the player toward the ball while it is off-screen and hides when it returns to view. Debug regions and boundaries start enabled. Interest discs always appear on servers; Show On Clients is off for Soccer. Soccer uses a 53.33 m network interest radius (one third of the previous 160 m); the debug disc shows the actual radius. Distant entities, including the ball and its attached match state, follow normal backend interest culling. Set SoccerSession's Web Base URL to the served Soccer build (the serving script defaults to port 8094). The large QR and address contain the plain Web URL; the serving script adds connection parameters. The QR does not start an HTTP server.
-
-The local backend is not the production AtlasNet C++ integration; client-side prediction, production ingress/transport integration, and distributed physics remain later work.
-
-## Documentation
-[visit the documentation website](https://dannys0n.github.io/AtlasNetUnity/)
-
-
-M2 presentation assets are separate from the UPM package in `Assets/M2`. Open `M2_Launcher`, activate either M2 Web profile, and start Host or Start server only. Presenter keys 1/2/3 select Interest/Scale, Animator Sync, and Soccer. The persistent network manager keeps client connections and session IDs; avatars respawn for the selected demonstration. This first presentation foundation runs on one coordinating server. Existing standalone samples remain the multi-worker demonstrations. Add screenshot textures to each content scene's `M2 Stage Configuration > Screenshots`; I toggles the image, Page Up/Down cycles, and Escape hides it. Screenshots are local presenter overlays. Late joiners receive the current scene command.
-
-Deployment scripts are in `Builds`: run `Enable-Firewall.cmd` once with administrator approval, then `Serve.cmd` for Soccer or `Serve.cmd m2` for M2. Both serve desktop/mobile at port 8094, with precompressed gzip delivery prepared by the server script, automatically choosing a build for the device; explicit `/desktop/` and `/mobile/` paths are also available. Run the matching scene in the Editor on game port 7777. Builds themselves are ignored by Git. Use the Soccer Web profiles for `Builds/Soccer-Desktop` and `Builds/Soccer-Mobile`, or M2 Web profiles for `Builds/M2-Desktop` and `Builds/M2-Mobile`.
+[Documentation and setup guides](https://dannys0n.github.io/AtlasNetUnity/)

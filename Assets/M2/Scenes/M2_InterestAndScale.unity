@@ -597,7 +597,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::AtlasNet.M2.M2Stage
   index: 0
   title: Interest / scale
-  playerPrefab: {fileID: 1675724102576497413, guid: df17c2e5aa9085c47b7506ae3840fcf1, type: 3}
+  playerPrefab: {fileID: 3690700341716489596, guid: 088a841c2c5b0f54d88a45e56186d490, type: 3}
   extraPrefab: {fileID: 8457633124402026282, guid: 7e04f8488b9a3c448966b752c67ce6b5, type: 3}
   entityCount: 50
   view: {fileID: 330585545}
