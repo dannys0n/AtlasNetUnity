@@ -27,7 +27,7 @@ namespace AtlasNet
         readonly Dictionary<NetworkConnection,SessionId> sessions=new();
         readonly List<SessionId> disconnected=new();
         readonly MessageSequence sequence=new();
-        readonly bool server;readonly int simulatedLoss;ulong nextSession=2;int webDriverId;
+        readonly bool server;readonly int simulatedLoss;readonly int webSocketDisconnectTimeoutMS;ulong nextSession=2;int webDriverId;
         public event Action<SessionId> Connected;
         public event Action<SessionId> Disconnected;
         public event Action<SessionId,byte[]> Received;
@@ -40,9 +40,9 @@ namespace AtlasNet
         internal int LargestBatchBytes {get;private set;}
         internal long FailedBatchAttempts {get;private set;}
         bool sendPending;
-        public UnityMessageTransport(bool server,string address,int port,string bindAddress,ClientTransport client,int simulatedLoss=0)
+        public UnityMessageTransport(bool server,string address,int port,string bindAddress,ClientTransport client,int simulatedLoss=0,int webSocketDisconnectTimeoutMS=30000)
         {
-            this.server=server;this.simulatedLoss=simulatedLoss;
+            this.server=server;this.simulatedLoss=simulatedLoss;this.webSocketDisconnectTimeoutMS=webSocketDisconnectTimeoutMS;
 #if UNITY_WEBGL && !UNITY_EDITOR
             if(server)throw new NotSupportedException("Browsers join native servers; they cannot listen for connections.");
             client=ClientTransport.WebSocket;
@@ -72,7 +72,8 @@ namespace AtlasNet
             settings.WithFragmentationStageParameters(payloadCapacity:65536);
             settings.WithReliableStageParameters(windowSize:64);
             if(simulatedLoss>0)settings.WithSimulatorStageParameters(maxPacketCount:512,maxPacketSize:2000,packetDropPercentage:simulatedLoss,randomSeed:12345);
-            settings.WithNetworkConfigParameters(sendQueueCapacity:512,receiveQueueCapacity:512);
+            settings.WithNetworkConfigParameters(sendQueueCapacity:512,receiveQueueCapacity:512,
+                disconnectTimeoutMS:web?webSocketDisconnectTimeoutMS:NetworkParameterConstants.DisconnectTimeoutMS);
 #if UNITY_WEBGL && !UNITY_EDITOR
             var next=NetworkDriver.Create(new WebSocketNetworkInterface(),settings);
 #else

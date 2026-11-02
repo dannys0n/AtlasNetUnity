@@ -52,6 +52,18 @@ namespace AtlasNet
         [SerializeField] internal ClientTransport clientTransport=ClientTransport.Udp;
         [SerializeField] internal string listenAddress="0.0.0.0";
         private IWorldBackend backend;
+        [SerializeField, Min(0), Tooltip("WebSocket inactivity timeout in milliseconds. Zero disables idle disconnects; configure before starting networking.")]
+        private int webSocketDisconnectTimeoutMS = 30000;
+        public int WebSocketDisconnectTimeoutMS
+        {
+            get => webSocketDisconnectTimeoutMS;
+            set
+            {
+                if (IsRunning) throw new InvalidOperationException("Configure the timeout before starting networking.");
+                if (value < 0) throw new ArgumentOutOfRangeException(nameof(value));
+                webSocketDisconnectTimeoutMS = value;
+            }
+        }
         public ServerTransport ServerConnection=>serverTransport;
         public ClientTransport ClientConnection=>clientTransport;
         public string Address=>localAddress;

@@ -27,14 +27,14 @@ namespace AtlasNet
             if(runtime.transportProvider)
                 return runtime.transportProvider.CreateTransport(runtime,server)??throw new InvalidOperationException("Transport provider returned null.");
 #if UNITY_WEBGL && !UNITY_EDITOR
-            return new UnityMessageTransport(server,localAddress,port,runtime.listenAddress,ClientTransport.WebSocket);
+            return new UnityMessageTransport(server,localAddress,port,runtime.listenAddress,ClientTransport.WebSocket,webSocketDisconnectTimeoutMS:runtime.WebSocketDisconnectTimeoutMS);
 #else
             if(server?runtime.serverTransport==ServerTransport.Tcp:runtime.clientTransport==ClientTransport.Tcp)
                 return new LocalTcpTransport(server,localAddress,port,runtime.listenAddress);
 #if ATLASNET_STANDALONE
             throw new NotSupportedException("Unity Transport is verified in Unity; select TCP for standalone checks.");
 #else
-            return new UnityMessageTransport(server,localAddress,port,runtime.listenAddress,runtime.clientTransport);
+            return new UnityMessageTransport(server,localAddress,port,runtime.listenAddress,runtime.clientTransport,webSocketDisconnectTimeoutMS:runtime.WebSocketDisconnectTimeoutMS);
 #endif
 #endif
         }

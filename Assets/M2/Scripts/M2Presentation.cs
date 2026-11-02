@@ -42,6 +42,8 @@ namespace AtlasNet.M2
         void Awake()
         {
             Instance=this; DontDestroyOnLoad(gameObject);
+            Application.runInBackground=true;
+            manager.WebSocketDisconnectTimeoutMS=0;
             manager.ShowViewerInterestForDebug=false;
             manager.PlayerSpawnPosition=s=>SpawnPosition(s);
             manager.OnClientConnectedCallback+=Joined;
