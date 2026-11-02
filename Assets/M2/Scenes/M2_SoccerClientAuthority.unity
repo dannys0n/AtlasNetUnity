@@ -1150,7 +1150,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f43688423fc81a143bc57b847d0fe5c0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::AtlasNet.M2.M2Stage
-  index: 4
+  index: 3
   kind: 3
   hasLiveDemo: 1
   slidesAfterDemo: 1
@@ -1166,7 +1166,17 @@ MonoBehaviour:
   blueConfetti: {fileID: 1116024884}
   orangeConfetti: {fileID: 1540631593}
   slides:
+  - title: Looking forward to M3
+    body: "\u2022 Integrate the AtlasNet backend.\n\n\u2022 Add prediction and reconciliation.\n\n\u2022 Pool network objects.\n\n\u2022 Group transform updates.\n\n\u2022 Improve Rigidbody handoffs.\n\n\u2022 Integrate into a complete game."
+    layout: 1
+    panelWidth: 0.5
+    portraitPanelHeight: 0.6666667
+    image: {fileID: 0}
+    videoPath: 
+    frames: []
+    framesPerSecond: 12
   - title: "Polygon Shooter \u2014 Milestone 3"
+    body: 
     layout: 1
     panelWidth: 0.55
     portraitPanelHeight: 0

@@ -598,7 +598,8 @@ MonoBehaviour:
   index: 1
   kind: 1
   hasLiveDemo: 1
-  title: Interest / scale
+  slidesAfterDemo: 0
+  title: Scale Worker Demo
   playerPrefab: {fileID: 3690700341716489596, guid: 088a841c2c5b0f54d88a45e56186d490, type: 3}
   extraPrefab: {fileID: 8457633124402026282, guid: 7e04f8488b9a3c448966b752c67ce6b5, type: 3}
   entityCount: 50
@@ -610,16 +611,40 @@ MonoBehaviour:
   blueConfetti: {fileID: 0}
   orangeConfetti: {fileID: 0}
   slides:
-  - title: "Scale and interest \u2014 components"
-    layout: 0
-    panelWidth: 0.55
-    image: {fileID: 2800000, guid: def35ea655c1c724cb89794117eaac60, type: 3}
+  - title: Scale Worker Demo
+    body: "\u2022 Add Network Components to object"
+    layout: 1
+    panelWidth: 0.5
+    portraitPanelHeight: 0.6666667
+    image: {fileID: 0}
+    videoPath: 
     frames: []
     framesPerSecond: 12
-  - title: "Scale and interest \u2014 code"
-    layout: 0
-    panelWidth: 0.55
+  - title: Scale Worker Demo
+    body: 
+    layout: 1
+    panelWidth: 0.5
+    portraitPanelHeight: 0.6666667
+    image: {fileID: 2800000, guid: def35ea655c1c724cb89794117eaac60, type: 3}
+    videoPath: 
+    frames: []
+    framesPerSecond: 12
+  - title: Scale Worker Demo
+    body: "\u2022 Add Network Components to object\n\n\u2022 Add logic to ping pong between servers"
+    layout: 1
+    panelWidth: 0.5
+    portraitPanelHeight: 0.6666667
+    image: {fileID: 0}
+    videoPath: 
+    frames: []
+    framesPerSecond: 12
+  - title: Scale Worker Demo
+    body: 
+    layout: 1
+    panelWidth: 0.5
+    portraitPanelHeight: 0.6666667
     image: {fileID: 2800000, guid: 5d79a728dda1b93429c9d08d3cd12886, type: 3}
+    videoPath: 
     frames: []
     framesPerSecond: 12
   previewSlidesWhenEmpty: 0

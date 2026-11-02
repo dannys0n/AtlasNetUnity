@@ -275,29 +275,43 @@ MonoBehaviour:
     frames: []
     framesPerSecond: 12
   - title: Networking features
-    body: '<b>UDP + WebSocket clients together</b>
-
-      Native and browser clients share one persistent world.
-
-
-      <b>Server scaling</b>
-
-      Add or remove workers as world simulation authority shifts between them.
-
-
-      <b>Animation synchronization</b>
-
-      Replicate Animator parameters and triggers across clients.
-
-
-      <b>Late-join state synchronization</b>
-
-      New clients receive the current replicated state.
-
-
-      <b>Buffered transform interpolation</b>
-
-      Remote movement is smoothed between received updates.'
+    body: "\u2022 UDP + WebSocket clients share one persistent world."
+    layout: 0
+    panelWidth: 0.55
+    portraitPanelHeight: 0
+    image: {fileID: 0}
+    videoPath: 
+    frames: []
+    framesPerSecond: 12
+  - title: Networking features
+    body: "\u2022 UDP + WebSocket clients share one persistent world.\n\n\u2022 Add or remove server workers; authority transfers between them."
+    layout: 0
+    panelWidth: 0.55
+    portraitPanelHeight: 0
+    image: {fileID: 0}
+    videoPath: 
+    frames: []
+    framesPerSecond: 12
+  - title: Networking features
+    body: "\u2022 UDP + WebSocket clients share one persistent world.\n\n\u2022 Add or remove server workers; authority transfers between them.\n\n\u2022 Synchronize Animator parameters and triggers."
+    layout: 0
+    panelWidth: 0.55
+    portraitPanelHeight: 0
+    image: {fileID: 0}
+    videoPath: 
+    frames: []
+    framesPerSecond: 12
+  - title: Networking features
+    body: "\u2022 UDP + WebSocket clients share one persistent world.\n\n\u2022 Add or remove server workers; authority transfers between them.\n\n\u2022 Synchronize Animator parameters and triggers.\n\n\u2022 Late joiners receive the current replicated state."
+    layout: 0
+    panelWidth: 0.55
+    portraitPanelHeight: 0
+    image: {fileID: 0}
+    videoPath: 
+    frames: []
+    framesPerSecond: 12
+  - title: Networking features
+    body: "\u2022 UDP + WebSocket clients share one persistent world.\n\n\u2022 Add or remove server workers; authority transfers between them.\n\n\u2022 Synchronize Animator parameters and triggers.\n\n\u2022 Late joiners receive the current replicated state.\n\n\u2022 Buffer remote transforms for smoother movement."
     layout: 0
     panelWidth: 0.55
     portraitPanelHeight: 0

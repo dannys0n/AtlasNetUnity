@@ -118,7 +118,7 @@ namespace AtlasNet.M2
             rect.sizeDelta = size + new Vector2(24, 12);
         }
 
-        // Fill the panel, preserving the top edge: vertical excess is cropped at the bottom.
+        // Fill the panel with a centered crop on both axes.
         public static Rect VideoCrop(float sourceAspect, float panelAspect)
         {
             if (sourceAspect > panelAspect)
@@ -127,7 +127,7 @@ namespace AtlasNet.M2
                 return new Rect((1 - width) * .5f, 0, width, 1);
             }
             float height = sourceAspect / panelAspect;
-            return new Rect(0, 1 - height, 1, height);
+            return new Rect(0, (1 - height) * .5f, 1, height);
         }
 
         void UpdateVideoBackdrop(UnityEngine.UI.RawImage background, Texture texture, Rect videoUv)
@@ -235,8 +235,8 @@ namespace AtlasNet.M2
                 "Your player remains in the game area beside this panel.");
             bool textSlide = !string.IsNullOrEmpty(current.body);
             if (textSlide) placeholder.text = current.body;
-            placeholder.alignment = textSlide ? TextAlignmentOptions.MidlineLeft : TextAlignmentOptions.Center;
-            placeholder.enableAutoSizing = textSlide;
+            placeholder.alignment = textSlide ? TextAlignmentOptions.TopLeft : TextAlignmentOptions.Center;
+            placeholder.enableAutoSizing = false;
             placeholder.fontSizeMin = 18;
             placeholder.fontSizeMax = 32;
             placeholder.fontSize = textSlide ? 32 : 25;

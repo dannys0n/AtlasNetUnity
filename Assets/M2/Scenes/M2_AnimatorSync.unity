@@ -612,18 +612,40 @@ MonoBehaviour:
   blueConfetti: {fileID: 0}
   orangeConfetti: {fileID: 0}
   slides:
+  - title: Animation synchronization
+    body: "\u2022 Configure NetworkAnimator on the player prefab."
+    layout: 2
+    panelWidth: 0.33333334
+    portraitPanelHeight: 0.6666667
+    image: {fileID: 0}
+    videoPath: 
+    frames: []
+    framesPerSecond: 12
   - title: "Animator sync \u2014 components"
+    body: 
     layout: 2
     panelWidth: 0.33333334
     portraitPanelHeight: 0.6666667
     image: {fileID: 2800000, guid: 518b8c3ec29b3ab4796cbd7f0cb27fdf, type: 3}
+    videoPath: 
+    frames: []
+    framesPerSecond: 12
+  - title: Animation synchronization
+    body: "\u2022 Configure NetworkAnimator on the player prefab.\n\n\u2022 Trigger a wave through the network animation API."
+    layout: 1
+    panelWidth: 0.33333334
+    portraitPanelHeight: 0.6666667
+    image: {fileID: 0}
+    videoPath: 
     frames: []
     framesPerSecond: 12
   - title: "Animator sync \u2014 code"
+    body: 
     layout: 1
     panelWidth: 0.33333334
     portraitPanelHeight: 0.6666667
     image: {fileID: 2800000, guid: a2a6800ef52cced4fac80a5c428623ef, type: 3}
+    videoPath: 
     frames: []
     framesPerSecond: 12
   previewSlidesWhenEmpty: 0
