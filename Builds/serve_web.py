@@ -99,7 +99,7 @@ def main():
             print(f"Auto: http://{address}:{args.port}/",flush=True)
             print(f"Desktop: http://{address}:{args.port}/desktop/",flush=True)
             print(f"Mobile: http://{address}:{args.port}/mobile/",flush=True)
-        print("Keep this window open. Ctrl+C stops serving. Firewall: run Enable-Firewall.cmd once as administrator.",flush=True)
+        print("Keep this window open. Ctrl+C stops serving. Firewall: run Disable-Firewall-Rules.cmd once as administrator.",flush=True)
         try: server.serve_forever()
         except KeyboardInterrupt: print("Stopped.",flush=True)
 

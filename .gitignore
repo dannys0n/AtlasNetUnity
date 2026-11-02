@@ -9,8 +9,9 @@
 /[Bb]uild/
 /[Bb]uilds/*
 !/Builds/Serve.cmd
-!/Builds/Enable-Firewall.cmd
-!/Builds/Disable-Firewall.cmd
+!/Builds/Disable-Firewall-Rules.cmd
+!/Builds/Restore-Firewall-Rules.cmd
+!/Builds/Firewall.ps1
 !/Builds/serve_web.py
 /[Ll]ogs/
 /[Uu]ser[Ss]ettings/
