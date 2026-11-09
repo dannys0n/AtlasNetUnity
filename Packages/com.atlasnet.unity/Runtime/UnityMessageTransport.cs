@@ -20,6 +20,7 @@ namespace AtlasNet
             public readonly Queue<Pending> reliable=new();
             public readonly List<Pending> batch=new(64);
             public int queuedBytes;
+            public long bytesSent;
         }
         MultiNetworkDriver driver;
         NetworkPipeline reliablePipeline,datagramPipeline;
@@ -27,7 +28,7 @@ namespace AtlasNet
         readonly Dictionary<NetworkConnection,SessionId> sessions=new();
         readonly List<SessionId> disconnected=new();
         readonly MessageSequence sequence=new();
-        readonly bool server;readonly int simulatedLoss;readonly int webSocketDisconnectTimeoutMS;ulong nextSession=2;int webDriverId;
+        readonly bool server;readonly int simulatedLoss;readonly int webSocketDisconnectTimeoutMS,udpDisconnectTimeoutMS;ulong nextSession=2;int webDriverId;
         public event Action<SessionId> Connected;
         public event Action<SessionId> Disconnected;
         public event Action<SessionId,byte[]> Received;
@@ -36,13 +37,26 @@ namespace AtlasNet
         public int PeerCount=>peers.Count;
         public IEnumerable<SessionId> Sessions=>peers.Keys;
         public long BytesSent {get;private set;}
+        internal bool TryGetPeerMetrics(SessionId session, out long sent, out float ping)
+        {
+            sent = 0;
+            ping = -1;
+            if (!driver.IsCreated || !peers.TryGetValue(session, out var peer)
+                || driver.GetConnectionState(peer.connection) != NetworkConnection.State.Connected)
+                return false;
+
+            sent = peer.bytesSent;
+            var latency = driver.GetDriverForConnection(peer.connection).GetConnectionStatistics(peer.connection).Latency;
+            if (latency.Maximum > 0) ping = latency.SmoothedCurrent;
+            return true;
+        }
         internal long SendOperations {get;private set;}
         internal int LargestBatchBytes {get;private set;}
         internal long FailedBatchAttempts {get;private set;}
         bool sendPending;
-        public UnityMessageTransport(bool server,string address,int port,string bindAddress,ClientTransport client,int simulatedLoss=0,int webSocketDisconnectTimeoutMS=30000)
+        public UnityMessageTransport(bool server,string address,int port,string bindAddress,ClientTransport client,int simulatedLoss=0,int webSocketDisconnectTimeoutMS=30000,int udpDisconnectTimeoutMS=30000)
         {
-            this.server=server;this.simulatedLoss=simulatedLoss;this.webSocketDisconnectTimeoutMS=webSocketDisconnectTimeoutMS;
+            this.server=server;this.simulatedLoss=simulatedLoss;this.webSocketDisconnectTimeoutMS=webSocketDisconnectTimeoutMS;this.udpDisconnectTimeoutMS=udpDisconnectTimeoutMS;
 #if UNITY_WEBGL && !UNITY_EDITOR
             if(server)throw new NotSupportedException("Browsers join native servers; they cannot listen for connections.");
             client=ClientTransport.WebSocket;
@@ -73,7 +87,8 @@ namespace AtlasNet
             settings.WithReliableStageParameters(windowSize:64);
             if(simulatedLoss>0)settings.WithSimulatorStageParameters(maxPacketCount:512,maxPacketSize:2000,packetDropPercentage:simulatedLoss,randomSeed:12345);
             settings.WithNetworkConfigParameters(sendQueueCapacity:512,receiveQueueCapacity:512,
-                disconnectTimeoutMS:web?webSocketDisconnectTimeoutMS:NetworkParameterConstants.DisconnectTimeoutMS);
+                disconnectTimeoutMS:web?webSocketDisconnectTimeoutMS:udpDisconnectTimeoutMS,
+                connectTimeoutMS:1000,maxConnectAttempts:120);
 #if UNITY_WEBGL && !UNITY_EDITOR
             var next=NetworkDriver.Create(new WebSocketNetworkInterface(),settings);
 #else
@@ -180,7 +195,7 @@ namespace AtlasNet
             var pipe=message.delivery==NetworkDelivery.ReliableOrdered?reliablePipeline:datagramPipeline;
             if(driver.BeginSend(pipe,peer.connection,out var writer,message.bytes.Length+HeaderSize)!=0)return false;
             WriteFrame(ref writer,message);
-            int written=driver.EndSend(writer);if(written<0)return false;BytesSent+=written;SendOperations++;sendPending=true;return true;
+            int written=driver.EndSend(writer);if(written<0)return false;BytesSent+=written;peer.bytesSent+=written;SendOperations++;sendPending=true;return true;
         }
         bool TrySendBatch(Peer peer,List<Pending> batch,int length)
         {
@@ -190,7 +205,7 @@ namespace AtlasNet
             writer.WriteByte(BatchMarker);
             foreach(var message in batch){writer.WriteUShort((ushort)(HeaderSize+message.bytes.Length));WriteFrame(ref writer,message);}
             int written=driver.EndSend(writer);if(written<0){FailedBatchAttempts++;return false;}
-            LargestBatchBytes=Math.Max(LargestBatchBytes,written);BytesSent+=written;SendOperations++;sendPending=true;return true;
+            LargestBatchBytes=Math.Max(LargestBatchBytes,written);BytesSent+=written;peer.bytesSent+=written;SendOperations++;sendPending=true;return true;
         }
         void Flush(Peer peer)
         {

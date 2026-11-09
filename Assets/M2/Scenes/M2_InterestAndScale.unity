@@ -638,6 +638,15 @@ MonoBehaviour:
     videoPath: 
     frames: []
     framesPerSecond: 12
+  - title: NetworkBehaviour API
+    body:
+    layout: 1
+    panelWidth: 0.5
+    portraitPanelHeight: 0.6666667
+    image: {fileID: 2800000, guid: c0f91611891c3584f971e310d07aa412, type: 3}
+    videoPath:
+    frames: []
+    framesPerSecond: 12
   - title: Scale Worker Demo
     body: 
     layout: 1

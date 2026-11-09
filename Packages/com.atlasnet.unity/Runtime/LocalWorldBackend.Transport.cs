@@ -3,6 +3,17 @@ namespace AtlasNet
 {
     internal sealed partial class LocalWorldBackend
     {
+        internal bool TryGetPeerMetrics(SessionId session, out long sent, out float ping)
+        {
+#if !ATLASNET_STANDALONE
+            if (transport is UnityMessageTransport unity)
+                return unity.TryGetPeerMetrics(session, out sent, out ping);
+#endif
+            sent = 0;
+            ping = -1;
+            return false;
+        }
+
         public void FlushSend() => (transport as IFlushableMessageTransport)?.FlushSend();
         public TransportCapabilities GetTransportCapabilities(SessionId peer)=>transport?.Capabilities(peer)??0;
         void AttachTransport()
@@ -27,14 +38,14 @@ namespace AtlasNet
             if(runtime.transportProvider)
                 return runtime.transportProvider.CreateTransport(runtime,server)??throw new InvalidOperationException("Transport provider returned null.");
 #if UNITY_WEBGL && !UNITY_EDITOR
-            return new UnityMessageTransport(server,localAddress,port,runtime.listenAddress,ClientTransport.WebSocket,webSocketDisconnectTimeoutMS:runtime.WebSocketDisconnectTimeoutMS);
+            return new UnityMessageTransport(server,localAddress,port,runtime.listenAddress,ClientTransport.WebSocket,webSocketDisconnectTimeoutMS:runtime.WebSocketDisconnectTimeoutMS,udpDisconnectTimeoutMS:runtime.UdpDisconnectTimeoutMS);
 #else
             if(server?runtime.serverTransport==ServerTransport.Tcp:runtime.clientTransport==ClientTransport.Tcp)
                 return new LocalTcpTransport(server,localAddress,port,runtime.listenAddress);
 #if ATLASNET_STANDALONE
             throw new NotSupportedException("Unity Transport is verified in Unity; select TCP for standalone checks.");
 #else
-            return new UnityMessageTransport(server,localAddress,port,runtime.listenAddress,runtime.clientTransport,webSocketDisconnectTimeoutMS:runtime.WebSocketDisconnectTimeoutMS);
+            return new UnityMessageTransport(server,localAddress,port,runtime.listenAddress,runtime.clientTransport,webSocketDisconnectTimeoutMS:runtime.WebSocketDisconnectTimeoutMS,udpDisconnectTimeoutMS:runtime.UdpDisconnectTimeoutMS);
 #endif
 #endif
         }

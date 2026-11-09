@@ -26,7 +26,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 388381679865300868, guid: c33455c5576f0984b89033b8989f09dc, type: 3}
       propertyPath: interpolationBufferTicks
-      value: 1
+      value: 3
       objectReference: {fileID: 0}
     - target: {fileID: 917260955230851970, guid: c33455c5576f0984b89033b8989f09dc, type: 3}
       propertyPath: writer

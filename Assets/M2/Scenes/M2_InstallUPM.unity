@@ -319,6 +319,42 @@ MonoBehaviour:
     videoPath: 
     frames: []
     framesPerSecond: 12
+  - title: Quickstart | Network Prefabs List
+    body:
+    layout: 0
+    panelWidth: 0.55
+    portraitPanelHeight: 0
+    image: {fileID: 2800000, guid: 73661451d9c57104bbcbf441933a674d, type: 3}
+    videoPath:
+    frames: []
+    framesPerSecond: 12
+  - title: Quickstart | Soccer player prefab
+    body:
+    layout: 0
+    panelWidth: 0.55
+    portraitPanelHeight: 0
+    image: {fileID: 2800000, guid: 66fb289a2bbfefd4b9a3de41644a6330, type: 3}
+    videoPath:
+    frames: []
+    framesPerSecond: 12
+  - title: Quickstart | AtlasNet manager
+    body:
+    layout: 0
+    panelWidth: 0.55
+    portraitPanelHeight: 0
+    image: {fileID: 2800000, guid: 0425f2b554afd374aaf211d3c7644466, type: 3}
+    videoPath:
+    frames: []
+    framesPerSecond: 12
+  - title: Demonstration
+    body: "\u2022 Server workers\n\n\u2022 Animation replication"
+    layout: 0
+    panelWidth: 0.55
+    portraitPanelHeight: 0
+    image: {fileID: 0}
+    videoPath:
+    frames: []
+    framesPerSecond: 12
   previewSlidesWhenEmpty: 0
   screenshots: []
 --- !u!4 &344866063

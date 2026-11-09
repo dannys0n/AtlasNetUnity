@@ -639,6 +639,15 @@ MonoBehaviour:
     videoPath: 
     frames: []
     framesPerSecond: 12
+  - title: RPC syntax
+    body:
+    layout: 1
+    panelWidth: 0.33333334
+    portraitPanelHeight: 0.6666667
+    image: {fileID: 2800000, guid: 5b15912a931cd4c4cb32900c02b1b2c3, type: 3}
+    videoPath:
+    frames: []
+    framesPerSecond: 12
   - title: "Animator sync \u2014 code"
     body: 
     layout: 1

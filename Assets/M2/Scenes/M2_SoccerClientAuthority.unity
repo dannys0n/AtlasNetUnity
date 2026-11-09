@@ -1156,7 +1156,7 @@ MonoBehaviour:
   slidesAfterDemo: 1
   title: "Soccer \u2014 Client Authority"
   playerPrefab: {fileID: 3244903758523380490, guid: d2a475c51d4e1024f99f3b14c036a787, type: 3}
-  extraPrefab: {fileID: 183332087030116623, guid: 79346b491d7d6bd49b40137d7b53e553, type: 3}
+  extraPrefab: {fileID: 183332087030116623, guid: 0e635d2ae5520904db48a7a68fc4d5ab, type: 3}
   entityCount: 50
   view: {fileID: 1644333008}
   followOwner: 1
@@ -1167,7 +1167,7 @@ MonoBehaviour:
   orangeConfetti: {fileID: 1540631593}
   slides:
   - title: Looking forward to M3
-    body: "\u2022 Integrate the AtlasNet backend.\n\n\u2022 Add prediction and reconciliation.\n\n\u2022 Pool network objects.\n\n\u2022 Group transform updates.\n\n\u2022 Improve Rigidbody handoffs.\n\n\u2022 Integrate into a complete game."
+    body: "\u2022 Integrate the AtlasNet backend.\n\n\u2022 Test the AtlasNet backend on cloud.\n\n\u2022 Add prediction and reconciliation.\n\n\u2022 Pool network objects.\n\n\u2022 Group transform updates.\n\n\u2022 Improve Rigidbody handoffs.\n\n\u2022 Integrate into a complete game."
     layout: 1
     panelWidth: 0.5
     portraitPanelHeight: 0.6666667

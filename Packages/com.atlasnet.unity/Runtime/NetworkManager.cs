@@ -64,6 +64,18 @@ namespace AtlasNet
                 webSocketDisconnectTimeoutMS = value;
             }
         }
+        [SerializeField, Min(0), Tooltip("UDP inactivity timeout in milliseconds. Zero disables idle disconnects; configure before starting networking.")]
+        private int udpDisconnectTimeoutMS = 30000;
+        public int UdpDisconnectTimeoutMS
+        {
+            get => udpDisconnectTimeoutMS;
+            set
+            {
+                if (IsRunning) throw new InvalidOperationException("Configure the timeout before starting networking.");
+                if (value < 0) throw new ArgumentOutOfRangeException(nameof(value));
+                udpDisconnectTimeoutMS = value;
+            }
+        }
         public ServerTransport ServerConnection=>serverTransport;
         public ClientTransport ClientConnection=>clientTransport;
         public string Address=>localAddress;
@@ -110,6 +122,15 @@ namespace AtlasNet
         public int RemoteClientCount => Backend.RemoteClientCount;
         public TransportCapabilities GetTransportCapabilities(SessionId peer=default)=>Backend.GetTransportCapabilities(peer);
         public int ObserverCopies => Backend.ObserverCopies;
+        public bool TryGetPeerMetrics(SessionId session, out long sent, out float ping)
+        {
+            if (backend is LocalWorldBackend local)
+                return local.TryGetPeerMetrics(session, out sent, out ping);
+            sent = 0;
+            ping = -1;
+            return false;
+        }
+
         public long BytesSent => Backend.BytesSent;
         public long BytesSentLastTick => Backend.BytesSentLastTick;
         public long AllocatedBytesLastTick => Backend.AllocatedBytesLastTick;

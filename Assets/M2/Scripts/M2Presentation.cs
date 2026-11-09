@@ -36,6 +36,7 @@ namespace AtlasNet.M2
         bool enterFromEnd;
         public M2StageKind ActiveKind => Stage ? Stage.kind : M2StageKind.Install;
         double nextCameraPick;
+        readonly Dictionary<SessionId,NetworkObject> soccerCameraPlayers=new();
         bool wasRunning;
         const string StateMessage="M2.Presentation.State", HelloMessage="M2.Presentation.Hello", ReadyMessage="M2.Presentation.Ready";
 
@@ -44,6 +45,7 @@ namespace AtlasNet.M2
             Instance=this; DontDestroyOnLoad(gameObject);
             Application.runInBackground=true;
             manager.WebSocketDisconnectTimeoutMS=0;
+            manager.UdpDisconnectTimeoutMS=0;
             manager.ShowViewerInterestForDebug=false;
             manager.PlayerSpawnPosition=s=>SpawnPosition(s);
             manager.OnClientConnectedCallback+=Joined;
@@ -294,8 +296,53 @@ namespace AtlasNet.M2
             else if(!viewers&&!Owner&&!animatorPlaceholder)
                 animatorPlaceholder=Track(manager.Spawn(Stage.playerPrefab,Vector3.zero,Quaternion.identity));
         }
+        NetworkObject SoccerRemoteCameraTarget()
+        {
+            soccerCameraPlayers.Clear();
+            CollectSoccerCameraPlayers(manager);
+            if(manager.IsServer)
+            {
+                var workers=FindAnyObjectByType<AtlasNet.Demos.LocalWorkerDemo>();
+                if(workers&&workers.Primary==manager)
+                    foreach(var server in workers.Servers)
+                        if(server!=manager)CollectSoccerCameraPlayers(server);
+            }
+
+            bool valid=cameraTarget&&soccerCameraPlayers.TryGetValue(cameraTarget.OwnerSession,out var current);
+            if(valid&&Time.unscaledTimeAsDouble<nextCameraPick)
+                return cameraTarget=soccerCameraPlayers[cameraTarget.OwnerSession];
+
+            NetworkObject selected=null;
+            int count=0;
+            foreach(var candidate in soccerCameraPlayers.Values)
+            {
+                if(valid&&candidate.OwnerSession==cameraTarget.OwnerSession)continue;
+                if(UnityEngine.Random.Range(0,++count)==0)selected=candidate;
+            }
+            cameraTarget=selected?selected:valid?soccerCameraPlayers[cameraTarget.OwnerSession]:null;
+            nextCameraPick=Time.unscaledTimeAsDouble+5;
+            return cameraTarget;
+        }
+
+        void CollectSoccerCameraPlayers(NetworkManager source)
+        {
+            foreach(var candidate in source.SpawnedObjects)
+            {
+                if(!candidate||!candidate.IsSpawned||candidate.OwnerSession.Value==0||
+                    candidate.OwnerSession==manager.LocalSession||candidate.PrefabId!=Stage.playerPrefab.PrefabId)continue;
+                if(manager.IsServer&&!manager.ConnectedClientsIds.Contains(candidate.OwnerSession))continue;
+                if(candidate.HasAuthority||!soccerCameraPlayers.ContainsKey(candidate.OwnerSession))
+                    soccerCameraPlayers[candidate.OwnerSession]=candidate;
+            }
+        }
+
         NetworkObject PresenterCameraTarget()
         {
+            if(ActiveKind==M2StageKind.Soccer)
+            {
+                var remote=SoccerRemoteCameraTarget();
+                return remote?remote:Owner;
+            }
             bool valid=cameraTarget&&cameraTarget.IsSpawned&&(cameraTarget==animatorPlaceholder||manager.ConnectedClientsIds.Contains(cameraTarget.OwnerSession));
             if(ActiveKind==M2StageKind.AnimatorSync)
             {
@@ -332,6 +379,7 @@ namespace AtlasNet.M2
         {
             if(!manager.IsRunning||Loading||!Stage||!Stage.view||!Stage.followOwner)return;
             var target=manager.IsServer&&!manager.IsWorker ? PresenterCameraTarget() : Owner;
+            if(!target&&ActiveKind==M2StageKind.Soccer)target=SoccerRemoteCameraTarget();
             if(!target)return;
             Vector3 focus=target.transform.position;
             if(ActiveKind==M2StageKind.Soccer&&!hud.HasPartialSlide)

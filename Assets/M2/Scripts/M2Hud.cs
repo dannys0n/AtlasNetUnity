@@ -25,6 +25,11 @@ namespace AtlasNet.M2
         UnityEngine.UI.RawImage qrView;
         Texture2D qr;
         string link;
+        string wifiAddress, ethernetAddress, fallbackAddress;
+        bool preferWifi=true;
+        float nextAddressScan;
+        UnityEngine.UI.Button networkButton;
+        TMP_Text networkLabel;
         public bool HasPartialSlide => slides && slides.Partial;
         public string Address { get=>address?address.text:"127.0.0.1";set{if(address)address.text=value;} }
         void Awake()=>Build();
@@ -54,24 +59,44 @@ namespace AtlasNet.M2
         }
         void RefreshQr()
         {
-            string host=presentation.manager.Address;
-            if(host is "127.0.0.1" or "localhost" or "0.0.0.0")host=LanAddress();
-            var url=new UriBuilder(presentation.webBaseUrl);if(url.Host is "127.0.0.1" or "localhost")url.Host=host;
+            if(Time.unscaledTime>=nextAddressScan) ScanAddresses();
+            string selected=preferWifi?wifiAddress:ethernetAddress;
+            if(string.IsNullOrEmpty(selected))selected=wifiAddress??ethernetAddress;
+            networkButton.interactable=!string.IsNullOrEmpty(wifiAddress)&&!string.IsNullOrEmpty(ethernetAddress);
+            networkLabel.text=selected==wifiAddress&&!string.IsNullOrEmpty(selected)?"Wi-Fi IP":"Ethernet IP";
+            string host=selected??presentation.manager.Address;
+            if(host is "127.0.0.1" or "localhost" or "0.0.0.0")host=fallbackAddress??"127.0.0.1";
+            var url=new UriBuilder(presentation.webBaseUrl);if(!string.IsNullOrEmpty(selected)||url.Host is "127.0.0.1" or "localhost")url.Host=host;
             url.Query="";url.Fragment="";string next=url.Uri.AbsoluteUri;if(next==link)return;link=next;linkLabel.text=link;
             var code=QrCode.EncodeText(link,QrCode.Ecc.Medium);int size=code.Size+8;
             if(qr)Destroy(qr);qr=new Texture2D(size,size,TextureFormat.RGBA32,false){filterMode=FilterMode.Point};
             for(int y=0;y<size;y++)for(int x=0;x<size;x++)qr.SetPixel(x,size-1-y,code.GetModule(x-4,y-4)?Color.black:Color.white);
             qr.Apply();qrView.texture=qr;
         }
-        static string LanAddress()
+        void ScanAddresses()
         {
+            nextAddressScan=Time.unscaledTime+5;
+            wifiAddress=ethernetAddress=fallbackAddress=null;
 #if !UNITY_WEBGL || UNITY_EDITOR
-            foreach(var nic in NetworkInterface.GetAllNetworkInterfaces())
-                if(nic.OperationalStatus==OperationalStatus.Up&&nic.NetworkInterfaceType!=NetworkInterfaceType.Loopback&&nic.GetIPProperties().GatewayAddresses.Count>0)
-                    foreach(var a in nic.GetIPProperties().UnicastAddresses)
-                        if(a.Address.AddressFamily==AddressFamily.InterNetwork&&!IPAddress.IsLoopback(a.Address))return a.Address.ToString();
+            try
+            {
+                foreach(var nic in NetworkInterface.GetAllNetworkInterfaces().OrderBy(n=>n.Id))
+                {
+                    if(nic.OperationalStatus!=OperationalStatus.Up||nic.NetworkInterfaceType==NetworkInterfaceType.Loopback)continue;
+                    var properties=nic.GetIPProperties();
+                    if(!properties.GatewayAddresses.Any(g=>g.Address.AddressFamily==AddressFamily.InterNetwork&&!g.Address.Equals(IPAddress.Any)))continue;
+                    foreach(var entry in properties.UnicastAddresses)
+                    {
+                        var ip=entry.Address;
+                        if(ip.AddressFamily!=AddressFamily.InterNetwork||IPAddress.IsLoopback(ip)||ip.ToString().StartsWith("169.254."))continue;
+                        fallbackAddress??=ip.ToString();
+                        if(nic.NetworkInterfaceType==NetworkInterfaceType.Wireless80211)wifiAddress??=ip.ToString();
+                        else if(nic.NetworkInterfaceType==NetworkInterfaceType.Ethernet||nic.NetworkInterfaceType==NetworkInterfaceType.GigabitEthernet)ethernetAddress??=ip.ToString();
+                    }
+                }
+            }
+            catch(NetworkInformationException) { }
 #endif
-            return "127.0.0.1";
         }
         public void SetPresentationViewport(Rect viewport)
         {
@@ -117,7 +142,9 @@ namespace AtlasNet.M2
             Text(share,"Join title","JOIN THIS SESSION",new Vector2(0,155),new Vector2(290,32),21);
             var qrObject=new GameObject("QR",typeof(RectTransform),typeof(UnityEngine.UI.RawImage));qrObject.transform.SetParent(share,false);qrView=qrObject.GetComponent<UnityEngine.UI.RawImage>();qrView.color=Color.white;qrView.rectTransform.sizeDelta=new Vector2(235,235);qrView.rectTransform.anchoredPosition=new Vector2(0,16);qrView.raycastTarget=false;
             linkLabel=Text(share,"Address","",new Vector2(0,-126),new Vector2(290,48),20);linkLabel.textWrappingMode=TextWrappingModes.Normal;
-            Button(share,"Copy address",new Vector2(0,-164),new Vector2(280,30),()=>GUIUtility.systemCopyBuffer=link);
+            Button(share,"Copy address",new Vector2(-74,-164),new Vector2(138,30),()=>GUIUtility.systemCopyBuffer=link);
+            networkButton=Button(share,"Wi-Fi IP",new Vector2(74,-164),new Vector2(138,30),()=>{preferWifi=!preferWifi;RefreshQr();});
+            networkLabel=networkButton.GetComponentInChildren<TMP_Text>();
             var circle=new GameObject("Movement",typeof(RectTransform),typeof(SoccerStickGraphic));circle.transform.SetParent(fixedHud,false);var rect=circle.GetComponent<RectTransform>();Anchor(rect,Vector2.zero);rect.anchoredPosition=new Vector2(220,210);rect.sizeDelta=new Vector2(220,220);circle.GetComponent<SoccerStickGraphic>().color=new Color(.1f,.2f,.3f,.65f);stick=circle;
             var knob=new GameObject("Handle",typeof(RectTransform),typeof(SoccerStickGraphic));knob.transform.SetParent(rect,false);var handle=knob.GetComponent<RectTransform>();handle.sizeDelta=new Vector2(80,80);knob.GetComponent<SoccerStickGraphic>().color=new Color(.7f,.85f,1,.9f);knob.GetComponent<SoccerStickGraphic>().raycastTarget=false;circle.AddComponent<SoccerStick>().handle=handle;
             var wave=Button(gameHud,"Wave Button",new Vector2(0,90),new Vector2(360,100),()=>{var owner=presentation.Owner;if(owner)owner.GetComponent<M2Actor>().Wave();});Anchor(wave.GetComponent<RectTransform>(),new Vector2(.5f,0));wave.GetComponentInChildren<TMP_Text>().fontSize=28;waveButton=wave.gameObject;
