@@ -10,6 +10,7 @@ using TMPro;
 
 namespace AtlasNet.Samples.Soccer
 {
+    [DefaultExecutionOrder(100)]
     public sealed class SoccerSession : MonoBehaviour
     {
         public static readonly Color Blue = new(.12f, .48f, 1f);
@@ -30,6 +31,7 @@ namespace AtlasNet.Samples.Soccer
         bool createdBall;
         Camera view;
         NetworkObject local;
+        PredictedSoccerMotor localMotor;
 
         void Awake()
         {
@@ -73,9 +75,9 @@ namespace AtlasNet.Samples.Soccer
                 clock.text = now.ToString("HH:mm:ss");
             }
             connectionPanel.SetActive(!manager.IsRunning);
-            joinPanel.SetActive(manager.IsRunning && manager.IsServer);
+            joinPanel.SetActive(manager.IsRunning && manager.IsServer && !string.IsNullOrWhiteSpace(webBaseUrl));
             waveButton.SetActive(manager.IsClient && local && local.IsSpawned);
-            if (!manager.IsRunning) { match = null; local = null; createdBall = false; return; }
+            if (!manager.IsRunning) { match = null; local = null; localMotor = null; createdBall = false; return; }
             if (!match)
                 foreach (var obj in manager.SpawnedObjects)
                     if (obj.TryGetComponent(out SoccerMatch found)) { match = found; break; }
@@ -88,14 +90,29 @@ namespace AtlasNet.Samples.Soccer
             orangeScore.text = match ? match.OrangeScore.Value.ToString() : "0";
             if (!manager.IsClient && manager.IsServer) notice.text = (manager.IsWorker ? "WORKER  " : "SERVER  ") + manager.LocalWorkerId + "   |   " + manager.LocalAuthorityCount + " authoritative entities";
             if (manager.IsClient && (!local || !local.IsSpawned))
-                foreach (var obj in manager.SpawnedObjects) if (obj.IsOwner && obj.GetComponent<SoccerPlayer>()) { local = obj; break; }
-            if (manager.IsServer) RefreshJoin();
+            {
+                foreach (var obj in manager.SpawnedObjects)
+                {
+                    if (!obj.IsOwner || !obj.GetComponent<SoccerPlayer>()) continue;
+                    local = obj;
+                    localMotor = obj.GetComponent<PredictedSoccerMotor>();
+                    break;
+                }
+            }
+            if (manager.IsServer && joinPanel.activeSelf) RefreshJoin();
         }
         void LateUpdate()
         {
             if (!view || !manager.IsClient || !local) return;
             // Follow the interpolated render pose without adding another smoothing delay.
-            SoccerCameraFraming.Follow(view, local.transform.position, new Vector3(0, 32, -26), Quaternion.Euler(51, 0, 0));
+            Vector3 position = local.transform.position;
+            if (localMotor && localMotor.VisualRoot)
+            {
+                Vector3 rendered = localMotor.VisualRoot.position;
+                position.x = rendered.x;
+                position.z = rendered.z;
+            }
+            SoccerCameraFraming.Follow(view, position, new Vector3(0, 32, -26), Quaternion.Euler(51, 0, 0));
         }
         void RefreshJoin()
         {
@@ -143,7 +160,8 @@ namespace AtlasNet.Samples.Soccer
             clock = Label(score,"Clock",DateTime.Now.ToString("HH:mm:ss"),Vector2.zero,new Vector2(120,62),19,Color.white);
             notice=Label(canvas.transform,"Status","",new Vector2(0,-85),new Vector2(900,45),18,Color.white); notice.rectTransform.anchorMin=notice.rectTransform.anchorMax=new Vector2(.5f,1);
             var lobby=Panel(canvas.transform,"Connection",new Vector2(.5f,.5f),Vector2.zero,new Vector2(440,370),new Color(.025f,.04f,.07f,.97f)); connectionPanel=lobby.gameObject;
-            Label(lobby,"Welcome","ATLASNET SOCCER",new Vector2(0,145),new Vector2(420,40),28,Color.white);
+            bool predicted = manager.PlayerPrefab && manager.PlayerPrefab.GetComponent<PredictedSoccerMotor>();
+            Label(lobby,"Welcome",predicted ? "PREDICTED SOCCER" : "ATLASNET SOCCER",new Vector2(0,145),new Vector2(420,40),28,Color.white);
             address=Field(lobby,"Server","127.0.0.1",new Vector2(0,85),new Vector2(380,42));
             Button(lobby,"Host",new Vector2(-100,25),new Vector2(180,44),()=>Connect(0));
             Button(lobby,"Join",new Vector2(100,25),new Vector2(180,44),()=>Connect(2));

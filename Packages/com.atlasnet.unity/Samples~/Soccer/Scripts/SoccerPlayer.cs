@@ -4,7 +4,7 @@ using UnityEngine;
 
 namespace AtlasNet.Samples.Soccer
 {
-    // Movement follows the NetworkTransform writer: server input simulation or immediate owner simulation.
+    // Handles soccer input, team, animation, and ball contact for both movement variants.
     public sealed class SoccerPlayer : NetworkBehaviour
     {
         [SerializeField] bool allowMovement = true;
@@ -38,6 +38,7 @@ namespace AtlasNet.Samples.Soccer
             if (HasAuthority && !colorByOwnership) TeamIndex.Value = RosterIndex(NetworkManager, OwnerSession) & 1;
         }
         Rigidbody body;
+        PredictedSoccerMotor predictedMotor;
         bool ownerSimulation, wasSimulating;
         bool SimulatesMovement => ownerSimulation ? IsOwner : HasAuthority;
         Animator animator;
@@ -52,7 +53,8 @@ namespace AtlasNet.Samples.Soccer
         public override void OnNetworkSpawn()
         {
             body = GetComponent<Rigidbody>();
-            ownerSimulation = GetComponent<NetworkTransform>().PositionWriter == TransformWriter.Owner;
+            predictedMotor = GetComponent<PredictedSoccerMotor>();
+            ownerSimulation = !predictedMotor && GetComponent<NetworkTransform>().PositionWriter == TransformWriter.Owner;
             animator = GetComponentInChildren<Animator>();
             networkAnimator = GetComponent<NetworkAnimator>();
             wave = GetComponent<SampleWaveLayer>();
@@ -102,7 +104,11 @@ namespace AtlasNet.Samples.Soccer
             Vector2 input = SoccerStick.Input;
             if (input.sqrMagnitude < .001f) input = KeyboardInput != null ? KeyboardInput() : new Vector2(UnityEngine.Input.GetAxisRaw("Horizontal"), UnityEngine.Input.GetAxisRaw("Vertical"));
             input = Vector2.ClampMagnitude(input, 1);
-            if (ownerSimulation)
+            if (predictedMotor)
+            {
+                predictedMotor.SetInput(input);
+            }
+            else if (ownerSimulation)
             {
                 MoveInput = input; inputReceived = Time.unscaledTime;
             }
@@ -114,7 +120,7 @@ namespace AtlasNet.Samples.Soccer
         [Rpc(SendTo.Authority, InvokePermission = RpcInvokePermission.Owner)]
         public void SetMoveRpc(Vector2 input)
         {
-            if (ownerSimulation || !HasAuthority || !float.IsFinite(input.x) || !float.IsFinite(input.y)) return;
+            if (predictedMotor || ownerSimulation || !HasAuthority || !float.IsFinite(input.x) || !float.IsFinite(input.y)) return;
             MoveInput = allowMovement ? Vector2.ClampMagnitude(input, 1) : Vector2.zero; inputReceived = Time.unscaledTime;
         }
         public void RequestWave()
@@ -142,31 +148,47 @@ namespace AtlasNet.Samples.Soccer
         void OnCollisionStay(Collision collision) => TryKick(collision);
         void OnCollisionExit(Collision collision)
         {
-            if (collision.collider.TryGetComponent(out SoccerBall ball) && ball.IsSpawned)
-                kickedBalls.Remove(ball.NetworkObject.EntityId.Value);
+            if (collision.collider.TryGetComponent(out SoccerBall ball)) EndBallContact(ball);
         }
         void TryKick(Collision collision)
         {
-            if (!IsSpawned || !SimulatesMovement || MoveInput.sqrMagnitude < .01f) return;
-            if (!collision.collider.TryGetComponent(out SoccerBall ball) || !ball.IsSpawned || ball.NetworkManager != NetworkManager) return;
-            Vector3 toward = ball.transform.position - body.position; toward.y = 0;
-            if (Vector3.Dot(new Vector3(MoveInput.x,0,MoveInput.y), toward.normalized) <= .05f) return;
+            if (!IsSpawned || predictedMotor || !SimulatesMovement) return;
+            if (collision.collider.TryGetComponent(out SoccerBall ball)) TryKickBall(ball, body.position, MoveInput);
+        }
+
+        internal void EndBallContact(SoccerBall ball)
+        {
+            if (ball.IsSpawned) kickedBalls.Remove(ball.NetworkObject.EntityId.Value);
+        }
+
+        internal void SetPredictedMovement(Vector2 move)
+        {
+            MoveInput = move;
+            animator.SetFloat("Speed", move.magnitude);
+        }
+
+        internal void TryKickBall(SoccerBall ball, Vector3 position, Vector2 move)
+        {
+            if (move.sqrMagnitude < .01f || !ball.IsSpawned || ball.NetworkManager != NetworkManager) return;
+            Vector3 toward = ball.transform.position - position;
+            toward.y = 0;
+            if (Vector3.Dot(new Vector3(move.x, 0, move.y), toward.normalized) <= .05f) return;
             ulong id=ball.NetworkObject.EntityId.Value;
             if (!kickedBalls.TryGetValue(id,out float nextLift))
             {
                 kickedBalls[id]=Time.unscaledTime+.4f;
-                Kick(ball, false);
+                Kick(ball, position, false);
             }
             else if(Time.unscaledTime>=nextLift)
             {
                 kickedBalls[id]=Time.unscaledTime+.4f;
-                Kick(ball, true);
+                Kick(ball, position, true);
             }
         }
-        void Kick(SoccerBall ball, bool liftOnly)
+        void Kick(SoccerBall ball, Vector3 position, bool liftOnly)
         {
-            if (ownerSimulation) RequestKickRpc(ball.NetworkObject.EntityId.Value, body.position, liftOnly);
-            else ball.ContactFrom(NetworkObject, body.position, liftOnly);
+            if (ownerSimulation) RequestKickRpc(ball.NetworkObject.EntityId.Value, position, liftOnly);
+            else ball.ContactFrom(NetworkObject, position, liftOnly);
         }
         [Rpc(SendTo.Authority, InvokePermission = RpcInvokePermission.Owner)]
         public void RequestKickRpc(ulong ballId, Vector3 position, bool liftOnly)
@@ -178,7 +200,7 @@ namespace AtlasNet.Samples.Soccer
         }
         void FixedUpdate()
         {
-            if (!IsSpawned || !SimulatesMovement) return;
+            if (!IsSpawned || predictedMotor || !SimulatesMovement) return;
             if (Time.unscaledTime - inputReceived > .25f) MoveInput = Vector2.zero;
             if (!allowMovement) MoveInput = Vector2.zero;
             Vector3 desired = new Vector3(MoveInput.x, 0, MoveInput.y) * Speed;

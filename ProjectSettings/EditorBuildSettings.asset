@@ -6,13 +6,10 @@ EditorBuildSettings:
   serializedVersion: 2
   m_Scenes:
   - enabled: 1
-    path: Assets/Samples/AtlasNet Unity/0.1.0/08 Soccer/08_Soccer.unity
+    path: Assets/Samples/AtlasNet Unity/0.1.0/Soccer/Server Authoritative Soccer.unity
     guid: a05d2c0e8b0373b43a50d3bc13419076
   - enabled: 0
-    path: Assets/Samples/AtlasNet Unity/0.1.0/01 QuickStart/01_QuickStart.unity
-    guid: 8bf089e0e2d13b94eb74b172d6280e74
-  - enabled: 0
-    path: Assets/Samples/AtlasNet Unity/0.1.0/02 ClientAuthority/02_ClientAuthority.unity
+    path: Assets/Samples/AtlasNet Unity/0.1.0/01 Client Authority/01_ClientAuthority.unity
     guid: c2000000000000000000000000000004
   - enabled: 0
     path: Assets/Samples/AtlasNet Unity/0.1.0/03 ServerAuthority/03_ServerAuthority.unity
@@ -26,8 +23,5 @@ EditorBuildSettings:
   - enabled: 0
     path: Assets/Samples/AtlasNet Unity/0.1.0/06 AnimatorSync/06_AnimatorSync.unity
     guid: a686211a0a4f4bc44bf232278bee74be
-  - enabled: 0
-    path: Assets/Samples/AtlasNet Unity/0.1.0/07 ClientPhysics/07_ClientPhysics.unity
-    guid: f9423c1d5e6199a4188ddad87d962987
   m_configObjects:
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: 052faaac586de48259a63d0c4782560b, type: 3}

@@ -89,7 +89,7 @@ def main():
             else: temporary.unlink()
     with http.server.ThreadingHTTPServer(("0.0.0.0",args.port),functools.partial(Handler,directory=str(ROOT))) as server:
         server.daemon_threads=True; server.game_port=args.game_port
-        print("Open M2_Launcher in Unity." if args.demo=="m2" else "Open 08_Soccer in Unity.",flush=True)
+        print("Open M2_Launcher in Unity." if args.demo=="m2" else "Open Server Authoritative Soccer in Unity.",flush=True)
         print("Then click Host or Start server only.",flush=True)
         addresses={"127.0.0.1"}
         try: addresses.update(e[4][0] for e in socket.getaddrinfo(socket.gethostname(),None,socket.AF_INET))

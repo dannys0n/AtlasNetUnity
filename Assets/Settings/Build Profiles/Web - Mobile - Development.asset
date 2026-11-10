@@ -23,7 +23,7 @@ MonoBehaviour:
   m_OverrideGlobalSceneList: 1
   m_Scenes:
   - m_enabled: 1
-    m_path: Assets/Samples/AtlasNet Unity/0.1.0/08 Soccer/08_Soccer.unity
+    m_path: Assets/Samples/AtlasNet Unity/0.1.0/Soccer/Server Authoritative Soccer.unity
     m_guid: a05d2c0e8b0373b43a50d3bc13419076
   m_HasScriptingDefines: 0
   m_ScriptingDefines: []

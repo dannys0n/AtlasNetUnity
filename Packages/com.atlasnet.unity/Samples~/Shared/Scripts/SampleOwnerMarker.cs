@@ -7,6 +7,7 @@ using UnityEngine.Rendering;
 public sealed class SampleOwnerMarker : MonoBehaviour
 {
     [SerializeField] Material material;
+    [SerializeField] Transform visualAnchor;
     NetworkObject entity;
     Transform marker;
     static Mesh disc;
@@ -34,13 +35,14 @@ public sealed class SampleOwnerMarker : MonoBehaviour
         if (!marker)
         {
             // Cache the head height before adding this renderer to the hierarchy.
+            Transform anchor = visualAnchor ? visualAnchor : transform;
             float height = transform.position.y + 1.8f;
             foreach (var body in GetComponentsInChildren<Renderer>())
                 height = Mathf.Max(height, body.bounds.max.y);
             var visual = new GameObject("Local owner marker");
             marker = visual.transform;
-            marker.SetParent(transform, false);
-            marker.position = new Vector3(transform.position.x, height + .75f, transform.position.z);
+            marker.SetParent(anchor, false);
+            marker.position = new Vector3(anchor.position.x, height + .75f, anchor.position.z);
             visual.AddComponent<MeshFilter>().sharedMesh = Disc();
             var renderer = visual.AddComponent<MeshRenderer>();
             renderer.sharedMaterial = material;

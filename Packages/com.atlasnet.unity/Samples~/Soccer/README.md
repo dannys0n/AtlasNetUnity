@@ -1,6 +1,6 @@
-# 10 Predicted Soccer
+# Client Predicted Soccer
 
-Open **10_PredictedSoccer** in each Unity instance. Select **Host** and **Join**
+Open **Client Predicted Soccer** in each Unity instance. Select **Host** and **Join**
 to play, or use **Start server only**, **Join as worker**, and **Join** to try
 authority handoff. Enter the same server address in each instance.
 
@@ -14,4 +14,4 @@ because the motor moves on a plane and AtlasNet already snapshots the pose.
 The worker handling the player reports the kick to the ball's worker.
 Ball physics and scoring run on the authoritative server.
 
-For comparison, open **08_Soccer** with the same number of Unity instances.
+For comparison, open **Server Authoritative Soccer** with the same number of Unity instances.

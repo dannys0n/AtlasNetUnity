@@ -19,7 +19,7 @@ namespace AtlasNetDemo.Tests
         [UnityTest]
         public IEnumerator ServerMovementSolidContactsGoalCelebrationLateJoinAndHandoff()
         {
-            const string root="Assets/Samples/AtlasNet Unity/0.1.0/08 Soccer/Prefabs/";
+            const string root="Assets/Samples/AtlasNet Unity/0.1.0/Soccer/Prefabs/";
             var player=AssetDatabase.LoadAssetAtPath<NetworkObject>(root+"SoccerPlayer.prefab");
             var registry=AssetDatabase.LoadAssetAtPath<NetworkPrefabsList>(root+"SoccerNetworkPrefabs.asset");
             Assert.IsFalse(player.GetComponent<Collider>().isTrigger);
@@ -119,7 +119,7 @@ namespace AtlasNetDemo.Tests
         [UnityTest]
         public IEnumerator CrowdedBallLiftsClearOfPlayersAndStaysBelowCeiling()
         {
-            const string root="Assets/Samples/AtlasNet Unity/0.1.0/08 Soccer/Prefabs/";
+            const string root="Assets/Samples/AtlasNet Unity/0.1.0/Soccer/Prefabs/";
             var player=AssetDatabase.LoadAssetAtPath<NetworkObject>(root+"SoccerPlayer.prefab");
             var ballPrefab=AssetDatabase.LoadAssetAtPath<NetworkObject>(root+"SoccerBall.prefab");
             var registry=AssetDatabase.LoadAssetAtPath<NetworkPrefabsList>(root+"SoccerNetworkPrefabs.asset");
@@ -162,7 +162,7 @@ namespace AtlasNetDemo.Tests
         [UnityTest]
         public IEnumerator HandoffRestoresHistoricalScoresWithoutReplayingCelebration()
         {
-            const string root="Assets/Samples/AtlasNet Unity/0.1.0/08 Soccer/Prefabs/";
+            const string root="Assets/Samples/AtlasNet Unity/0.1.0/Soccer/Prefabs/";
             var manager=new GameObject("Soccer celebration snapshot test").AddComponent<NetworkManager>();
             Set(manager,"networkPrefabsLists",new[]{AssetDatabase.LoadAssetAtPath<NetworkPrefabsList>(root+"SoccerNetworkPrefabs.asset")});
             manager.ConfigureConnection("127.0.0.1",17945);
@@ -202,9 +202,9 @@ namespace AtlasNetDemo.Tests
         public IEnumerator PredictedSoccerMovesImmediatelyKicksAndReconcilesAfterHandoff()
         {
             const string root = "Assets/Samples/AtlasNet Unity/0.1.0/";
-            var player = AssetDatabase.LoadAssetAtPath<NetworkObject>(root + "10 Predicted Soccer/PredictedSoccerPlayer.prefab");
-            var registry = AssetDatabase.LoadAssetAtPath<NetworkPrefabsList>(root + "10 Predicted Soccer/PredictedSoccerPrefabs.asset");
-            var ballPrefab = AssetDatabase.LoadAssetAtPath<NetworkObject>(root + "08 Soccer/Prefabs/SoccerBall.prefab");
+            var player = AssetDatabase.LoadAssetAtPath<NetworkObject>(root + "Soccer/PredictedSoccerPlayer.prefab");
+            var registry = AssetDatabase.LoadAssetAtPath<NetworkPrefabsList>(root + "Soccer/PredictedSoccerPrefabs.asset");
+            var ballPrefab = AssetDatabase.LoadAssetAtPath<NetworkObject>(root + "Soccer/Prefabs/SoccerBall.prefab");
             Assert.IsNotNull(player);
             Assert.IsNull(player.GetComponent<NetworkTransform>());
             Assert.IsNull(player.GetComponent<Rigidbody>());

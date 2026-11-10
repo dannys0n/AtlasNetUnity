@@ -10,7 +10,6 @@ namespace AtlasNetDemo.Tests
     public sealed class SampleShowcaseTests
     {
         const string Root = "Assets/Samples/AtlasNet Unity/0.1.0/";
-        [TestCase("01 QuickStart/01_QuickStart.unity", false)]
         [TestCase("06 AnimatorSync/06_AnimatorSync.unity", true)]
         public void IntroductoryScenesUseRegisteredOwnerWrittenPlayers(string path, bool animated)
         {
@@ -47,7 +46,7 @@ namespace AtlasNetDemo.Tests
         public void AllShowcasesHaveNoPrivateProjectDependenciesOrMissingScripts()
         {
             var scenes = AssetDatabase.FindAssets("t:Scene", new[] { Root }).Select(AssetDatabase.GUIDToAssetPath).ToArray();
-            Assert.AreEqual(11, scenes.Length);
+            Assert.AreEqual(9, scenes.Length);
             foreach (var path in scenes)
             {
                 var external = AssetDatabase.GetDependencies(path, true).Where(p => p.StartsWith("Assets/") && !p.StartsWith(Root) && !p.StartsWith("Assets/TextMesh Pro/")).ToArray();
@@ -68,13 +67,13 @@ namespace AtlasNetDemo.Tests
                     Assert.IsNotNull(overlayData.FindProperty("wallMaterial").objectReferenceValue, path);
                     Assert.IsTrue(overlayData.FindProperty("showBoundaries").boolValue, path);
                     if (path.EndsWith("/09_ClientPrediction.unity") || path.EndsWith("/09_CustomPrediction.unity") ||
-                        path.EndsWith("/10_PredictedSoccer.unity"))
+                        path.EndsWith("/Client Predicted Soccer.unity"))
                     {
                         Assert.DoesNotThrow(manager.ValidateRegistry);
                         var predictionType = System.IO.Path.GetFileNameWithoutExtension(path) switch
                         {
                             "09_CustomPrediction" => "PredictedDashController",
-                            "10_PredictedSoccer" => "PredictedSoccerMotor",
+                            "Client Predicted Soccer" => "PredictedSoccerMotor",
                             _ => "PredictedCharacterController"
                         };
                         Assert.IsNull(manager.PlayerPrefab.GetComponent<NetworkTransform>(), path);

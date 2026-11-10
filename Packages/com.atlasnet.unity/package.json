@@ -18,13 +18,8 @@
       "path": "Samples~/Shared"
     },
     {
-      "displayName": "01 QuickStart",
-      "description": "Requires 00 Shared. Minimal host/join, owner movement, spawning, synchronized counters, and RPCs.",
-      "path": "Samples~/QuickStart"
-    },
-    {
-      "displayName": "02 ClientAuthority",
-      "description": "Requires 00 Shared. Owner-written movement and development dummy-backend worker handoffs.",
+      "displayName": "01 Client Authority",
+      "description": "Start here after importing 00 Shared. Host or join with owner-written movement and optional worker handoffs.",
       "path": "Samples~/ClientAuthority"
     },
     {
@@ -48,13 +43,8 @@
       "path": "Samples~/AnimatorSync"
     },
     {
-      "displayName": "07 ClientPhysics",
-      "description": "Requires 00 Shared. Owner-simulated Rigidbody movement with kinematic server replicas, native/WebSocket clients, and worker handoffs.",
-      "path": "Samples~/ClientPhysics"
-    },
-    {
-      "displayName": "08 Soccer",
-      "description": "Requires 00 Shared, URP, Unity UI and imported TMP Essential Resources. Horizontal team soccer with solid server-authoritative players, contact kicks, goal celebrations, debug boundaries and large join QR codes. Serve a Web build separately for browser joining.",
+      "displayName": "Soccer",
+      "description": "Requires 00 Shared, URP, Unity UI and imported TMP Essential Resources. Includes Server Authoritative Soccer and Client Predicted Soccer. Both use authoritative ball physics and scoring.",
       "path": "Samples~/Soccer"
     }
   ]
