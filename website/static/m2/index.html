@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AtlasNet Unity M2 Presentation</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #10151d; color: #eef2f7; font: 16px system-ui, sans-serif; }
+    .viewer { height: 100dvh; display: grid; grid-template-rows: minmax(0, 1fr) auto; background: #10151d; }
+    .stage { min-height: 0; display: flex; align-items: center; justify-content: center; }
+    .stage img { width: 100%; height: 100%; object-fit: contain; }
+    nav { display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 12px; padding: 10px; }
+    button, select { color: inherit; background: #202b39; border: 1px solid #536177; border-radius: 4px; padding: 7px 10px; font: inherit; }
+    button:enabled { cursor: pointer; }
+    button:disabled { opacity: .45; }
+    select { max-width: min(19rem, 90vw); }
+    :focus-visible { outline: 2px solid #9fcaff; outline-offset: 2px; }
+  </style>
+</head>
+<body>
+  <main class="viewer" id="viewer" aria-label="AtlasNet Unity M2 presentation">
+    <div class="stage">
+      <img id="slide" src="slides/slide-01.png" alt="AtlasNet Unity">
+    </div>
+    <nav aria-label="Presentation controls">
+      <button id="previous" type="button" disabled>Previous</button>
+      <select id="jump" aria-label="Go to slide"></select>
+      <button id="next" type="button">Next</button>
+      <button id="fullscreen" type="button" hidden>Fullscreen</button>
+    </nav>
+  </main>
+  <script>
+    const titles = [
+      'AtlasNet Unity',
+      'Install with Unity Package Manager',
+      'Development dummy backend',
+      'Networking features',
+      'Networking features',
+      'Networking features',
+      'Networking features',
+      'Networking features',
+      'Quickstart | Network Prefabs List',
+      'Quickstart | Soccer player prefab',
+      'Quickstart | AtlasNet manager',
+      'Demonstration',
+      'Scale Worker Demo',
+      'Scale Worker Demo',
+      'Scale Worker Demo',
+      'NetworkBehaviour API',
+      'Scale Worker Demo',
+      'Scale Worker gameplay',
+      'Animation synchronization',
+      'Animator sync components',
+      'Animation synchronization',
+      'RPC syntax',
+      'Animator sync code',
+      'Animator sync gameplay',
+      'Client-authoritative Soccer gameplay',
+      'Looking forward to M3',
+      'Polygon Shooter preview',
+      'Server-authoritative Soccer gameplay',
+      'Looking forward to M3',
+      'Polygon Shooter preview'
+    ];
+    const viewer = document.querySelector('#viewer');
+    const slide = document.querySelector('#slide');
+    const previous = document.querySelector('#previous');
+    const next = document.querySelector('#next');
+    const jump = document.querySelector('#jump');
+    const fullscreen = document.querySelector('#fullscreen');
+    let index = 0;
+
+    function pathFor(position) {
+      return 'slides/slide-' + String(position + 1).padStart(2, '0') + '.png';
+    }
+
+    function show(position) {
+      index = Math.max(0, Math.min(position, titles.length - 1));
+      slide.src = pathFor(index);
+      slide.alt = 'Slide ' + (index + 1) + ' of ' + titles.length + ' — ' + titles[index];
+      jump.value = String(index);
+      previous.disabled = index === 0;
+      next.disabled = index === titles.length - 1;
+    }
+
+    for (const [position, title] of titles.entries()) {
+      jump.add(new Option((position + 1) + ' / ' + titles.length + ' — ' + title, position));
+    }
+    previous.addEventListener('click', () => show(index - 1));
+    next.addEventListener('click', () => show(index + 1));
+    jump.addEventListener('change', () => show(Number(jump.value)));
+
+    async function toggleFullscreen() {
+      if (document.fullscreenElement) await document.exitFullscreen();
+      else await viewer.requestFullscreen();
+    }
+
+    fullscreen.hidden = !document.fullscreenEnabled;
+    fullscreen.addEventListener('click', toggleFullscreen);
+    document.addEventListener('fullscreenchange', () => {
+      fullscreen.textContent = document.fullscreenElement ? 'Exit fullscreen' : 'Fullscreen';
+    });
+
+    document.addEventListener('keydown', (event) => {
+      if (event.altKey || event.ctrlKey || event.metaKey || event.target === jump) return;
+      switch (event.key) {
+        case 'ArrowLeft': show(index - 1); break;
+        case 'ArrowRight': show(index + 1); break;
+        case 'Home': show(0); break;
+        case 'End': show(titles.length - 1); break;
+        case 'f':
+        case 'F':
+          if (document.fullscreenEnabled) toggleFullscreen();
+          break;
+        default: return;
+      }
+      event.preventDefault();
+    });
+
+    show(0);
+  </script>
+</body>
+</html>

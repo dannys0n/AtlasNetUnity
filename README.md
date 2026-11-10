@@ -18,6 +18,8 @@ The Unity project targets **Unity 6000.6.2f1**. Package version **0.2.0** adds p
 
 ## M2 presentation
 
+[![AtlasNet Unity M2 presentation](website/static/m2/slides/slide-01.png)](https://dannys0n.github.io/AtlasNetUnity/m2/)
+
 The presentation scenes live in `Assets/M2/Scenes`. The demo keeps client connections active while switching between synchronized slides and gameplay. Join by QR code or IP address. During a session, press **Tab** to see outbound traffic and per-client send rate (KiB/s) and ping (ms). Ping displays a dash when a measurement is unavailable.
 
 ## Install
