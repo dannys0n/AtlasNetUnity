@@ -131,7 +131,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a1000000000000000000000000000001, type: 3}
   m_Name: 
   m_EditorClassIdentifier: AtlasNet.Unity::AtlasNet.NetworkObject
-  prefabId: atlasnet.soccer.ball
+  prefabId: GlobalObjectId_V1-1-c4993ca7853da434781c368846190f7b-1734352190790020567-0
 --- !u!114 &4745973896117840513
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -145,13 +145,18 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: AtlasNet.Unity::AtlasNet.NetworkTransform
   target: {fileID: 0}
+  inLocalSpace: 0
   syncPosition: 1
   syncRotation: 1
   positionWriter: 0
   rotationWriter: 0
-  interpolate: 1
   sendIntervalTicks: 1
-  interpolationBufferTicks: 3
+  positionThreshold: 0.001
+  rotationThreshold: 0.1
+  interpolate: 1
+  interpolationBufferTicks: 2
+  snapOnLargeMove: 0
+  snapDistance: 5
 --- !u!54 &7648394084561034851
 Rigidbody:
   m_ObjectHideFlags: 0
