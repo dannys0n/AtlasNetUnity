@@ -103,6 +103,7 @@ namespace AtlasNet
         public bool IsServer => NetworkObject != null && NetworkObject.Manager.IsServer;
         public bool IsClient => NetworkObject != null && NetworkObject.Manager.IsClient;
         public bool IsHost => IsServer && IsClient;
+        internal virtual bool SupportsPredictedPose => false;
         public bool HasAuthority => NetworkObject != null && NetworkObject.HasAuthority;
         public bool IsOwner => NetworkObject != null && NetworkObject.IsOwner;
         public SessionId OwnerSession => NetworkObject.OwnerSession;
@@ -428,7 +429,7 @@ namespace AtlasNet
                 if (target == SendTo.Authority && i == parameters.Length - 1 && type == typeof(SessionId)) continue;
                 if (target == SendTo.SpecifiedInParams && i == 0) continue;
                 if (type == typeof(int) || type == typeof(uint) || type == typeof(ulong) || type == typeof(float) || type == typeof(bool) ||
-                    type == typeof(string) || type == typeof(UnityEngine.Vector2) ||
+                    type == typeof(string) || type == typeof(byte[]) || type == typeof(UnityEngine.Vector2) ||
                     type == typeof(UnityEngine.Vector3) || type == typeof(UnityEngine.Quaternion)) continue;
                 throw new NotSupportedException($"RPC {method.Name} has unsupported parameter {parameters[i].Name} ({type.Name})");
             }
@@ -453,7 +454,9 @@ namespace AtlasNet
         {
             if (method.ReturnType != typeof(void) || method.IsGenericMethod)
                 throw new InvalidOperationException($"RPC {method.Name} must be a non-generic void method");
-            string signature = method.DeclaringType.FullName + "." + method.Name;
+            var declaringType = method.DeclaringType;
+            if (declaringType.IsGenericType) declaringType = declaringType.GetGenericTypeDefinition();
+            string signature = declaringType.FullName + "." + method.Name;
             foreach (var parameter in method.GetParameters())
             {
                 if (parameter.IsOut || parameter.ParameterType.IsByRef)
@@ -473,6 +476,7 @@ namespace AtlasNet
             else if (type == typeof(float)) writer.Write((float)value);
             else if (type == typeof(bool)) writer.Write((bool)value);
             else if (type == typeof(string)) writer.Write((string)value);
+            else if (type == typeof(byte[])) writer.WriteBytes((byte[])value);
             else if (type == typeof(UnityEngine.Vector2)) { var v = (UnityEngine.Vector2)value; writer.Write(v.x); writer.Write(v.y); }
             else if (type == typeof(UnityEngine.Vector3)) writer.Write((UnityEngine.Vector3)value);
             else if (type == typeof(UnityEngine.Quaternion)) writer.Write((UnityEngine.Quaternion)value);
@@ -487,6 +491,7 @@ namespace AtlasNet
             if (type == typeof(float)) return reader.ReadFloat();
             if (type == typeof(bool)) return reader.ReadBool();
             if (type == typeof(string)) return reader.ReadString();
+            if (type == typeof(byte[])) return reader.ReadBytes();
             if (type == typeof(UnityEngine.Vector2)) return new UnityEngine.Vector2(reader.ReadFloat(), reader.ReadFloat());
             if (type == typeof(UnityEngine.Vector3)) return reader.ReadVector3();
             if (type == typeof(UnityEngine.Quaternion)) return reader.ReadQuaternion();

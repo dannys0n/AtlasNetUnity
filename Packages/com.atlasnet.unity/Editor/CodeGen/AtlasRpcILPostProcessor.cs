@@ -185,7 +185,7 @@ namespace AtlasNet.CodeGen
         }
 
         private static bool Supported(string name) => name == "System.Int32" || name == "System.UInt32" || name == "System.UInt64" || name == "System.Single" ||
-            name == "System.Boolean" || name == "System.String" || name == "UnityEngine.Vector2" ||
+            name == "System.Boolean" || name == "System.String" || name == "System.Byte[]" || name == "UnityEngine.Vector2" ||
             name == "UnityEngine.Vector3" || name == "UnityEngine.Quaternion";
     }
 }

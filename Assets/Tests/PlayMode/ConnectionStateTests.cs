@@ -58,6 +58,61 @@ namespace AtlasNetDemo.Tests
             }
             finally{client.Stop();server.Stop();UnityEngine.Object.DestroyImmediate(client.gameObject);UnityEngine.Object.DestroyImmediate(server.gameObject);UnityEngine.Object.DestroyImmediate(template);UnityEngine.Object.DestroyImmediate(list);}
         }
+        [UnityTest]
+        public IEnumerator LocalTransformAccumulatesRotationAcrossPositionUpdates()
+        {
+            var template = new GameObject("Local transform template");
+            template.SetActive(false);
+            var prefab = template.AddComponent<NetworkObject>();
+            Set(prefab, "prefabId", "local-transform-test");
+            var child = new GameObject("Replicated child").transform;
+            child.SetParent(template.transform, false);
+            var networkTransform = template.AddComponent<NetworkTransform>();
+            Set(networkTransform, "target", child);
+            Set(networkTransform, "inLocalSpace", true);
+            Set(networkTransform, "rotationWriter", TransformWriter.Server);
+            Set(networkTransform, "rotationThreshold", 2f);
+            Set(networkTransform, "interpolate", false);
+            var list = ScriptableObject.CreateInstance<NetworkPrefabsList>();
+            Set(list, "prefabs", new List<NetworkObject> { prefab });
+            var server = Create("Local transform server", 17886);
+            var client = Create("Local transform observer", 17886, ClientTransport.WebSocket);
+            Set(server, "networkPrefabsLists", new[] { list });
+            Set(client, "networkPrefabsLists", new[] { list });
+
+            try
+            {
+                server.StartServer();
+                var source = server.Spawn(prefab, Vector3.zero, Quaternion.identity).transform.GetChild(0);
+                source.localPosition = Vector3.forward;
+                client.StartClient();
+                yield return Until(() => client.IsConnectedClient && client.SpawnedCount == 1, "late join");
+                var replica = client.SpawnedObjects.Single().transform.GetChild(0);
+                Assert.AreEqual(Vector3.forward, replica.localPosition);
+                replica.parent.SetPositionAndRotation(new Vector3(5, 0, 0), Quaternion.Euler(0, 90, 0));
+
+                for (int step = 1; step <= 3; step++)
+                {
+                    var position = new Vector3(step, 0, 1);
+                    source.localPosition = position;
+                    source.localRotation = Quaternion.Euler(0, step, 0);
+                    yield return Until(() => replica.localPosition == position, $"local position at step {step}");
+                    if (step < 3)
+                        Assert.Less(Quaternion.Angle(Quaternion.identity, replica.localRotation), 0.1f);
+                }
+                Assert.Less(Quaternion.Angle(source.localRotation, replica.localRotation), 0.1f);
+            }
+            finally
+            {
+                client.Stop();
+                server.Stop();
+                UnityEngine.Object.DestroyImmediate(client.gameObject);
+                UnityEngine.Object.DestroyImmediate(server.gameObject);
+                UnityEngine.Object.DestroyImmediate(template);
+                UnityEngine.Object.DestroyImmediate(list);
+            }
+        }
+
         [UnityTest] public IEnumerator WorkerOwnedDoorLateJoinUsesLatestReceivedDeltaBeforeSpawnCallback()
         {
             var template=new GameObject("Worker door template");template.SetActive(false);var prefab=template.AddComponent<NetworkObject>();Set(prefab,"prefabId","worker-door-test");

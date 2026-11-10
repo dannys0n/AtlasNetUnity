@@ -18,12 +18,12 @@ namespace AtlasNetDemo.Tests
     {
         static void Set(object obj,string field,object value)=>obj.GetType().GetField(field,BindingFlags.Instance|BindingFlags.NonPublic).SetValue(obj,value);
         [UnityTest]
-        public IEnumerator OwnersDriveAcrossHandoffsAndKickTheServerBallWithoutNetworkInterpolation()
+        public IEnumerator OwnersDriveAcrossHandoffsAndKickTheServerBallWithInterpolatedReplicas()
         {
             var player=AssetDatabase.LoadAssetAtPath<NetworkObject>("Assets/M2/Prefabs/M2_SoccerClientAuthorityPlayer.prefab");
             var ballPrefab=AssetDatabase.LoadAssetAtPath<NetworkObject>("Assets/M2/Prefabs/M2_SoccerUnbufferedBall.prefab");
             var registry=AssetDatabase.LoadAssetAtPath<NetworkPrefabsList>("Assets/M2/Prefabs/M2NetworkPrefabs.asset");
-            foreach(var prefab in new[]{player,ballPrefab})Assert.IsFalse(new SerializedObject(prefab.GetComponent<NetworkTransform>()).FindProperty("interpolate").boolValue);
+            foreach(var prefab in new[]{player,ballPrefab})Assert.IsTrue(new SerializedObject(prefab.GetComponent<NetworkTransform>()).FindProperty("interpolate").boolValue);
             Assert.AreEqual(TransformWriter.Owner,player.GetComponent<NetworkTransform>().PositionWriter);
             Assert.AreEqual(AnimatorWriter.Owner,player.GetComponent<NetworkAnimator>().Writer);
             NetworkManager Create(string name,ClientTransport transport=ClientTransport.Udp)
@@ -50,7 +50,7 @@ namespace AtlasNetDemo.Tests
                 Assert.IsFalse(body.isKinematic);Assert.That(body.linearVelocity.x,Is.EqualTo(16f).Within(.1f));
                 foreach(var m in new[]{server,worker})foreach(var obj in m.SpawnedObjects)Assert.IsTrue(obj.GetComponent<Rigidbody>().isKinematic,"Server player copies do not simulate owner physics");
                 drive=Vector2.zero;yield return Step();yield return Step();
-                yield return Until(()=>web.TryGet(local.EntityId,out var remote)&&Vector3.Distance(remote.transform.position,local.transform.position)<.1f,"Unbuffered remote pose converges");
+                yield return Until(()=>web.TryGet(local.EntityId,out var remote)&&Vector3.Distance(remote.transform.position,local.transform.position)<.1f,"Interpolated remote pose converges");
                 webDrive=Vector2.up;for(int i=0;i<4;i++)yield return Step();Assert.Greater(other.GetComponent<Rigidbody>().linearVelocity.z,15);webDrive=Vector2.zero;
                 var ball=server.Spawn(ballPrefab,body.position+new Vector3(3,1,0),Quaternion.identity);yield return Until(()=>udp.TryGet(ball.EntityId,out _),"Ball reaches owner client");
                 drive=Vector2.right;bool kicked=false;float end=Time.realtimeSinceStartup+3;

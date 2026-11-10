@@ -242,15 +242,30 @@ namespace AtlasNetDemo.Tests
             yield return world.Until(() => world.Authority(box)?.SimulationWorker > 0 && world.Authority(right)?.SimulationWorker > 0, "right player and box on neighboring worker");
             yield return world.Step(15);
             ulong worker = world.Authority(box).SimulationWorker;
+            uint boxEpoch = world.Authority(box).AuthorityEpoch;
+            uint leftEpoch = world.Authority(left).AuthorityEpoch;
+            uint rightEpoch = world.Authority(right).AuthorityEpoch;
             yield return world.Step(60, () => {
                 world.Authority(left).GetComponent<Rigidbody>().linearVelocity = Vector3.right;
                 world.Authority(right).GetComponent<Rigidbody>().linearVelocity = Vector3.left;
             });
-            Assert.AreEqual(0ul, world.Authority(left).SimulationWorker);
-            Assert.AreEqual(worker, world.Authority(box).SimulationWorker);
-            Assert.AreEqual(worker, world.Authority(right).SimulationWorker);
-            Assert.Less(world.Authority(box).GetComponent<Rigidbody>().linearVelocity.magnitude, 10f);
-            Assert.That(world.Authority(box).transform.position.x, Is.InRange(-.2f, 1.4f), "Opposed pushes must not launch the box out of the interaction.");
+            var leftPlayer = world.Authority(left);
+            var rightPlayer = world.Authority(right);
+            var target = world.Authority(box);
+            Assert.AreEqual(0ul, leftPlayer.SimulationWorker);
+            Assert.AreEqual(worker, target.SimulationWorker);
+            Assert.AreEqual(worker, rightPlayer.SimulationWorker);
+            Assert.AreEqual(leftEpoch, leftPlayer.AuthorityEpoch);
+            Assert.AreEqual(rightEpoch, rightPlayer.AuthorityEpoch);
+            Assert.AreEqual(boxEpoch, target.AuthorityEpoch);
+            Assert.Less(target.GetComponent<Rigidbody>().linearVelocity.magnitude, 10f);
+            // Local contacts and routed pushes can start on different ticks, so the
+            // contact cluster can drift. Check that the box stays between the players.
+            Vector3 boxPosition = target.transform.position;
+            Assert.That(boxPosition.x, Is.InRange(leftPlayer.transform.position.x, rightPlayer.transform.position.x),
+                "Opposed pushes must keep the box between the players.");
+            Assert.That(Mathf.Abs(boxPosition.z), Is.LessThan(target.GetComponent<Collider>().bounds.extents.z),
+                "Opposed pushes must keep the box in the contact lane.");
             world.AssertGhostsKinematic(); LogAssert.NoUnexpectedReceived();
         }
 
@@ -258,7 +273,8 @@ namespace AtlasNetDemo.Tests
         public IEnumerator RoutedPushRejectsStaleEpochsAndRepeatedRequestsCannotLaunchBox()
         {
             using var world = new World(); yield return world.Ready();
-            var player = world.Spawn(new Vector3(-.6f, 1, 0), owner: world.Client.LocalSession);
+            // Test the routed requests with space between the colliders so native contacts cannot supply an impulse.
+            var player = world.Spawn(new Vector3(-1.1f, 1, 0), owner: world.Client.LocalSession);
             var box = world.Spawn(new Vector3(.6f, 1, 0));
             yield return world.Until(() => world.Authority(box)?.SimulationWorker > 0, "remote box authority");
             yield return world.Step(12);

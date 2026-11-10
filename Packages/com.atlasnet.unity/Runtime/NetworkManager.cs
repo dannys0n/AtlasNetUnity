@@ -136,6 +136,7 @@ namespace AtlasNet
         public long AllocatedBytesLastTick => Backend.AllocatedBytesLastTick;
         public double LastTickMilliseconds => Backend.LastTickMilliseconds;
         public int TickRate => tickRate;
+        internal float TickInterpolation => Backend is LocalWorldBackend local ? local.TickInterpolation : 1f;
         public bool AutomaticLocalHandoffs => automaticLocalHandoffs;
         public NetworkObject PlayerPrefab => playerPrefab;
         public int SpawnedCount => Replicas.Count;

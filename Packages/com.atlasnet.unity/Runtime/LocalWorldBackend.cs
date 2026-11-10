@@ -43,6 +43,7 @@ namespace AtlasNet
         public SessionId LocalSession { get; private set; }
         public uint Tick { get; private set; }
         public int TickRate => tickRate;
+        internal float TickInterpolation => Mathf.Clamp01(accumulator * tickRate);
         public bool AutomaticLocalHandoffs => automaticLocalHandoffs;
         public NetworkObject PlayerPrefab => playerPrefab;
         /// <summary>Optional spawn placement for automatically created players. Defaults to the prefab's position.</summary>

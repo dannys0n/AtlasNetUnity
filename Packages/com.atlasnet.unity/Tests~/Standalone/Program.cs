@@ -14,6 +14,7 @@ static class Program
     {
         HandoffChecks.Run();
         PartitionChecks.Run();
+        PredictionChecks.Run();
         var entity = new AtlasNet.EntityId(829381);
         var session = new SessionId(42);
         using (var writer = new NetWriter())

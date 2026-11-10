@@ -12,7 +12,7 @@ A Unity networking framework prototype exploring multi-worker worlds, spatial in
 
 ## Current status
 
-The project uses a **local dummy backend** to demonstrate and validate the framework while integration with the production AtlasNet C++ backend is pending. It is an experimental prototype; prediction, distributed physics, and production hardening remain future work.
+The project uses a **local dummy backend** to demonstrate and validate the framework while integration with the production AtlasNet C++ backend is pending. It is an experimental prototype; the local project includes client prediction and cross-worker physics samples. Production integration and hardening are in progress.
 
 The Unity project targets **Unity 6000.6.2f1**. Package version **0.2.0** adds per-peer transport metrics and a configurable UDP idle timeout.
 
@@ -29,6 +29,14 @@ https://github.com/dannys0n/AtlasNetUnity.git?path=/Packages/com.atlasnet.unity#
 ```
 
 Import **00 Shared** from the package's Samples section first, then the demonstrations you want to explore. Soccer additionally requires URP, Unity UI, and TMP Essential Resources.
+
+## Local prediction samples
+
+Under **Assets → Samples → AtlasNet Unity → 0.1.0**, open the same scene in each instance, then select **Host** in one and **Join** in the other.
+
+- **09_ClientPrediction** uses the drop-in predicted character controller.
+- **09_CustomPrediction** demonstrates typed input and state with a dash cooldown.
+- **10_PredictedSoccer** predicts player movement and turning. The server or worker handles ball contacts, ball physics, and scoring.
 
 The UPM package contains the networking runtime and importable samples. Open this repository as a Unity project to run the M2 presentation.
 

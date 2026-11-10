@@ -197,6 +197,125 @@ namespace AtlasNetDemo.Tests
             }
             finally { manager.Stop();Object.DestroyImmediate(manager.gameObject); }
         }
+
+        [UnityTest]
+        public IEnumerator PredictedSoccerMovesImmediatelyKicksAndReconcilesAfterHandoff()
+        {
+            const string root = "Assets/Samples/AtlasNet Unity/0.1.0/";
+            var player = AssetDatabase.LoadAssetAtPath<NetworkObject>(root + "10 Predicted Soccer/PredictedSoccerPlayer.prefab");
+            var registry = AssetDatabase.LoadAssetAtPath<NetworkPrefabsList>(root + "10 Predicted Soccer/PredictedSoccerPrefabs.asset");
+            var ballPrefab = AssetDatabase.LoadAssetAtPath<NetworkObject>(root + "08 Soccer/Prefabs/SoccerBall.prefab");
+            Assert.IsNotNull(player);
+            Assert.IsNull(player.GetComponent<NetworkTransform>());
+            Assert.IsNull(player.GetComponent<Rigidbody>());
+            Assert.IsNotNull(player.GetComponent<CharacterController>());
+
+            var transport = ScriptableObject.CreateInstance<DelayedPredictionTransport>();
+            NetworkManager Create(string name)
+            {
+                var manager = new GameObject(name).AddComponent<NetworkManager>();
+                Set(manager, "playerPrefab", player);
+                Set(manager, "networkPrefabsLists", new[] { registry });
+                Set(manager, "automaticLocalHandoffs", true);
+                Set(manager, "localBoundaryMargin", .05f);
+                Set(manager, "transportProvider", transport);
+                manager.ConfigureConnection("127.0.0.1", 17946, ClientTransport.Udp);
+                return manager;
+            }
+
+            var server = Create("Predicted soccer server");
+            var worker = Create("Predicted soccer worker");
+            var client = Create("Predicted soccer client");
+            var managers = new[] { server, worker, client };
+            var scenes = managers.Select(m => SceneManager.CreateScene(m.name,
+                new CreateSceneParameters(LocalPhysicsMode.Physics3D))).ToArray();
+            void PlaceCube(Scene scene, Vector3 position, Vector3 scale)
+            {
+                var box = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                box.transform.position = position;
+                box.transform.localScale = scale;
+                SceneManager.MoveGameObjectToScene(box, scene);
+            }
+            foreach (var scene in scenes)
+                PlaceCube(scene, new Vector3(0, -.5f, 0), new Vector3(105, 1, 68));
+            PlaceCube(scenes[1], new Vector3(8, 1, 0), new Vector3(.2f, 3, 4));
+
+            void PlaceReplicas()
+            {
+                for (int i = 0; i < managers.Length; i++)
+                    foreach (var obj in managers[i].SpawnedObjects)
+                        if (obj.gameObject.scene != scenes[i])
+                            SceneManager.MoveGameObjectToScene(obj.gameObject, scenes[i]);
+            }
+
+            IEnumerator Until(Func<bool> condition, string phase)
+            {
+                float deadline = Time.realtimeSinceStartup + 8f;
+                while (true)
+                {
+                    PlaceReplicas();
+                    if (condition()) yield break;
+                    if (Time.realtimeSinceStartup >= deadline) Assert.Fail($"Timed out: {phase}");
+                    yield return new WaitForFixedUpdate();
+                    PlaceReplicas();
+                    foreach (var scene in scenes) scene.GetPhysicsScene().Simulate(Time.fixedDeltaTime);
+                    yield return null;
+                }
+            }
+
+            try
+            {
+                server.PlayerSpawnPosition = _ => new Vector3(-5, 0, 0);
+                server.StartServer();
+                worker.StartWorker();
+                client.StartClient();
+                yield return Until(() => server.WorkerCount == 2 && client.IsConnectedClient && client.SpawnedCount == 1,
+                    "client and worker join");
+                var local = client.SpawnedObjects.Single(o => o.IsOwner);
+                Assert.IsTrue(local.GetComponent<CharacterController>().enabled);
+                Assert.IsTrue(server.TryGet(local.EntityId, out var initialAuthority));
+                ((Behaviour)local.GetComponent("SoccerPlayer")).enabled = false;
+                var motor = local.GetComponent("PredictedSoccerMotor");
+                var setInput = motor.GetType().GetMethod("SetInput");
+                void Drive(Vector2 input) => setInput.Invoke(motor, new object[] { input });
+
+                var ball = server.Spawn(ballPrefab, new Vector3(.75f, 1, 0), Quaternion.identity);
+                yield return Until(() => worker.TryGet(ball.EntityId, out var replica) && replica.HasAuthority &&
+                    client.TryGet(ball.EntityId, out _), "ball is authoritative on the second worker");
+                var ballBody = worker.SpawnedObjects.Single(o => o.EntityId == ball.EntityId).GetComponent<Rigidbody>();
+                uint epoch = local.AuthorityEpoch;
+                Drive(Vector2.right);
+                yield return Until(() => local.transform.position.x > -4.7f, "owner predicts movement");
+                Assert.That(initialAuthority.transform.position.x, Is.EqualTo(-5f).Within(.1f));
+                yield return Until(() => ballBody.linearVelocity.x > 4 && ballBody.linearVelocity.y > 0,
+                    "authoritative contact kicks the ball across the worker boundary");
+                ballBody.position = new Vector3(6, 1, -12);
+                ballBody.linearVelocity = Vector3.zero;
+
+                yield return Until(() => local.AuthorityEpoch > epoch && local.SimulationWorker == worker.LocalWorkerId,
+                    "the moving player transfers to the worker");
+                yield return Until(() => worker.TryGet(local.EntityId, out var authority) && authority.HasAuthority &&
+                    authority.transform.position.x > 6 && local.transform.position.x > 8.5f,
+                    "owner predicts past the worker-only wall");
+                Drive(Vector2.zero);
+                yield return Until(() => worker.TryGet(local.EntityId, out var authority) &&
+                    Vector3.Distance(local.transform.position, authority.transform.position) < .1f,
+                    "owner reconciles to the worker collision");
+                Assert.Less(local.transform.position.x, 8f);
+                LogAssert.NoUnexpectedReceived();
+            }
+            finally
+            {
+                foreach (var manager in managers)
+                {
+                    manager.Stop();
+                    Object.DestroyImmediate(manager.gameObject);
+                }
+                foreach (var scene in scenes) SceneManager.UnloadSceneAsync(scene);
+                Object.DestroyImmediate(transport);
+            }
+        }
+
         static int Score(NetworkObject obj,string name)
         {
             var component=obj.GetComponent("SoccerMatch");var variable=component.GetType().GetField(name).GetValue(component);

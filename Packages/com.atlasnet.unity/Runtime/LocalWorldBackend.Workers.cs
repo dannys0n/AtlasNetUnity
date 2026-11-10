@@ -150,8 +150,9 @@ namespace AtlasNet
                 InterestSource = source != null && source.isActiveAndEnabled,
                 InterestRadius = source != null ? source.Radius : 0f,
                 ExitPadding = source != null ? source.ExitPadding : 0f,
-                CanHandoff = movement != null && movement.SyncPosition && movement.Target == obj.transform &&
-                    (movement.PositionWriter != TransformWriter.Owner || obj.OwnerSession.Value != 0),
+                CanHandoff = Array.Exists(obj.Behaviours, behaviour => behaviour.SupportsPredictedPose) ||
+                    (movement != null && movement.SyncPosition && movement.Target == obj.transform &&
+                     (movement.PositionWriter != TransformWriter.Owner || obj.OwnerSession.Value != 0)),
                 Behaviours = new BehaviourSchema[obj.Behaviours.Length]
             };
             for (int i = 0; i < record.Behaviours.Length; i++)

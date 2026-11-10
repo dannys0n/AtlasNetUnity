@@ -128,28 +128,68 @@ namespace AtlasNet.Editor
     [CanEditMultipleObjects]
     internal sealed class NetworkTransformEditor : UnityEditor.Editor
     {
+        private bool showTuning;
+
         public override void OnInspectorGUI()
         {
             serializedObject.Update();
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("target"), new GUIContent("Target"));
-            EditorGUILayout.Space();
-            EditorGUILayout.LabelField("Axes to Synchronize", EditorStyles.boldLabel);
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("syncPosition"), new GUIContent("Position"));
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("syncRotation"), new GUIContent("Rotation"));
-            EditorGUILayout.HelpBox("AtlasNet currently synchronizes whole position and rotation values, not individual axes or scale.", MessageType.None);
-            EditorGUILayout.Space();
-            EditorGUILayout.LabelField("Authority", EditorStyles.boldLabel);
-            if (serializedObject.FindProperty("syncPosition").boolValue)
-                EditorGUILayout.PropertyField(serializedObject.FindProperty("positionWriter"), new GUIContent("Position Writer"));
-            if (serializedObject.FindProperty("syncRotation").boolValue)
-                EditorGUILayout.PropertyField(serializedObject.FindProperty("rotationWriter"), new GUIContent("Rotation Writer"));
-            EditorGUILayout.Space();
-            EditorGUILayout.LabelField("Interpolation", EditorStyles.boldLabel);
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("interpolate"), new GUIContent("Interpolate Remote Copies"));
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("sendIntervalTicks"), new GUIContent("Send Interval (Ticks)"));
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("interpolationBufferTicks"), new GUIContent("Interpolation Buffer (Ticks)"));
+            var targetTransform = serializedObject.FindProperty("target");
+            var syncPosition = serializedObject.FindProperty("syncPosition");
+            var syncRotation = serializedObject.FindProperty("syncRotation");
+            var interpolate = serializedObject.FindProperty("interpolate");
+
+            using (new EditorGUI.DisabledGroupScope(EditorApplication.isPlayingOrWillChangePlaymode))
+            {
+                EditorGUILayout.PropertyField(targetTransform);
+                EditorGUILayout.PropertyField(serializedObject.FindProperty("inLocalSpace"));
+
+                EditorGUILayout.Space();
+                EditorGUILayout.LabelField("Synchronization", EditorStyles.boldLabel);
+                EditorGUILayout.PropertyField(syncPosition);
+                if (AnyEnabled(syncPosition))
+                    EditorGUILayout.PropertyField(serializedObject.FindProperty("positionWriter"));
+                EditorGUILayout.PropertyField(syncRotation);
+                if (AnyEnabled(syncRotation))
+                    EditorGUILayout.PropertyField(serializedObject.FindProperty("rotationWriter"));
+
+                EditorGUILayout.Space();
+                EditorGUILayout.PropertyField(interpolate, new GUIContent("Interpolate Remote Copies", interpolate.tooltip));
+                showTuning = EditorGUILayout.Foldout(showTuning, "Network Tuning", true);
+                if (showTuning)
+                {
+                    EditorGUI.indentLevel++;
+                    EditorGUILayout.PropertyField(serializedObject.FindProperty("sendIntervalTicks"));
+                    if (AnyEnabled(syncPosition))
+                        EditorGUILayout.PropertyField(serializedObject.FindProperty("positionThreshold"));
+                    if (AnyEnabled(syncRotation))
+                        EditorGUILayout.PropertyField(serializedObject.FindProperty("rotationThreshold"));
+                    if (AnyEnabled(interpolate))
+                    {
+                        EditorGUILayout.PropertyField(serializedObject.FindProperty("interpolationBufferTicks"));
+                        if (AnyEnabled(syncPosition))
+                        {
+                            var snap = serializedObject.FindProperty("snapOnLargeMove");
+                            EditorGUILayout.PropertyField(snap);
+                            if (AnyEnabled(snap))
+                                EditorGUILayout.PropertyField(serializedObject.FindProperty("snapDistance"));
+                        }
+                    }
+                    EditorGUI.indentLevel--;
+                }
+            }
+
             serializedObject.ApplyModifiedProperties();
+
+            if (!serializedObject.isEditingMultipleObjects)
+            {
+                var syncedTransform = targetTransform.objectReferenceValue as Transform;
+                if (syncedTransform == null) syncedTransform = ((NetworkTransform)target).transform;
+                if (syncedTransform.TryGetComponent<PredictedCharacterController>(out _))
+                    EditorGUILayout.HelpBox("PredictedCharacterController already synchronizes this transform. Remove NetworkTransform or choose a different target.", MessageType.Warning);
+            }
         }
+
+        private static bool AnyEnabled(SerializedProperty property) => property.boolValue || property.hasMultipleDifferentValues;
     }
 
     [CustomEditor(typeof(NetworkAnimator))]

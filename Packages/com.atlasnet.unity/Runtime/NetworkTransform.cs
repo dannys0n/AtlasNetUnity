@@ -8,66 +8,95 @@ namespace AtlasNet
     [AddComponentMenu("AtlasNet/Network Transform")]
     public sealed class NetworkTransform : NetworkBehaviour
     {
-        [SerializeField] private Transform target;
+        [SerializeField, Tooltip("Defaults to this object's Transform.")]
+        private Transform target;
+        [SerializeField, Tooltip("Sync relative to the parent. The target hierarchy must match on all peers.")]
+        private bool inLocalSpace;
         [SerializeField] private bool syncPosition = true;
         [SerializeField] private bool syncRotation = true;
         [SerializeField] private TransformWriter positionWriter = TransformWriter.Server;
         [SerializeField] private TransformWriter rotationWriter = TransformWriter.Owner;
-        [SerializeField, Tooltip("Buffer and interpolate remote client copies. The owner and server never smooth their simulation transform.")]
-        private bool interpolate = true;
-        [SerializeField, Range(1,30), Tooltip("Send changed transforms once per this many network ticks. Remote interpolation accounts for this interval.")]
+        [SerializeField, Range(1, 30), Tooltip("Check for changes once per this many network ticks.")]
         private int sendIntervalTicks = 1;
-        public int SendIntervalTicks => Mathf.Max(1,sendIntervalTicks);
-        private Vector3 lastPosition;
-        private Quaternion lastRotation;
-        [SerializeField, Min(1), Tooltip("Buffered display delay in network ticks for joined clients. Low send rates use at least two send intervals.")]
+        [SerializeField, Min(0), Tooltip("Minimum position change since the last position sent, in units of the chosen space.")]
+        private float positionThreshold = 0.001f;
+        [SerializeField, Min(0), Tooltip("Minimum rotation change since the last rotation sent, in degrees.")]
+        private float rotationThreshold = 0.1f;
+        [SerializeField, Tooltip("Buffer pose channels received from another writer on joined clients.")]
+        private bool interpolate = true;
+        [SerializeField, Min(1), Tooltip("Display delay in network ticks. The effective delay is at least two send intervals.")]
         private int interpolationBufferTicks = 3;
+        [SerializeField, Tooltip("Apply large position changes immediately instead of interpolating across them.")]
+        private bool snapOnLargeMove;
+        [SerializeField, Min(0), Tooltip("Distance between consecutive received positions, in units of the chosen space.")]
+        private float snapDistance = 5f;
+
+        private Vector3 lastSentPosition;
+        private Quaternion lastSentRotation;
+        private Vector3 lastReceivedPosition;
         private readonly BufferedInterpolator<Vector3> positions = new(Vector3.Lerp);
         private readonly BufferedInterpolator<Quaternion> rotations = new(Quaternion.Slerp);
         private bool positionBuffered, rotationBuffered;
 
+        public int SendIntervalTicks => Mathf.Max(1, sendIntervalTicks);
         public TransformWriter PositionWriter => positionWriter;
         public TransformWriter RotationWriter => rotationWriter;
         internal bool SyncPosition => syncPosition;
         internal bool SyncRotation => syncRotation;
         internal Transform Target => target != null ? target : transform;
 
-        public override void OnNetworkSpawn()
+        private Vector3 Position
         {
-            if (target == null) target = transform;
-            lastPosition = target.position;
-            lastRotation = target.rotation;
-            positions.Reset(Time.unscaledTimeAsDouble, lastPosition);
-            rotations.Reset(Time.unscaledTimeAsDouble, lastRotation);
-            positionBuffered = rotationBuffered = false;
+            get => inLocalSpace ? Target.localPosition : Target.position;
+            set
+            {
+                if (inLocalSpace) Target.localPosition = value;
+                else Target.position = value;
+            }
         }
+
+        private Quaternion Rotation
+        {
+            get => inLocalSpace ? Target.localRotation : Target.rotation;
+            set
+            {
+                if (inLocalSpace) Target.localRotation = value;
+                else Target.rotation = value;
+            }
+        }
+
+        public override void OnNetworkSpawn() => ResetPose();
 
         private void Update()
         {
             if (!IsSpawned || NetworkManager.IsServer || !interpolate) return;
             double displayTime = Time.unscaledTimeAsDouble -
                 (double)Mathf.Max(interpolationBufferTicks, SendIntervalTicks * 2) / NetworkManager.TickRate;
-            if (positionBuffered) target.position = positions.Evaluate(displayTime);
-            if (rotationBuffered) target.rotation = rotations.Evaluate(displayTime);
+            if (positionBuffered) Position = positions.Evaluate(displayTime);
+            if (rotationBuffered) Rotation = rotations.Evaluate(displayTime);
         }
 
         public override void OnNetworkTick()
         {
-            if(NetworkManager.Tick % (uint)SendIntervalTicks != 0)return;
-            bool writePosition = syncPosition && (HasAuthority
-                ? positionWriter == TransformWriter.Server || (positionWriter == TransformWriter.Owner && IsOwner)
-                : positionWriter == TransformWriter.Owner && IsOwner);
-            bool writeRotation = syncRotation && (HasAuthority
-                ? rotationWriter == TransformWriter.Server || (rotationWriter == TransformWriter.Owner && IsOwner)
-                : rotationWriter == TransformWriter.Owner && IsOwner);
+            if (NetworkManager.Tick % (uint)SendIntervalTicks != 0) return;
+            Vector3 position = Position;
+            Quaternion rotation = Rotation;
+            float distance = Mathf.Max(0, positionThreshold);
             byte flags = 0;
-            if (writePosition && (target.position - lastPosition).sqrMagnitude > 0.000001f) flags |= 1;
-            if (writeRotation && Quaternion.Angle(target.rotation, lastRotation) > 0.1f) flags |= 2;
-            if (flags == 0) return;
-            lastPosition = target.position;
-            lastRotation = target.rotation;
-            NetworkObject.Manager.SendTransform(this, flags, target.position, target.rotation);
+            if (syncPosition && CanWrite(positionWriter) && (position - lastSentPosition).sqrMagnitude > distance * distance)
+            {
+                flags |= 1;
+                lastSentPosition = position;
+            }
+            if (syncRotation && CanWrite(rotationWriter) && Quaternion.Angle(rotation, lastSentRotation) > Mathf.Max(0, rotationThreshold))
+            {
+                flags |= 2;
+                lastSentRotation = rotation;
+            }
+            if (flags != 0) NetworkObject.Manager.SendTransform(this, flags, position, rotation);
         }
+
+        private bool CanWrite(TransformWriter writer) => writer == TransformWriter.Owner ? IsOwner : HasAuthority;
 
         internal bool AcceptOwnerState(SessionId sender, byte flags, Vector3 position, Quaternion rotation)
         {
@@ -76,48 +105,64 @@ namespace AtlasNet
             if ((flags & 2) != 0 && rotationWriter != TransformWriter.Owner) return false;
             if ((flags & 1) != 0 && !syncPosition) return false;
             if ((flags & 2) != 0 && !syncRotation) return false;
-            if ((flags & 1) != 0) target.position = position;
-            if ((flags & 2) != 0) target.rotation = rotation;
+            if ((flags & 1) != 0) Position = position;
+            if ((flags & 2) != 0) Rotation = rotation;
             return true;
         }
 
         internal void AcceptServerState(byte flags, Vector3 position, Quaternion rotation)
         {
-            if ((flags & 1) != 0 && !(IsOwner && positionWriter == TransformWriter.Owner))
+            bool applyPosition = (flags & 1) != 0 && !(IsOwner && positionWriter == TransformWriter.Owner);
+            bool applyRotation = (flags & 2) != 0 && !(IsOwner && rotationWriter == TransformWriter.Owner);
+            bool buffer = interpolate && !NetworkManager.IsServer;
+            float distance = Mathf.Max(0, snapDistance);
+            bool snap = buffer && applyPosition && snapOnLargeMove &&
+                (position - lastReceivedPosition).sqrMagnitude > distance * distance;
+            double now = Time.unscaledTimeAsDouble;
+
+            if (applyPosition)
             {
-                if (interpolate && !NetworkManager.IsServer)
+                lastReceivedPosition = position;
+                positionBuffered = buffer && !snap;
+                if (positionBuffered) positions.Add(now, position);
+                else
                 {
-                    positions.Add(Time.unscaledTimeAsDouble, position);
-                    positionBuffered = true;
+                    Position = position;
+                    positions.Reset(now, position);
                 }
-                else target.position = position;
             }
-            if ((flags & 2) != 0 && !(IsOwner && rotationWriter == TransformWriter.Owner))
+            if (applyRotation)
             {
-                if (interpolate && !NetworkManager.IsServer)
+                rotationBuffered = buffer && !snap;
+                if (rotationBuffered) rotations.Add(now, rotation);
+                else
                 {
-                    rotations.Add(Time.unscaledTimeAsDouble, rotation);
-                    rotationBuffered = true;
+                    Rotation = rotation;
+                    rotations.Reset(now, rotation);
                 }
-                else target.rotation = rotation;
             }
         }
 
         protected override void WriteExtraSnapshot(NetWriter writer)
         {
-            writer.Write(target.position);
-            writer.Write(target.rotation);
+            writer.Write(Position);
+            writer.Write(Rotation);
         }
 
         protected override void ReadExtraSnapshot(NetReader reader)
         {
-            if (target == null) target = transform;
-            target.position = reader.ReadVector3();
-            target.rotation = reader.ReadQuaternion();
-            lastPosition = target.position;
-            lastRotation = target.rotation;
-            positions.Reset(Time.unscaledTimeAsDouble, lastPosition);
-            rotations.Reset(Time.unscaledTimeAsDouble, lastRotation);
+            Position = reader.ReadVector3();
+            Rotation = reader.ReadQuaternion();
+            ResetPose();
+        }
+
+        private void ResetPose()
+        {
+            lastSentPosition = lastReceivedPosition = Position;
+            lastSentRotation = Rotation;
+            double now = Time.unscaledTimeAsDouble;
+            positions.Reset(now, lastSentPosition);
+            rotations.Reset(now, lastSentRotation);
             positionBuffered = rotationBuffered = false;
         }
 
@@ -127,8 +172,8 @@ namespace AtlasNet
             if (syncPosition && positionWriter == TransformWriter.Owner) flags |= 1;
             if (syncRotation && rotationWriter == TransformWriter.Owner) flags |= 2;
             writer.Write(flags);
-            if ((flags & 1) != 0) writer.Write(Target.position);
-            if ((flags & 2) != 0) writer.Write(Target.rotation);
+            if ((flags & 1) != 0) writer.Write(Position);
+            if ((flags & 2) != 0) writer.Write(Rotation);
         }
 
         internal override void ReadExtraOwnerState(NetReader reader)
@@ -138,19 +183,18 @@ namespace AtlasNet
             if (syncPosition && positionWriter == TransformWriter.Owner) expected |= 1;
             if (syncRotation && rotationWriter == TransformWriter.Owner) expected |= 2;
             if (flags != expected) throw new System.InvalidOperationException("Owner transform channels differ across workers");
-            if (target == null) target = transform;
             if ((flags & 1) != 0)
             {
-                target.position = reader.ReadVector3();
-                lastPosition = target.position;
-                positions.Reset(Time.unscaledTimeAsDouble, lastPosition);
+                Position = reader.ReadVector3();
+                lastSentPosition = lastReceivedPosition = Position;
+                positions.Reset(Time.unscaledTimeAsDouble, lastSentPosition);
                 positionBuffered = false;
             }
             if ((flags & 2) != 0)
             {
-                target.rotation = reader.ReadQuaternion();
-                lastRotation = target.rotation;
-                rotations.Reset(Time.unscaledTimeAsDouble, lastRotation);
+                Rotation = reader.ReadQuaternion();
+                lastSentRotation = Rotation;
+                rotations.Reset(Time.unscaledTimeAsDouble, lastSentRotation);
                 rotationBuffered = false;
             }
         }

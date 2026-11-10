@@ -47,22 +47,64 @@ namespace AtlasNetDemo.Tests
         public void AllShowcasesHaveNoPrivateProjectDependenciesOrMissingScripts()
         {
             var scenes = AssetDatabase.FindAssets("t:Scene", new[] { Root }).Select(AssetDatabase.GUIDToAssetPath).ToArray();
-            Assert.AreEqual(8, scenes.Length);
+            Assert.AreEqual(11, scenes.Length);
             foreach (var path in scenes)
             {
                 var external = AssetDatabase.GetDependencies(path, true).Where(p => p.StartsWith("Assets/") && !p.StartsWith(Root) && !p.StartsWith("Assets/TextMesh Pro/")).ToArray();
                 Assert.IsEmpty(external, path);
-                var scene = EditorSceneManager.OpenScene(path);
-                var config = new SerializedObject(Object.FindAnyObjectByType<NetworkManager>());
-                Assert.IsNotNull(config.FindProperty("localPartitionCenter").objectReferenceValue, path);
-                Assert.Greater(config.FindProperty("localRegionDebugExtent").floatValue, 0, path);
-                var overlay = config.targetObject is NetworkManager manager ? manager.GetComponent("ClientBoundaryOverlay") : null;
-                Assert.IsNotNull(overlay, path);
-                var overlayData = new SerializedObject(overlay);
-                Assert.IsNotNull(overlayData.FindProperty("wallMaterial").objectReferenceValue, path);
-                Assert.IsTrue(overlayData.FindProperty("showBoundaries").boolValue, path);
-                foreach (var go in scene.GetRootGameObjects().SelectMany(g => g.GetComponentsInChildren<Transform>(true)))
-                    Assert.AreEqual(0, GameObjectUtility.GetMonoBehavioursWithMissingScriptCount(go.gameObject), path + ": " + go.name);
+                var scene = UnityEngine.SceneManagement.SceneManager.GetSceneByPath(path);
+                bool alreadyOpen = scene.IsValid() && scene.isLoaded;
+                if (!alreadyOpen) scene = EditorSceneManager.OpenScene(path, OpenSceneMode.Additive);
+                try
+                {
+                    var roots = scene.GetRootGameObjects();
+                    var manager = roots.SelectMany(root => root.GetComponentsInChildren<NetworkManager>(true)).Single();
+                    var config = new SerializedObject(manager);
+                    Assert.IsNotNull(config.FindProperty("localPartitionCenter").objectReferenceValue, path);
+                    Assert.Greater(config.FindProperty("localRegionDebugExtent").floatValue, 0, path);
+                    var overlay = manager.GetComponent("ClientBoundaryOverlay");
+                    Assert.IsNotNull(overlay, path);
+                    var overlayData = new SerializedObject(overlay);
+                    Assert.IsNotNull(overlayData.FindProperty("wallMaterial").objectReferenceValue, path);
+                    Assert.IsTrue(overlayData.FindProperty("showBoundaries").boolValue, path);
+                    if (path.EndsWith("/09_ClientPrediction.unity") || path.EndsWith("/09_CustomPrediction.unity") ||
+                        path.EndsWith("/10_PredictedSoccer.unity"))
+                    {
+                        Assert.DoesNotThrow(manager.ValidateRegistry);
+                        var predictionType = System.IO.Path.GetFileNameWithoutExtension(path) switch
+                        {
+                            "09_CustomPrediction" => "PredictedDashController",
+                            "10_PredictedSoccer" => "PredictedSoccerMotor",
+                            _ => "PredictedCharacterController"
+                        };
+                        Assert.IsNull(manager.PlayerPrefab.GetComponent<NetworkTransform>(), path);
+                        var prediction = manager.PlayerPrefab.GetComponent(predictionType);
+                        Assert.IsNotNull(prediction, path);
+                        var visualRoot = new SerializedObject(prediction).FindProperty("visualRoot").objectReferenceValue;
+                        Assert.IsNotNull(visualRoot, path);
+                        if (predictionType == "PredictedSoccerMotor")
+                        {
+                            var marker = manager.PlayerPrefab.GetComponent("SampleOwnerMarker");
+                            Assert.IsNotNull(marker, path);
+                            Assert.AreSame(visualRoot, new SerializedObject(marker).FindProperty("visualAnchor").objectReferenceValue, path);
+                        }
+                        Assert.AreSame(manager, overlayData.FindProperty("manager").objectReferenceValue);
+                        var region = manager.GetComponent("ScaleRegionOverlay");
+                        Assert.IsNotNull(region, path);
+                        var regionData = new SerializedObject(region);
+                        Assert.AreSame(manager, regionData.FindProperty("manager").objectReferenceValue);
+                        Assert.IsInstanceOf<MeshFilter>(regionData.FindProperty("regionMeshFilter").objectReferenceValue);
+                        var renderer = regionData.FindProperty("regionRenderer").objectReferenceValue as MeshRenderer;
+                        Assert.IsNotNull(renderer);
+                        Assert.IsNotNull(renderer.sharedMaterial);
+                    }
+                    foreach (var go in roots.SelectMany(g => g.GetComponentsInChildren<Transform>(true)))
+                        Assert.AreEqual(0, GameObjectUtility.GetMonoBehavioursWithMissingScriptCount(go.gameObject), path + ": " + go.name);
+                }
+                finally
+                {
+                    if (!alreadyOpen) EditorSceneManager.CloseScene(scene, true);
+                }
             }
         }
     }

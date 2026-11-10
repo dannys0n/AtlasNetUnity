@@ -24,8 +24,22 @@ namespace AtlasNetDemo.Tests
         static IEnumerator Run(bool host)
         {
             const string root="Assets/Samples/AtlasNet Unity/0.1.0/00 Shared/Prefabs/";
-            var prefab=AssetDatabase.LoadAssetAtPath<GameObject>(root+"ClientPhysicsPlayer.prefab").GetComponent<NetworkObject>();
-            var list=AssetDatabase.LoadAssetAtPath<NetworkPrefabsList>(root+"ClientPhysicsPlayerNetworkPrefabs.asset");
+            // Spawn callbacks can enable an owner's camera before the next test frame.
+            // Strip view references from the test template before any replicas are created.
+            var source = AssetDatabase.LoadAssetAtPath<GameObject>(root + "ClientPhysicsPlayer.prefab");
+            var staging = new GameObject("Owner physics template staging");
+            staging.SetActive(false);
+            var template = Object.Instantiate(source, staging.transform);
+            foreach (var camera in template.GetComponentsInChildren<Camera>(true)) camera.enabled = false;
+            foreach (var listener in template.GetComponentsInChildren<AudioListener>(true)) listener.enabled = false;
+            Set(template.GetComponent("SimpleLook"), "playerCamera", null);
+            template.transform.SetPositionAndRotation(new Vector3(10000, 2, 0), Quaternion.identity);
+            template.transform.SetParent(null, true);
+            Object.DestroyImmediate(staging);
+            var prefab = template.GetComponent<NetworkObject>();
+            Set(prefab, "prefabId", "owner-physics-test-player");
+            var list = ScriptableObject.CreateInstance<NetworkPrefabsList>();
+            Set(list, "prefabs", new List<NetworkObject> { prefab });
             NetworkManager Create(string name,ClientTransport kind=ClientTransport.Udp)
             {
                 var m=new GameObject(name).AddComponent<NetworkManager>();Set(m,"playerPrefab",prefab);Set(m,"networkPrefabsLists",new[]{list});
@@ -105,6 +119,8 @@ namespace AtlasNetDemo.Tests
             {
                 web.Stop();udp.Stop();worker.Stop();server.Stop();
                 foreach(var m in managers)Object.DestroyImmediate(m.gameObject);
+                Object.DestroyImmediate(template);
+                Object.DestroyImmediate(list);
                 foreach(var scene in scenes)unloading.Add(SceneManager.UnloadSceneAsync(scene));
             }
         }

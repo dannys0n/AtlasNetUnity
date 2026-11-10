@@ -55,18 +55,23 @@ namespace AtlasNetDemo.Tests
                 while ((!late.IsConnectedClient || late.SpawnedCount != 2) && Time.realtimeSinceStartup < deadline) yield return null;
                 Assert.IsTrue(late.IsConnectedClient);
                 var remote = late.SpawnedObjects.Single(o => o.EntityId == local.EntityId);
-                Assert.AreEqual(1f, remote.GetComponent<Animator>().GetFloat("Speed"), .001f);
+                var remoteAnimator = remote.GetComponent<Animator>();
+                Assert.AreEqual(1f, remoteAnimator.GetFloat("Speed"), .001f);
                 Assert.Less(Vector3.Distance(local.transform.position, remote.transform.position), .1f);
                 yield return new WaitForSeconds(.2f);
-                Assert.IsTrue(remote.GetComponent<Animator>().GetCurrentAnimatorStateInfo(0).IsName("Walk"));
+                Assert.IsTrue(remoteAnimator.GetCurrentAnimatorStateInfo(0).IsName("Walk"));
+
+                int waveLayer = remoteAnimator.GetLayerIndex("Wave overlay");
+                Assert.GreaterOrEqual(waveLayer, 0);
                 local.GetComponent<NetworkAnimator>().SetTrigger("Wave");
-                bool observed = false; deadline = Time.realtimeSinceStartup + 2;
-                while (Time.realtimeSinceStartup < deadline)
-                {
-                    if (remote.GetComponent<Animator>().GetCurrentAnimatorStateInfo(0).IsName("Wave")) { observed = true; break; }
+                deadline = Time.realtimeSinceStartup + 2;
+                while (!remoteAnimator.GetCurrentAnimatorStateInfo(waveLayer).IsName("Wave") &&
+                    Time.realtimeSinceStartup < deadline)
                     yield return null;
-                }
-                Assert.IsTrue(observed, "A connected observer must see the network trigger.");
+                Assert.IsTrue(remoteAnimator.GetCurrentAnimatorStateInfo(waveLayer).IsName("Wave"),
+                    "A connected observer must see the network trigger on the wave overlay.");
+                Assert.IsTrue(remoteAnimator.GetCurrentAnimatorStateInfo(0).IsName("Walk"),
+                    "The wave overlay must preserve locomotion.");
             }
             finally
             {
