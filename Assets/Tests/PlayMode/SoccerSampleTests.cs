@@ -210,7 +210,9 @@ namespace AtlasNetDemo.Tests
             Assert.IsNull(player.GetComponent<Rigidbody>());
             Assert.IsNotNull(player.GetComponent<CharacterController>());
 
+            int port = TestPorts.FindAvailablePort();
             var transport = ScriptableObject.CreateInstance<DelayedPredictionTransport>();
+            transport.WorkerCommitDelaySeconds = .35f;
             NetworkManager Create(string name)
             {
                 var manager = new GameObject(name).AddComponent<NetworkManager>();
@@ -219,7 +221,7 @@ namespace AtlasNetDemo.Tests
                 Set(manager, "automaticLocalHandoffs", true);
                 Set(manager, "localBoundaryMargin", .05f);
                 Set(manager, "transportProvider", transport);
-                manager.ConfigureConnection("127.0.0.1", 17946, ClientTransport.Udp);
+                manager.ConfigureConnection("127.0.0.1", port, ClientTransport.Udp);
                 return manager;
             }
 
@@ -283,6 +285,32 @@ namespace AtlasNetDemo.Tests
                 yield return Until(() => worker.TryGet(ball.EntityId, out var replica) && replica.HasAuthority &&
                     client.TryGet(ball.EntityId, out _), "ball is authoritative on the second worker");
                 var ballBody = worker.SpawnedObjects.Single(o => o.EntityId == ball.EntityId).GetComponent<Rigidbody>();
+                Assert.IsTrue(client.TryGet(ball.EntityId, out var localBall));
+                var controller = local.GetComponent<CharacterController>();
+                var original = new Pose(local.transform.position, local.transform.rotation);
+                Vector3 contactStart = localBall.transform.position - new Vector3(1.85f, .2f, 0f);
+                void PlacePlayer(Pose pose)
+                {
+                    controller.enabled = false;
+                    local.transform.SetPositionAndRotation(pose.position, pose.rotation);
+                    controller.enabled = true;
+                    Physics.SyncTransforms();
+                }
+                try
+                {
+                    PlacePlayer(new Pose(contactStart, original.rotation));
+                    var inputType = motor.GetType().GetNestedType("Input");
+                    object input = Activator.CreateInstance(inputType);
+                    inputType.GetField("Move").SetValue(input, Vector2.right);
+                    motor.GetType().GetMethod("Simulate", BindingFlags.Instance | BindingFlags.NonPublic)
+                        .Invoke(motor, new[] { input, (object)(1f / 16f) });
+                    Assert.That(local.transform.position.x - contactStart.x, Is.LessThan(.85f),
+                        "The horizontal move must contact the ball.");
+                    Assert.That(local.transform.position.y, Is.EqualTo(contactStart.y).Within(.001f),
+                        "Ball contact must not push the predicted player up.");
+                }
+                finally { PlacePlayer(original); }
+
                 uint epoch = local.AuthorityEpoch;
                 Drive(Vector2.right);
                 yield return Until(() => local.transform.position.x > -4.7f, "owner predicts movement");
@@ -302,6 +330,8 @@ namespace AtlasNetDemo.Tests
                     Vector3.Distance(local.transform.position, authority.transform.position) < .1f,
                     "owner reconciles to the worker collision");
                 Assert.Less(local.transform.position.x, 8f);
+                Assert.Greater(transport.AuthorityRpcsBeforeCommit, 0,
+                    "The test must deliver an authority RPC for the new epoch before the worker commit.");
                 LogAssert.NoUnexpectedReceived();
             }
             finally

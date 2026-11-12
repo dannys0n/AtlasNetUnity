@@ -8,6 +8,7 @@ namespace AtlasNet
     /// <summary>Simulates 3D physics on the NetworkTransform writer; other copies are kinematic.</summary>
     [AddComponentMenu("AtlasNet/Network Rigidbody")]
     [DisallowMultipleComponent]
+    [RequireComponent(typeof(NetworkObject), typeof(Rigidbody), typeof(NetworkTransform))]
     public sealed class NetworkRigidbody : NetworkBehaviour
     {
         private Rigidbody body;
@@ -15,8 +16,10 @@ namespace AtlasNet
         private bool initialized, simulating;
         private bool initialKinematic;
         private RigidbodyInterpolation initialInterpolation;
-        [SerializeField, Min(0)] private float maxRemotePushSpeed = 3f;
-        [SerializeField, Min(0)] private float maxRemotePushForce = 30f;
+        [SerializeField, Min(0), Tooltip("Maximum requested push speed across server workers, in units per second.")]
+        private float maxRemotePushSpeed = 3f;
+        [SerializeField, Min(0), Tooltip("Maximum force contributed by an individual push across server workers.")]
+        private float maxRemotePushForce = 30f;
         private readonly Dictionary<NetworkRigidbody, (uint Epoch, Vector3 Velocity)> pushes = new();
         private readonly List<(Collider Local, Collider Remote)> ignoredPushers = new();
         private readonly List<Collider> bodyColliders = new();

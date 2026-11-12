@@ -192,6 +192,64 @@ namespace AtlasNet.Editor
         private static bool AnyEnabled(SerializedProperty property) => property.boolValue || property.hasMultipleDifferentValues;
     }
 
+    [CustomEditor(typeof(NetworkRigidbody))]
+    [CanEditMultipleObjects]
+    internal sealed class NetworkRigidbodyEditor : UnityEditor.Editor
+    {
+        private bool showAdvanced;
+
+        public override void OnInspectorGUI()
+        {
+            if (targets.Length == 1)
+                DrawPoseSetup((NetworkRigidbody)target);
+
+            serializedObject.Update();
+            showAdvanced = EditorGUILayout.Foldout(showAdvanced, "Advanced", true);
+            if (showAdvanced)
+            {
+                using (new EditorGUI.IndentLevelScope())
+                {
+                    EditorGUILayout.PropertyField(serializedObject.FindProperty("maxRemotePushSpeed"));
+                    EditorGUILayout.PropertyField(serializedObject.FindProperty("maxRemotePushForce"));
+                }
+            }
+            serializedObject.ApplyModifiedProperties();
+        }
+
+        private static void DrawPoseSetup(NetworkRigidbody body)
+        {
+            var networkTransform = body.GetComponent<NetworkTransform>();
+            if (networkTransform == null || body.GetComponent<Rigidbody>() == null || body.GetComponent<NetworkObject>() == null)
+            {
+                EditorGUILayout.HelpBox("Add a Rigidbody, NetworkObject, and NetworkTransform to this GameObject.", MessageType.Warning);
+                return;
+            }
+
+            var settings = new SerializedObject(networkTransform);
+            var poseTarget = settings.FindProperty("target");
+            var syncPosition = settings.FindProperty("syncPosition");
+            var syncRotation = settings.FindProperty("syncRotation");
+            var positionWriter = settings.FindProperty("positionWriter");
+            var rotationWriter = settings.FindProperty("rotationWriter");
+            if (syncPosition.boolValue && syncRotation.boolValue &&
+                positionWriter.intValue == rotationWriter.intValue &&
+                (poseTarget.objectReferenceValue == null || poseTarget.objectReferenceValue == body.transform))
+                return;
+
+            EditorGUILayout.HelpBox("Sync this GameObject's position and rotation with the same writer in NetworkTransform.", MessageType.Warning);
+            using (new EditorGUI.DisabledGroupScope(EditorApplication.isPlayingOrWillChangePlaymode))
+            {
+                if (!GUILayout.Button("Configure NetworkTransform for Rigidbody")) return;
+
+                poseTarget.objectReferenceValue = null;
+                syncPosition.boolValue = true;
+                syncRotation.boolValue = true;
+                rotationWriter.intValue = positionWriter.intValue;
+                settings.ApplyModifiedProperties();
+            }
+        }
+    }
+
     [CustomEditor(typeof(NetworkAnimator))]
     [CanEditMultipleObjects]
     internal sealed class NetworkAnimatorEditor : UnityEditor.Editor

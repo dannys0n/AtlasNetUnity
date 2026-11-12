@@ -60,21 +60,7 @@ namespace AtlasNetDemo.Tests
                 Set(ordinaryTemplate.AddComponent<NetworkTransform>(), "rotationWriter", TransformWriter.Server);
                 list = ScriptableObject.CreateInstance<NetworkPrefabsList>();
                 Set(list, "prefabs", new List<NetworkObject> { Prefab, OrdinaryPrefab });
-                // Probe both protocols in the test port range. Windows may reserve
-                // its ephemeral ranges differently for UDP and TCP.
-                int port = 0;
-                for (int candidate = 17879; candidate < 17979 && port == 0; candidate++)
-                {
-                    var tcp = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Any, candidate);
-                    try
-                    {
-                        using var udp = new System.Net.Sockets.UdpClient(candidate);
-                        tcp.Start(); port = candidate;
-                    }
-                    catch (System.Net.Sockets.SocketException) { }
-                    finally { tcp.Stop(); }
-                }
-                if (port == 0) throw new InvalidOperationException("No free UDP + WebSocket test port.");
+                int port = TestPorts.FindAvailablePort();
                 NetworkManager Create(string name)
                 {
                     var m = new GameObject(name).AddComponent<NetworkManager>();
@@ -185,6 +171,22 @@ namespace AtlasNetDemo.Tests
             var sender = new SessionId(world.Worker.LocalWorkerId);
             var backend = typeof(NetworkManager).GetField("backend", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(world.Server);
             var receive = backend.GetType().GetMethod("ReceiveWorkerTransform", BindingFlags.Instance | BindingFlags.NonPublic);
+            var receiveRpc = backend.GetType().GetMethod("ReceiveWorkerOutboundRpc", BindingFlags.Instance | BindingFlags.NonPublic);
+            void DeliverRpc(SessionId session, uint generation)
+            {
+                using var writer = new NetWriter();
+                writer.Write(id);
+                writer.Write(generation);
+                writer.WriteBytes(Array.Empty<byte>());
+                using var reader = new NetReader(writer.ToArray());
+                receiveRpc.Invoke(backend, new object[] { session, reader });
+            }
+
+            Assert.Greater(epoch, 0u);
+            Assert.DoesNotThrow(() => DeliverRpc(sender, epoch - 1), "An expired worker RPC must be dropped before dispatch.");
+            Assert.Throws<TargetInvocationException>(() => DeliverRpc(world.Client.LocalSession, epoch - 1));
+            Assert.Throws<TargetInvocationException>(() => DeliverRpc(sender, epoch + 1));
+
             Assert.IsTrue(world.Server.TryDespawn(id));
             Assert.IsFalse(world.Server.TryDespawn(id), "Repeated despawn is idempotent");
             void Deliver(EntityId entity, SessionId session, uint generation)

@@ -325,53 +325,124 @@ namespace AtlasNetDemo.Tests
         }
     }
 
+    internal static class TestPorts
+    {
+        internal static int FindAvailablePort()
+        {
+            for (int attempt = 0; attempt < 10; attempt++)
+            {
+                using var udp = new System.Net.Sockets.UdpClient(0);
+                var endpoint = (System.Net.IPEndPoint)udp.Client.LocalEndPoint;
+                var tcp = new System.Net.Sockets.TcpListener(endpoint);
+                try
+                {
+                    tcp.Start();
+                    return endpoint.Port;
+                }
+                catch (System.Net.Sockets.SocketException) { }
+                finally { tcp.Stop(); }
+            }
+
+            throw new InvalidOperationException("Could not find a port available for both test listeners.");
+        }
+    }
+
     // Delay and drop the sequenced datagrams while keeping the real loopback connection and handshake.
     public sealed class DelayedPredictionTransport : NetworkTransportProvider
     {
         public int Dropped { get; private set; }
+        public float WorkerCommitDelaySeconds { get; set; }
+        public int AuthorityRpcsBeforeCommit { get; private set; }
+
+        private static readonly Type PacketType = typeof(NetworkManager).Assembly.GetType("AtlasNet.LocalWorldBackend+Packet", true);
+        private static readonly byte WorkerCommit = Convert.ToByte(Enum.Parse(PacketType, "WorkerCommit"));
+        private static readonly byte WorkerAuthorityRpc = Convert.ToByte(Enum.Parse(PacketType, "WorkerAuthorityRpc"));
 
         public override IMessageTransport CreateTransport(NetworkManager runtime, bool server)
         {
             var type = typeof(NetworkManager).Assembly.GetType("AtlasNet.UnityMessageTransport", true);
             var inner = (IMessageTransport)Activator.CreateInstance(type, server, runtime.Address,
                 runtime.Port, runtime.ListenAddress, ClientTransport.Udp, 0, 30000, 30000);
-            return new DelayedLink(inner, () => Dropped++);
+            return new DelayedLink(inner, this);
         }
 
         private sealed class DelayedLink : IMessageTransport
         {
             private readonly IMessageTransport inner;
-            private readonly Action onDrop;
+            private readonly DelayedPredictionTransport settings;
             private readonly Queue<(double Due, Action Send)> pending = new();
+            private readonly Queue<(double Due, SessionId Sender, byte[] Bytes, AtlasNet.EntityId Entity, uint Epoch)> commits = new();
             private int packets;
 
-            public DelayedLink(IMessageTransport inner, Action onDrop)
+            public DelayedLink(IMessageTransport inner, DelayedPredictionTransport settings)
             {
                 this.inner = inner;
-                this.onDrop = onDrop;
+                this.settings = settings;
+                inner.Received += Receive;
             }
 
             public event Action<SessionId> Connected { add => inner.Connected += value; remove => inner.Connected -= value; }
             public event Action<SessionId> Disconnected { add => inner.Disconnected += value; remove => inner.Disconnected -= value; }
-            public event Action<SessionId, byte[]> Received { add => inner.Received += value; remove => inner.Received -= value; }
+            public event Action<SessionId, byte[]> Received;
             public int PeerCount => inner.PeerCount;
             public IEnumerable<SessionId> Sessions => inner.Sessions;
             public long BytesSent => inner.BytesSent;
             public TransportCapabilities Capabilities(SessionId peer) => inner.Capabilities(peer);
             public void Disconnect(SessionId peer) => inner.Disconnect(peer);
-            public void Dispose() { pending.Clear(); inner.Dispose(); }
+            public void Dispose()
+            {
+                pending.Clear();
+                commits.Clear();
+                inner.Received -= Receive;
+                inner.Dispose();
+            }
+
+            private void Receive(SessionId sender, byte[] bytes)
+            {
+                if (settings.WorkerCommitDelaySeconds > 0 && bytes.Length > 0)
+                {
+                    using var reader = new NetReader(bytes);
+                    byte kind = reader.ReadByte();
+                    if (kind == WorkerCommit)
+                    {
+                        var entity = reader.ReadEntityId();
+                        reader.ReadULong();
+                        uint epoch = reader.ReadUInt();
+                        commits.Enqueue((Time.realtimeSinceStartupAsDouble + settings.WorkerCommitDelaySeconds,
+                            sender, bytes, entity, epoch));
+                        return;
+                    }
+                    if (kind == WorkerAuthorityRpc)
+                    {
+                        var entity = reader.ReadEntityId();
+                        uint epoch = reader.ReadUInt();
+                        foreach (var commit in commits)
+                        {
+                            if (commit.Entity != entity || commit.Epoch != epoch) continue;
+                            settings.AuthorityRpcsBeforeCommit++;
+                            break;
+                        }
+                    }
+                }
+                Received?.Invoke(sender, bytes);
+            }
 
             public void Poll()
             {
                 double now = Time.realtimeSinceStartupAsDouble;
                 while (pending.Count > 0 && pending.Peek().Due <= now) pending.Dequeue().Send();
+                while (commits.Count > 0 && commits.Peek().Due <= now)
+                {
+                    var commit = commits.Dequeue();
+                    Received?.Invoke(commit.Sender, commit.Bytes);
+                }
                 inner.Poll();
             }
 
             private void Send(NetworkDelivery delivery, Action send)
             {
                 if (delivery == NetworkDelivery.ReliableOrdered) { send(); return; }
-                if (++packets % 5 == 0) { onDrop(); return; }
+                if (++packets % 5 == 0) { settings.Dropped++; return; }
                 pending.Enqueue((Time.realtimeSinceStartupAsDouble + .16, send));
             }
 

@@ -1155,6 +1155,7 @@ namespace AtlasNet
             if (hasOwnerState) ApplyOwnerState(obj, ownerState);
             pendingHandoffs.Remove(id);
             obj.SetSimulationAuthority(worker, epoch);
+            if (worker == localWorkerId) FlushAuthorityRpcs(id, worker);
         }
 
         private void ReceiveWorkerAbort(NetReader reader)
@@ -1164,6 +1165,7 @@ namespace AtlasNet
             if (pendingHandoffs.TryGetValue(id, out var pending) && pending.Epoch == epoch)
             {
                 pendingHandoffs.Remove(id);
+                queuedAuthorityRpcs.Remove(id);
                 if (spawned.TryGetValue(id, out var obj)) obj.NotifySimulationAuthorityChanged();
             }
         }
@@ -1271,16 +1273,21 @@ namespace AtlasNet
         {
             if (pendingHandoffs.ContainsKey(id))
             {
-                if (!queuedAuthorityRpcs.TryGetValue(id, out var queue))
-                    queuedAuthorityRpcs[id] = queue = new List<QueuedAuthorityRpc>();
-                if (queue.Count >= 512) throw new InvalidOperationException($"Authority RPC queue is full for entity {id}");
-                queue.Add(new QueuedAuthorityRpc
-                {
-                    Behaviour = index, Method = method, Payload = payload, Sender = sender
-                });
+                QueueAuthorityRpc(id, index, method, payload, sender);
                 return;
             }
             SendAuthorityRpcToWorker(id, index, method, payload, sender, directory[id].Worker);
+        }
+
+        private void QueueAuthorityRpc(EntityId id, byte index, uint method, byte[] payload, SessionId sender)
+        {
+            if (!queuedAuthorityRpcs.TryGetValue(id, out var queue))
+                queuedAuthorityRpcs[id] = queue = new List<QueuedAuthorityRpc>();
+            if (queue.Count >= 512) throw new InvalidOperationException($"Authority RPC queue is full for entity {id}");
+            queue.Add(new QueuedAuthorityRpc
+            {
+                Behaviour = index, Method = method, Payload = payload, Sender = sender
+            });
         }
 
         private void FlushAuthorityRpcs(EntityId id, ulong worker)
@@ -1289,7 +1296,7 @@ namespace AtlasNet
             queuedAuthorityRpcs.Remove(id);
             foreach (var rpc in queue)
             {
-                if (worker == 0 && FindBehaviour(id, rpc.Behaviour) is NetworkBehaviour behaviour)
+                if (worker == (isWorker ? localWorkerId : 0) && FindBehaviour(id, rpc.Behaviour) is NetworkBehaviour behaviour)
                     behaviour.ReceiveRpc(rpc.Method, rpc.Payload, rpc.Sender, RpcDestination.Authority, default);
                 else if (workerSessions.Contains(new SessionId(worker)))
                     SendAuthorityRpcToWorker(id, rpc.Behaviour, rpc.Method, rpc.Payload, rpc.Sender, worker);
@@ -1323,9 +1330,20 @@ namespace AtlasNet
             uint method = reader.ReadUInt();
             SessionId sender = reader.ReadSessionId();
             byte[] payload = reader.ReadBytes();
-            if (!spawned.TryGetValue(id, out var obj) || obj.SimulationWorker != localWorkerId ||
-                obj.AuthorityEpoch != epoch || FindBehaviour(id, index) is not NetworkBehaviour behaviour)
-                throw new InvalidOperationException($"Stale authority RPC for entity {id}, epoch {epoch}");
+            if (!spawned.TryGetValue(id, out var obj) || epoch < obj.AuthorityEpoch) return;
+            if (FindBehaviour(id, index) is not NetworkBehaviour behaviour)
+                throw new InvalidOperationException($"Unknown authority RPC behaviour {index} for entity {id}");
+
+            // Sequenced input can overtake the reliable commit for a prepared handoff.
+            if (epoch > obj.AuthorityEpoch && pendingHandoffs.TryGetValue(id, out var prepared) &&
+                prepared.AcceptsPrepared(new SessionId(localWorkerId), epoch))
+            {
+                QueueAuthorityRpc(id, index, method, payload, sender);
+                return;
+            }
+
+            if (obj.SimulationWorker != localWorkerId || obj.AuthorityEpoch != epoch)
+                throw new InvalidOperationException($"Invalid authority RPC for entity {id}, epoch {epoch}");
             behaviour.ReceiveRpc(method, payload, sender, RpcDestination.Authority, default);
         }
 
@@ -1385,6 +1403,8 @@ namespace AtlasNet
             EntityId id = reader.ReadEntityId();
             uint epoch = reader.ReadUInt();
             byte[] bytes = reader.ReadBytes();
+            if (workerSessions.Contains(sender) && directory.TryGetValue(id, out var current) && epoch < current.Epoch)
+                return;
             if (!workerSessions.Contains(sender) || !directory.TryGetValue(id, out var entity) ||
                 entity.Worker != sender.Value || entity.Epoch != epoch)
                 throw new InvalidOperationException($"Stale or unauthorized worker RPC for entity {id}");

@@ -62,7 +62,7 @@ namespace AtlasNet.Samples.Soccer
             if (displacement.sqrMagnitude > 0.000001f)
             {
                 transform.rotation = Quaternion.LookRotation(displacement);
-                capsule.Move(displacement);
+                MoveOnPitch(position, displacement);
             }
 
             if (!IsReplaying) player.SetPredictedMovement(move);
@@ -70,6 +70,27 @@ namespace AtlasNet.Samples.Soccer
             if (previousBall != touchedBall && previousBall != null) player.EndBallContact(previousBall);
             if (touchedBall != null) player.TryKickBall(touchedBall, transform.position, move);
             previousBall = touchedBall;
+        }
+
+        private void MoveOnPitch(Vector3 start, Vector3 displacement)
+        {
+            Bounds bounds = capsule.bounds;
+            capsule.Move(displacement);
+            Vector3 moved = transform.position;
+            if (moved.y <= start.y) return;
+
+            bounds.Encapsulate(capsule.bounds);
+            bounds.Expand(2f * SoccerBall.Radius);
+            foreach (var obj in NetworkManager.SpawnedObjects)
+            {
+                if (!obj.TryGetComponent<SoccerBall>(out _) || !bounds.Contains(obj.transform.position)) continue;
+
+                // The capsule can step up the ball even when its input is horizontal.
+                capsule.enabled = false;
+                transform.position = new Vector3(moved.x, start.y, moved.z);
+                capsule.enabled = true;
+                return;
+            }
         }
 
         private void OnControllerColliderHit(ControllerColliderHit hit)

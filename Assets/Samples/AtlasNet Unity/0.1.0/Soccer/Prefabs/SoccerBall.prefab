@@ -154,8 +154,8 @@ MonoBehaviour:
   positionThreshold: 0.001
   rotationThreshold: 0.1
   interpolate: 1
-  interpolationBufferTicks: 2
-  snapOnLargeMove: 0
+  interpolationBufferTicks: 1
+  snapOnLargeMove: 1
   snapDistance: 5
 --- !u!54 &7648394084561034851
 Rigidbody:
