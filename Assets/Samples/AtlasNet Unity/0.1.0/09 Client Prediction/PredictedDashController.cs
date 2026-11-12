@@ -57,7 +57,7 @@ namespace AtlasNet.Samples
             state = default;
         }
 
-        protected override Input GetInputForTick()
+        protected override Input ReadInput()
         {
             var next = input;
             input.Dash = false;
@@ -72,7 +72,7 @@ namespace AtlasNet.Samples
             return next;
         }
 
-        protected override void Simulate(Input next, float deltaTime)
+        protected override void SimulateTick(Input next, float deltaTime)
         {
             state.DashCooldown = Mathf.Max(0, state.DashCooldown - deltaTime);
             var direction = new Vector3(next.Move.x, 0, next.Move.y);
@@ -90,7 +90,7 @@ namespace AtlasNet.Samples
             state.Grounded = (capsule.Move(movement) & CollisionFlags.Below) != 0;
         }
 
-        protected override State CaptureState() => state;
-        protected override void RestoreState(State confirmed) => state = confirmed;
+        protected override State CaptureReconcileState() => state;
+        protected override void ApplyReconcileState(State confirmed) => state = confirmed;
     }
 }

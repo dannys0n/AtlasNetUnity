@@ -39,7 +39,7 @@ namespace AtlasNet.Samples.Soccer
             touchedBall = previousBall = null;
         }
 
-        protected override Input GetInputForTick() => new() { Move = moveInput };
+        protected override Input ReadInput() => new() { Move = moveInput };
 
         protected override Input SanitizeInput(Input input)
         {
@@ -49,7 +49,7 @@ namespace AtlasNet.Samples.Soccer
             return input;
         }
 
-        protected override void Simulate(Input input, float deltaTime)
+        protected override void SimulateTick(Input input, float deltaTime)
         {
             Vector2 move = player.AllowMovement ? input.Move : Vector2.zero;
             Vector3 position = transform.position;
@@ -99,7 +99,7 @@ namespace AtlasNet.Samples.Soccer
             touchedBall = ball;
         }
 
-        protected override State CaptureState() => default;
-        protected override void RestoreState(State state) { }
+        protected override State CaptureReconcileState() => default;
+        protected override void ApplyReconcileState(State state) { }
     }
 }

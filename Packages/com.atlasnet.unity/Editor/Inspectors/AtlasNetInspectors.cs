@@ -8,39 +8,59 @@ namespace AtlasNet.Editor
     [CanEditMultipleObjects]
     internal sealed class NetworkManagerEditor : UnityEditor.Editor
     {
+        private bool showTransportTuning;
         public override void OnInspectorGUI()
         {
             serializedObject.Update();
             EditorGUILayout.LabelField("Network Settings", EditorStyles.boldLabel);
             EditorGUILayout.PropertyField(serializedObject.FindProperty("logLevel"), new GUIContent("Log Level"));
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("tickRate"), new GUIContent("Tick Rate"));
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("localAddress"), new GUIContent("Local Address"));
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("port"), new GUIContent("Port"));
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("serverTransport"),new GUIContent("Server Transport"));
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("clientTransport"),new GUIContent("Native Client Transport","Connection type used by non-browser clients. Web builds always use WebSocket. This does not change the server listeners."));
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("listenAddress"),new GUIContent("Listen Address"));
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("transportProvider"),new GUIContent("Transport Override","Optional custom adapter; leave empty for built-in transport selection."));
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("backendProvider"),new GUIContent("Backend Override","Leave empty for the dummy backend. This is an adapter extension, not a gameplay prefab requirement."));
-            EditorGUILayout.HelpBox("Default server accepts UDP and WebSocket clients simultaneously on the same port number. TCP-only mode is optional. Browsers use WebSocket. An empty backend override uses the local dummy.",MessageType.None);
+            bool running = false;
+            if (EditorApplication.isPlaying)
+                foreach (NetworkManager managerTarget in targets)
+                    running |= managerTarget.IsRunning;
 
-            EditorGUILayout.Space();
-            EditorGUILayout.LabelField("Dummy Backend Partitioning", EditorStyles.boldLabel);
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("automaticLocalHandoffs"), new GUIContent("Automatic Handoffs"));
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("localPartitionCenter"), new GUIContent("Partition Center", "The coordinating server samples this Transform at session start."));
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("localRegionDebugExtent"), new GUIContent("Debug View Extent", "Rendering crop only. Authority regions extend indefinitely."));
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("localBoundaryMargin"), new GUIContent("Boundary Margin"));
-            EditorGUILayout.Space();
-            EditorGUILayout.LabelField("Prefab Settings", EditorStyles.boldLabel);
-            var player = serializedObject.FindProperty("playerPrefab");
-            var lists = serializedObject.FindProperty("networkPrefabsLists");
-            EditorGUILayout.PropertyField(player, new GUIContent("Default Player Prefab"));
-            EditorGUILayout.PropertyField(lists, new GUIContent("Network Prefabs Lists"), true);
-            if (!serializedObject.isEditingMultipleObjects)
+            using (new EditorGUI.DisabledScope(running))
             {
-                if (lists.arraySize == 0)
-                    EditorGUILayout.HelpBox("Assign a Network Prefabs List before spawning registered prefabs.", MessageType.Warning);
-                else if (player.objectReferenceValue is NetworkObject playerObject && !IsRegistered(playerObject, lists))
-                    EditorGUILayout.HelpBox("The default player prefab must also be present in an assigned Network Prefabs List.", MessageType.Warning);
+                EditorGUILayout.PropertyField(serializedObject.FindProperty("tickRate"), new GUIContent("Tick Rate"));
+                EditorGUILayout.PropertyField(serializedObject.FindProperty("localAddress"), new GUIContent("Local Address"));
+                EditorGUILayout.PropertyField(serializedObject.FindProperty("port"), new GUIContent("Port"));
+                EditorGUILayout.PropertyField(serializedObject.FindProperty("serverTransport"),new GUIContent("Server Transport"));
+                EditorGUILayout.PropertyField(serializedObject.FindProperty("clientTransport"),new GUIContent("Native Client Transport","Connection type used by non-browser clients. Web builds always use WebSocket. This does not change the server listeners."));
+                EditorGUILayout.PropertyField(serializedObject.FindProperty("listenAddress"),new GUIContent("Listen Address"));
+                EditorGUILayout.PropertyField(serializedObject.FindProperty("transportProvider"),new GUIContent("Transport Override","Optional custom adapter; leave empty for built-in transport selection."));
+                EditorGUILayout.PropertyField(serializedObject.FindProperty("backendProvider"),new GUIContent("Backend Override","Leave empty for the dummy backend. This is an adapter extension, not a gameplay prefab requirement."));
+                showTransportTuning = EditorGUILayout.Foldout(showTransportTuning, "Advanced Transport", true);
+                if (showTransportTuning)
+                {
+                    using (new EditorGUI.IndentLevelScope())
+                    {
+                        var udp = serializedObject.FindProperty("udpDisconnectTimeoutMS");
+                        var web = serializedObject.FindProperty("webSocketDisconnectTimeoutMS");
+                        EditorGUILayout.PropertyField(udp, new GUIContent("UDP Idle Timeout (ms)", udp.tooltip));
+                        EditorGUILayout.PropertyField(web, new GUIContent("WebSocket Idle Timeout (ms)", web.tooltip));
+                    }
+                }
+                EditorGUILayout.HelpBox("Default server accepts UDP and WebSocket clients simultaneously on the same port number. TCP-only mode is optional. Browsers use WebSocket. An empty backend override uses the local dummy.",MessageType.None);
+
+                EditorGUILayout.Space();
+                EditorGUILayout.LabelField("Dummy Backend Partitioning", EditorStyles.boldLabel);
+                EditorGUILayout.PropertyField(serializedObject.FindProperty("automaticLocalHandoffs"), new GUIContent("Automatic Handoffs"));
+                EditorGUILayout.PropertyField(serializedObject.FindProperty("localPartitionCenter"), new GUIContent("Partition Center", "The coordinating server samples this Transform at session start."));
+                EditorGUILayout.PropertyField(serializedObject.FindProperty("localRegionDebugExtent"), new GUIContent("Debug View Extent", "Rendering crop only. Authority regions extend indefinitely."));
+                EditorGUILayout.PropertyField(serializedObject.FindProperty("localBoundaryMargin"), new GUIContent("Boundary Margin"));
+                EditorGUILayout.Space();
+                EditorGUILayout.LabelField("Prefab Settings", EditorStyles.boldLabel);
+                var player = serializedObject.FindProperty("playerPrefab");
+                var lists = serializedObject.FindProperty("networkPrefabsLists");
+                EditorGUILayout.PropertyField(player, new GUIContent("Default Player Prefab"));
+                EditorGUILayout.PropertyField(lists, new GUIContent("Network Prefabs Lists"), true);
+                if (!serializedObject.isEditingMultipleObjects)
+                {
+                    if (lists.arraySize == 0)
+                        EditorGUILayout.HelpBox("Assign a Network Prefabs List before spawning registered prefabs.", MessageType.Warning);
+                    else if (player.objectReferenceValue is NetworkObject playerObject && !IsRegistered(playerObject, lists))
+                        EditorGUILayout.HelpBox("The default player prefab must also be present in an assigned Network Prefabs List.", MessageType.Warning);
+                }
             }
             serializedObject.ApplyModifiedProperties();
 
@@ -146,11 +166,8 @@ namespace AtlasNet.Editor
                 EditorGUILayout.Space();
                 EditorGUILayout.LabelField("Synchronization", EditorStyles.boldLabel);
                 EditorGUILayout.PropertyField(syncPosition);
-                if (AnyEnabled(syncPosition))
-                    EditorGUILayout.PropertyField(serializedObject.FindProperty("positionWriter"));
                 EditorGUILayout.PropertyField(syncRotation);
-                if (AnyEnabled(syncRotation))
-                    EditorGUILayout.PropertyField(serializedObject.FindProperty("rotationWriter"));
+                DrawAuthority(syncPosition, syncRotation);
 
                 EditorGUILayout.Space();
                 EditorGUILayout.PropertyField(interpolate, new GUIContent("Interpolate Remote Copies", interpolate.tooltip));
@@ -184,9 +201,118 @@ namespace AtlasNet.Editor
             {
                 var syncedTransform = targetTransform.objectReferenceValue as Transform;
                 if (syncedTransform == null) syncedTransform = ((NetworkTransform)target).transform;
-                if (syncedTransform.TryGetComponent<PredictedCharacterController>(out _))
-                    EditorGUILayout.HelpBox("PredictedCharacterController already synchronizes this transform. Remove NetworkTransform or choose a different target.", MessageType.Warning);
+                if (syncedTransform.TryGetComponent<PredictedBehaviour>(out _))
+                    EditorGUILayout.HelpBox("Prediction already synchronizes this transform. Remove NetworkTransform or choose a different target.", MessageType.Warning);
             }
+        }
+
+        private static readonly string[] AuthorityOptions = { "Server", "Owner", "Separate Position and Rotation" };
+
+        private void DrawAuthority(SerializedProperty syncPosition, SerializedProperty syncRotation)
+        {
+            var position = serializedObject.FindProperty("positionWriter");
+            var rotation = serializedObject.FindProperty("rotationWriter");
+            if (!AnyEnabled(syncPosition) && !AnyEnabled(syncRotation)) return;
+
+            bool mixed = position.hasMultipleDifferentValues || rotation.hasMultipleDifferentValues;
+            int mode = position.intValue == rotation.intValue ? position.intValue : 2;
+            bool previousMixed = EditorGUI.showMixedValue;
+            EditorGUI.showMixedValue = mixed;
+            EditorGUI.BeginChangeCheck();
+            int selected = EditorGUILayout.Popup(new GUIContent("Authority Mode",
+                "Choose who writes the synchronized pose. Separate authority lets position and rotation have different writers."),
+                mode, AuthorityOptions);
+            bool changed = EditorGUI.EndChangeCheck();
+            EditorGUI.showMixedValue = previousMixed;
+
+            if (changed)
+            {
+                position.intValue = selected == 2 ? (int)TransformWriter.Server : selected;
+                rotation.intValue = selected == 2 ? (int)TransformWriter.Owner : selected;
+                mode = selected;
+            }
+
+            if (mode == 2 || (mixed && !changed))
+            {
+                if (AnyEnabled(syncPosition)) EditorGUILayout.PropertyField(position);
+                if (AnyEnabled(syncRotation)) EditorGUILayout.PropertyField(rotation);
+            }
+        }
+
+        private static bool AnyEnabled(SerializedProperty property) => property.boolValue || property.hasMultipleDifferentValues;
+    }
+
+    [CustomEditor(typeof(PredictedBehaviour), true)]
+    [CanEditMultipleObjects]
+    internal sealed class PredictedBehaviourEditor : UnityEditor.Editor
+    {
+        private bool showAdvanced;
+
+        public override void OnInspectorGUI()
+        {
+            serializedObject.Update();
+
+            if (target is PredictedCharacterController)
+                EditorGUILayout.LabelField("Movement", EditorStyles.boldLabel);
+
+            DrawPropertiesExcluding(serializedObject, "m_Script", "visualRoot", "smoothLocalVisuals",
+                "correctionSnapDistance", "snapshotIntervalTicks", "interpolateSpectators",
+                "spectatorBufferTicks", "snapSpectatorsOnLargeMove", "spectatorSnapDistance");
+
+            EditorGUILayout.Space();
+            EditorGUILayout.LabelField("Prediction", EditorStyles.boldLabel);
+            using (new EditorGUI.DisabledScope(EditorApplication.isPlayingOrWillChangePlaymode))
+            {
+                var visualRoot = Draw("visualRoot", "Visual Root");
+                SerializedProperty smoothOwner;
+                using (new EditorGUI.DisabledScope(!visualRoot.hasMultipleDifferentValues && visualRoot.objectReferenceValue == null))
+                    smoothOwner = Draw("smoothLocalVisuals", "Smooth Owner Visuals");
+                var interpolate = Draw("interpolateSpectators", "Interpolate Remote Copies");
+
+                showAdvanced = EditorGUILayout.Foldout(showAdvanced, "Advanced", true);
+                if (showAdvanced)
+                {
+                    using (new EditorGUI.IndentLevelScope())
+                    {
+                        Draw("snapshotIntervalTicks", "State Send Interval (Ticks)");
+                        if (AnyEnabled(smoothOwner))
+                            Draw("correctionSnapDistance", "Owner Correction Snap Distance");
+                        if (AnyEnabled(interpolate))
+                        {
+                            Draw("spectatorBufferTicks", "Interpolation Buffer (Ticks)");
+                            if (AnyEnabled(Draw("snapSpectatorsOnLargeMove", "Snap on Large Movement")))
+                                Draw("spectatorSnapDistance", "Snap Distance");
+                        }
+                    }
+                }
+            }
+
+            serializedObject.ApplyModifiedProperties();
+            EditorGUILayout.HelpBox("The owner predicts movement. The server simulates and confirms it.", MessageType.Info);
+
+            if (serializedObject.isEditingMultipleObjects) return;
+
+            var controller = (PredictedBehaviour)target;
+            if (controller.VisualRoot != null && controller.VisualRoot.parent != controller.transform)
+                EditorGUILayout.HelpBox("Assign a direct child as the Visual Root.", MessageType.Warning);
+
+            foreach (var networkTransform in controller.GetComponents<NetworkTransform>())
+            {
+                var settings = new SerializedObject(networkTransform);
+                var poseTarget = settings.FindProperty("target").objectReferenceValue;
+                if (poseTarget == null || poseTarget == controller.transform)
+                {
+                    EditorGUILayout.HelpBox("Prediction already synchronizes this root. Remove NetworkTransform or assign a different target.", MessageType.Warning);
+                    break;
+                }
+            }
+        }
+
+        private SerializedProperty Draw(string name, string label)
+        {
+            var property = serializedObject.FindProperty(name);
+            EditorGUILayout.PropertyField(property, new GUIContent(label, property.tooltip), false);
+            return property;
         }
 
         private static bool AnyEnabled(SerializedProperty property) => property.boolValue || property.hasMultipleDifferentValues;
@@ -234,7 +360,10 @@ namespace AtlasNet.Editor
             if (syncPosition.boolValue && syncRotation.boolValue &&
                 positionWriter.intValue == rotationWriter.intValue &&
                 (poseTarget.objectReferenceValue == null || poseTarget.objectReferenceValue == body.transform))
+            {
+                EditorGUILayout.LabelField("Physics Authority", ((TransformWriter)positionWriter.intValue).ToString());
                 return;
+            }
 
             EditorGUILayout.HelpBox("Sync this GameObject's position and rotation with the same writer in NetworkTransform.", MessageType.Warning);
             using (new EditorGUI.DisabledGroupScope(EditorApplication.isPlayingOrWillChangePlaymode))

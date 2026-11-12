@@ -69,7 +69,7 @@ namespace AtlasNet
             state = default;
         }
 
-        protected override Input GetInputForTick()
+        protected override Input ReadInput()
         {
             var input = currentInput;
             currentInput.Jump = false;
@@ -87,7 +87,7 @@ namespace AtlasNet
             return input;
         }
 
-        protected override void Simulate(Input input, float deltaTime)
+        protected override void SimulateTick(Input input, float deltaTime)
         {
             transform.rotation = Quaternion.Euler(0, input.Yaw, 0);
             if (state.Grounded && state.VerticalSpeed < 0) state.VerticalSpeed = -2;
@@ -102,7 +102,7 @@ namespace AtlasNet
             if ((collisions & CollisionFlags.Above) != 0 && state.VerticalSpeed > 0) state.VerticalSpeed = 0;
         }
 
-        protected override State CaptureState() => state;
-        protected override void RestoreState(State snapshot) => state = snapshot;
+        protected override State CaptureReconcileState() => state;
+        protected override void ApplyReconcileState(State snapshot) => state = snapshot;
     }
 }

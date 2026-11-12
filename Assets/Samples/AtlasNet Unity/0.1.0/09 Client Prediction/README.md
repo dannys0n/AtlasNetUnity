@@ -22,11 +22,11 @@ static level colliders on the server and clients.
 ## Transform settings
 
 The Predicted Character Controller Inspector has separate settings for local
-visual smoothing and spectator interpolation. Use **Snapshot Interval Ticks**
+visual smoothing and spectator interpolation. Use **Advanced → State Send Interval (Ticks)**
 to tune how often the server sends complete movement state. Input and
-simulation still run every tick. **Spectator Buffer Ticks** adds display delay
-to smooth packet arrival, and **Snap Spectators On Large Move** skips smoothing
-across jumps larger than **Spectator Snap Distance**.
+simulation still run every tick. **Interpolation Buffer (Ticks)** adds display delay
+to smooth packet arrival, and **Snap on Large Movement** skips smoothing
+across jumps larger than **Snap Distance**.
 
 ## Custom prediction
 
@@ -41,13 +41,13 @@ Open **PredictedDashController.cs** to see the custom path. Put a concrete
 Use value structs implementing **IPredictionData** and serialize their fields
 in the same order on every peer. The controller implements four main hooks.
 
-- **GetInputForTick** consumes buffered local input. Latch a short button
+- **ReadInput** consumes buffered local input. Latch a short button
   press until this hook reads it.
-- **Simulate** runs movement at the network tick rate and can run again during
+- **SimulateTick** runs movement at the network tick rate and can run again during
   reconciliation. Use **IsReplaying** to guard effects that should play once.
-- **CaptureState** records gameplay state needed by the next tick, such as
+- **CaptureReconcileState** records gameplay state needed by the next tick, such as
   the dash cooldown and vertical speed.
-- **RestoreState** applies those values. AtlasNet captures and restores the
+- **ApplyReconcileState** applies those values. AtlasNet captures and restores the
   root position and rotation and handles input history, snapshots, and handoff.
 
 **SanitizeInput** lets the server clamp untrusted controls. Assign a visual
@@ -58,9 +58,9 @@ the component's Inspector.
 
 - PurrDiction's **PredictedIdentity<INPUT, STATE>** maps to
   **PredictedBehaviour<TInput, TState>**. Its **GetFinalInput** maps to
-  **GetInputForTick**. [PurrDiction Predicted Identities](https://purrnet.dev/docs/client-side-prediction/predicted-identities)
-- FishNet's **[Replicate]** maps to **Simulate**. The state used by
-  **[Reconcile]** maps to **CaptureState** and **RestoreState**. [FishNet Controlling an Object](https://fish-networking.gitbook.io/docs/guides/features/prediction/creating-code/controlling-an-object)
+  **ReadInput**. [PurrDiction Predicted Identities](https://purrnet.dev/docs/client-side-prediction/predicted-identities)
+- FishNet's **[Replicate]** maps to **SimulateTick**. The state used by
+  **[Reconcile]** maps to **CaptureReconcileState** and **ApplyReconcileState**. [FishNet Controlling an Object](https://fish-networking.gitbook.io/docs/guides/features/prediction/creating-code/controlling-an-object)
 - Fusion's **FixedUpdateNetwork** and Netick's **NetworkFixedUpdate** are the
   equivalent fixed simulation callbacks. The AtlasNet quick-start prefab
   follows the ready-made character setup of Fusion's Simple KCC. [Photon Fusion NetworkBehaviour](https://doc.photonengine.com/fusion/v2/manual/network-behaviour) · [Photon Fusion Simple KCC](https://doc.photonengine.com/fusion/v2/addons/simple-kcc) · [Netick Writing Gameplay Code](https://netick.net/docs/2/articles/understanding-client-side-prediction/writing-gameplay-code)

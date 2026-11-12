@@ -3,10 +3,16 @@ using UnityEngine;
 
 namespace AtlasNet
 {
+    /// <summary>Common component type for predicted motors.</summary>
+    public abstract class PredictedBehaviour : NetworkBehaviour
+    {
+        public abstract Transform VisualRoot { get; }
+    }
+
     /// <summary>Server-authoritative prediction for a custom motor on a NetworkObject.</summary>
     [DisallowMultipleComponent]
     [RequireComponent(typeof(NetworkObject))]
-    public abstract class PredictedBehaviour<TInput, TState> : NetworkBehaviour
+    public abstract class PredictedBehaviour<TInput, TState> : PredictedBehaviour
         where TInput : unmanaged, IPredictionData
         where TState : unmanaged, IPredictionData
     {
@@ -47,23 +53,23 @@ namespace AtlasNet
         private Pose RootPose => new(transform.position, transform.rotation);
 
         /// <summary>The optional smoothed child. Camera rigs can follow it after LateUpdate.</summary>
-        public Transform VisualRoot => visualRoot;
+        public sealed override Transform VisualRoot => visualRoot;
         internal sealed override bool SupportsPredictedPose => true;
 
         /// <summary>True while the motor reruns previously predicted inputs after a correction.</summary>
         protected bool IsReplaying { get; private set; }
 
         /// <summary>Read local input once per new tick. Latch button presses in Update until this consumes them.</summary>
-        protected abstract TInput GetInputForTick();
+        protected abstract TInput ReadInput();
 
         /// <summary>Run a fixed simulation step. This can run again during reconciliation.</summary>
-        protected abstract void Simulate(TInput input, float deltaTime);
+        protected abstract void SimulateTick(TInput input, float deltaTime);
 
         /// <summary>Capture gameplay state needed by the next tick. AtlasNet captures the root pose separately.</summary>
-        protected abstract TState CaptureState();
+        protected abstract TState CaptureReconcileState();
 
         /// <summary>Restore gameplay state for a snapshot, which can arrive before OnPredictionSpawn. AtlasNet restores the root pose separately.</summary>
-        protected abstract void RestoreState(TState state);
+        protected abstract void ApplyReconcileState(TState state);
 
         /// <summary>Clamp or validate input consistently on the owner and the server.</summary>
         protected virtual TInput SanitizeInput(TInput input) => input;
@@ -131,7 +137,7 @@ namespace AtlasNet
 
             if (IsOwner)
             {
-                var input = SanitizeInput(GetInputForTick());
+                var input = SanitizeInput(ReadInput());
                 uint sequence = timeline.RecordLocal(input, authoritative: HasAuthority);
                 RunStep(input);
                 if (!HasAuthority)
@@ -148,7 +154,7 @@ namespace AtlasNet
             PublishSnapshot();
         }
 
-        private void RunStep(TInput input) => Simulate(input, 1f / NetworkManager.TickRate);
+        private void RunStep(TInput input) => SimulateTick(input, 1f / NetworkManager.TickRate);
 
         private void SendInput(uint sequence, TInput input)
         {
@@ -228,7 +234,7 @@ namespace AtlasNet
             else
             {
                 timeline.RestoreAcknowledgement(sequence);
-                RestoreState(state);
+                ApplyReconcileState(state);
                 UpdateSpectatorPose(pose);
             }
         }
@@ -315,7 +321,7 @@ namespace AtlasNet
             try
             {
                 transform.SetPositionAndRotation(pose.position, pose.rotation);
-                RestoreState(state);
+                ApplyReconcileState(state);
             }
             finally
             {
@@ -336,7 +342,7 @@ namespace AtlasNet
             writer.Write(timeline.Acknowledged);
             writer.Write(pose.position);
             writer.Write(pose.rotation);
-            WriteData(writer, CaptureState());
+            WriteData(writer, CaptureReconcileState());
         }
 
         protected sealed override void ReadExtraSnapshot(NetReader reader)
