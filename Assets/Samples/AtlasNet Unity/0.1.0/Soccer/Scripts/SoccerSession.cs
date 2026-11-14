@@ -29,6 +29,7 @@ namespace AtlasNet.Samples.Soccer
         string lastLink;
         SoccerMatch match;
         bool createdBall;
+        public Func<bool> TryClaimInitialBall { get; set; }
         Camera view;
         NetworkObject local;
         PredictedSoccerMotor localMotor;
@@ -83,7 +84,8 @@ namespace AtlasNet.Samples.Soccer
                     if (obj.TryGetComponent(out SoccerMatch found)) { match = found; break; }
             if (manager.IsServer && !manager.IsWorker && !createdBall)
             {
-                match = manager.Spawn(ballPrefab, new Vector3(0, SoccerBall.Radius, 0), Quaternion.identity).GetComponent<SoccerMatch>();
+                if (TryClaimInitialBall == null || TryClaimInitialBall())
+                    match = manager.Spawn(ballPrefab, new Vector3(0, SoccerBall.Radius, 0), Quaternion.identity).GetComponent<SoccerMatch>();
                 createdBall = true;
             }
             blueScore.text = match ? match.BlueScore.Value.ToString() : "0";
