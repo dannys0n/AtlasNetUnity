@@ -625,7 +625,7 @@ namespace AtlasNet
         private void EnsureCoordinatorResident(CanonicalEntity entity)
         {
             if (spawned.ContainsKey(entity.Id)) return;
-            if (!registry.TryGetValue(entity.PrefabId, out var prefab))
+            if (!runtime.TryGetRegisteredPrefab(entity.PrefabId, out var prefab))
                 throw new InvalidOperationException($"Missing prefab {entity.PrefabId} for entity {entity.Id}");
             using (var state = new NetReader(entity.OwnerSnapshot))
                 runtime.CreateReplica(prefab, entity.Id, entity.Owner, entity.Position, entity.Rotation,

@@ -124,8 +124,8 @@ namespace AtlasNet
         public int ObserverCopies => Backend.ObserverCopies;
         public bool TryGetPeerMetrics(SessionId session, out long sent, out float ping)
         {
-            if (backend is LocalWorldBackend local)
-                return local.TryGetPeerMetrics(session, out sent, out ping);
+            if (backend is IWorldBackendTelemetry telemetry)
+                return telemetry.TryGetPeerMetrics(session, out sent, out ping);
             sent = 0;
             ping = -1;
             return false;
@@ -136,7 +136,7 @@ namespace AtlasNet
         public long AllocatedBytesLastTick => Backend.AllocatedBytesLastTick;
         public double LastTickMilliseconds => Backend.LastTickMilliseconds;
         public int TickRate => tickRate;
-        internal float TickInterpolation => Backend is LocalWorldBackend local ? local.TickInterpolation : 1f;
+        internal float TickInterpolation => Backend is IWorldBackendTelemetry telemetry ? Mathf.Clamp01(telemetry.TickInterpolation) : 1f;
         public bool AutomaticLocalHandoffs => automaticLocalHandoffs;
         public NetworkObject PlayerPrefab => playerPrefab;
         public int SpawnedCount => Replicas.Count;
@@ -175,6 +175,102 @@ namespace AtlasNet
         internal void SendTransform(NetworkTransform component, byte flags, Vector3 position, Quaternion rotation) => Backend.SendTransform(component, flags, position, rotation);
         internal void SendAnimator(NetworkAnimator component, byte[] payload) => Backend.SendAnimator(component, payload);
         public bool TryGet(EntityId id, out NetworkObject obj) => Replicas.TryGetValue(id, out obj);
+
+        private readonly Dictionary<string, NetworkObject> prefabRegistry = new(StringComparer.Ordinal);
+        private readonly List<NetworkObject> backendTickObjects = new();
+
+        /// <summary>Resolve a prefab previously registered by ValidatePrefabRegistry.</summary>
+        public bool TryGetRegisteredPrefab(string prefabId, out NetworkObject prefab)
+            => prefabRegistry.TryGetValue(prefabId, out prefab);
+
+        /// <summary>Run behaviour ticks once for this backend tick, after updating the backend clock.</summary>
+        public void TickBackendReplicas() => TickBackendReplicas(backendTickObjects);
+
+        internal void TickBackendReplicas(List<NetworkObject> tickObjects)
+        {
+            tickObjects.Clear();
+            tickObjects.AddRange(Replicas.Values);
+            foreach (var obj in tickObjects)
+                if (obj != null && obj.IsSpawned)
+                    foreach (var behaviour in obj.Behaviours)
+                        behaviour.OnNetworkTick();
+        }
+
+        /// <summary>Capture initial state filtered for the receiving session.</summary>
+        public byte[] CaptureReplicaSnapshot(EntityId id, SessionId recipient)
+        {
+            if (!Replicas.TryGetValue(id, out var obj))
+                throw new InvalidOperationException($"No replica {id} to capture.");
+            using var writer = new NetWriter();
+            obj.WriteSnapshot(writer, recipient);
+            return writer.ToArray();
+        }
+
+        /// <summary>Refresh an existing replica from an authoritative backend snapshot.</summary>
+        public void ApplyBackendReplicaSnapshot(EntityId id, NetReader snapshot)
+        {
+            if (Replicas.TryGetValue(id, out var obj)) obj.ReadSnapshot(snapshot);
+        }
+
+        /// <summary>Apply a committed authority change after updating backend routing.</summary>
+        public void SetBackendReplicaAuthority(EntityId id, ulong worker, uint epoch)
+        {
+            if (Replicas.TryGetValue(id, out var obj)) obj.SetSimulationAuthority(worker, epoch);
+        }
+
+        /// <summary>Apply a variable update after validating its sender and read permission.</summary>
+        public void DispatchBackendVariable(EntityId id, byte behaviour, ushort variable, byte[] payload)
+            => GetReplicaBehaviour<NetworkBehaviour>(id, behaviour)?.ReadVariable(variable, payload);
+
+        /// <summary>Apply a pose relayed by the authoritative backend.</summary>
+        public void DispatchBackendTransform(EntityId id, byte behaviour, byte flags, Vector3 position, Quaternion rotation)
+        {
+            if ((flags & ~3) != 0) throw new ArgumentOutOfRangeException(nameof(flags));
+            GetReplicaBehaviour<NetworkTransform>(id, behaviour)?.AcceptServerState(flags, position, rotation);
+        }
+
+        /// <summary>Apply animation data relayed by the authoritative backend.</summary>
+        public void DispatchBackendAnimator(EntityId id, byte behaviour, byte[] payload)
+            => GetReplicaBehaviour<NetworkAnimator>(id, behaviour)?.AcceptServerState(payload);
+
+        private T GetReplicaBehaviour<T>(EntityId id, byte index) where T : NetworkBehaviour
+        {
+            if (!Replicas.TryGetValue(id, out var obj)) return null;
+            if (index >= obj.Behaviours.Length || !(obj.Behaviours[index] is T behaviour))
+                throw new InvalidOperationException($"Invalid backend behaviour index {index} for entity {id}.");
+            return behaviour;
+        }
+
+        /// <summary>Validate and index the configured lists for backend adapter lookup.</summary>
+        public void ValidatePrefabRegistry()
+        {
+            prefabRegistry.Clear();
+            if (networkPrefabsLists != null)
+            {
+                foreach (var list in networkPrefabsLists)
+                {
+                    if (list == null)
+                        throw new InvalidOperationException("AtlasNet Network Prefabs Lists contains a missing list asset");
+                    for (int prefabIndex = 0; prefabIndex < list.Prefabs.Count; prefabIndex++)
+                    {
+                        var prefab = list.Prefabs[prefabIndex];
+                        if (prefab == null)
+                            throw new InvalidOperationException($"AtlasNet Network Prefabs List '{list.name}' has a missing NetworkObject prefab at index {prefabIndex}");
+                        if (string.IsNullOrWhiteSpace(prefab.PrefabId))
+                            throw new InvalidOperationException($"AtlasNet prefab '{prefab.name}' in list '{list.name}' has no generated Prefab ID. Reimport or resave its prefab asset");
+                        if (prefabRegistry.TryGetValue(prefab.PrefabId, out var existing))
+                        {
+                            if (existing == prefab) continue;
+                            throw new InvalidOperationException($"Duplicate AtlasNet prefab ID '{prefab.PrefabId}' in Network Prefabs Lists");
+                        }
+                        prefabRegistry.Add(prefab.PrefabId, prefab);
+                    }
+                }
+            }
+            if (playerPrefab != null &&
+                (!prefabRegistry.TryGetValue(playerPrefab.PrefabId, out var registeredPlayer) || registeredPlayer != playerPrefab))
+                throw new InvalidOperationException($"AtlasNet Player Prefab '{playerPrefab.name}' must be registered in a Network Prefabs List assigned to NetworkManager");
+        }
 
         // Native adapters deliver lifecycle notifications on Unity's main thread.
         // Keep GameObject ownership here so replacing routing does not replace the Unity component.
@@ -233,9 +329,7 @@ namespace AtlasNet
         }
         public void DispatchBackendRpc(EntityId id,byte behaviour,uint method,byte[] payload,SessionId sender,RpcDestination destination,SessionId target=default)
         {
-            if(!Replicas.TryGetValue(id,out var obj))return;
-            if(behaviour>=obj.Behaviours.Length)throw new InvalidOperationException("Backend supplied an invalid behaviour index.");
-            obj.Behaviours[behaviour].ReceiveRpc(method,payload,sender,destination,target);
+            GetReplicaBehaviour<NetworkBehaviour>(id, behaviour)?.ReceiveRpc(method, payload, sender, destination, target);
         }
 
         public void RemoveReplica(EntityId id)

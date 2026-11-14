@@ -7,7 +7,7 @@ using Debug = UnityEngine.Debug;
 namespace AtlasNet
 {
     // Development implementation of the semantic backend interface. Wire packets stay here.
-    internal sealed partial class LocalWorldBackend : IWorldBackend, IHandoffDebugProvider, IFlushableWorldBackend, ILocalWorkerDrainProvider
+    internal sealed partial class LocalWorldBackend : IWorldBackend, IHandoffDebugProvider, IFlushableWorldBackend, ILocalWorkerDrainProvider, IWorldBackendTelemetry
     {
         private enum Packet : byte { Welcome = 1, Spawn = 2, Despawn = 3, Variable = 4, Rpc = 5, Transform = 6, Hide = 7, Animator = 8,
             ClientHello = 9, WorkerHello = 10, WorkerWelcome = 11, WorkerSpawn = 12, WorkerPrepare = 13,
@@ -19,14 +19,12 @@ namespace AtlasNet
         private const ushort LocalProtocolVersion = 18;
         private readonly NetworkManager runtime;
         private NetworkObject playerPrefab => runtime.playerPrefab;
-        private NetworkPrefabsList[] networkPrefabsLists => runtime.networkPrefabsLists;
         private int tickRate => runtime.tickRate;
         private int port => runtime.port;
         private string localAddress => runtime.localAddress;
         private bool automaticLocalHandoffs => runtime.automaticLocalHandoffs;
         private float localBoundaryMargin => runtime.localBoundaryMargin;
 
-        private readonly Dictionary<string, NetworkObject> registry = new Dictionary<string, NetworkObject>();
         private Dictionary<EntityId, NetworkObject> spawned => runtime.Replicas;
         private readonly Dictionary<EntityId, HashSet<SessionId>> hidden = new Dictionary<EntityId, HashSet<SessionId>>();
         private readonly List<NetworkObject> tickObjects = new List<NetworkObject>();
@@ -43,7 +41,7 @@ namespace AtlasNet
         public SessionId LocalSession { get; private set; }
         public uint Tick { get; private set; }
         public int TickRate => tickRate;
-        internal float TickInterpolation => Mathf.Clamp01(accumulator * tickRate);
+        public float TickInterpolation => Mathf.Clamp01(accumulator * tickRate);
         public bool AutomaticLocalHandoffs => automaticLocalHandoffs;
         public NetworkObject PlayerPrefab => playerPrefab;
         /// <summary>Optional spawn placement for automatically created players. Defaults to the prefab's position.</summary>
@@ -100,35 +98,7 @@ namespace AtlasNet
             return GC.GetAllocatedBytesForCurrentThread();
 #endif
         }
-        public void ValidateRegistry()
-        {
-            registry.Clear();
-            if (networkPrefabsLists != null)
-            {
-                foreach (var list in networkPrefabsLists)
-                {
-                    if (list == null)
-                        throw new InvalidOperationException("AtlasNet Network Prefabs Lists contains a missing list asset");
-                    for (int prefabIndex = 0; prefabIndex < list.Prefabs.Count; prefabIndex++)
-                    {
-                        var prefab = list.Prefabs[prefabIndex];
-                        if (prefab == null)
-                            throw new InvalidOperationException($"AtlasNet Network Prefabs List '{list.name}' has a missing NetworkObject prefab at index {prefabIndex}");
-                        if (string.IsNullOrWhiteSpace(prefab.PrefabId))
-                            throw new InvalidOperationException($"AtlasNet prefab '{prefab.name}' in list '{list.name}' has no generated Prefab ID. Reimport or resave its prefab asset");
-                        if (registry.TryGetValue(prefab.PrefabId, out var existing))
-                        {
-                            if (existing == prefab) continue;
-                            throw new InvalidOperationException($"Duplicate AtlasNet prefab ID '{prefab.PrefabId}' in Network Prefabs Lists");
-                        }
-                        registry.Add(prefab.PrefabId, prefab);
-                    }
-                }
-            }
-            if (playerPrefab != null &&
-                (!registry.TryGetValue(playerPrefab.PrefabId, out var registeredPlayer) || registeredPlayer != playerPrefab))
-                throw new InvalidOperationException($"AtlasNet Player Prefab '{playerPrefab.name}' must be registered in a Network Prefabs List assigned to NetworkManager");
-        }
+        public void ValidateRegistry() => runtime.ValidatePrefabRegistry();
 
         public void StartServer() => StartLocal(true, false);
         public void StartHost() => StartLocal(true, true);
@@ -234,11 +204,7 @@ namespace AtlasNet
                 long allocatedBefore = allocationCounterSupported ? ReadAllocatedBytes() : -1;
                 Tick++;
                 CheckHandoffTimeouts();
-                tickObjects.Clear();
-                tickObjects.AddRange(spawned.Values);
-                foreach (var obj in tickObjects)
-                    if (obj != null && obj.IsSpawned)
-                        foreach (var behaviour in obj.Behaviours) behaviour.OnNetworkTick();
+                runtime.TickBackendReplicas(tickObjects);
                 if (!IsRunning) return;
                 if (isWorker) SendWorkerSnapshots();
                 else if (IsServer)
@@ -267,7 +233,7 @@ namespace AtlasNet
 
         private NetworkObject SpawnCanonical(string prefabId, Vector3 position, Quaternion rotation, SessionId owner, ulong simulationWorker)
         {
-            if (!registry.TryGetValue(prefabId, out var prefab))
+            if (!runtime.TryGetRegisteredPrefab(prefabId, out var prefab))
                 throw new InvalidOperationException($"Prefab ID '{prefabId}' is not registered on NetworkManager");
             var id = new EntityId(nextEntity++);
             var obj = runtime.CreateReplica(prefab, id, owner, position, rotation, simulationWorker, 0);
@@ -281,7 +247,7 @@ namespace AtlasNet
         public NetworkObject Spawn(NetworkObject prefab, Vector3 position, Quaternion rotation, SessionId owner = default)
         {
             if (prefab == null) throw new ArgumentNullException(nameof(prefab));
-            if (!registry.TryGetValue(prefab.PrefabId, out var registered) || registered != prefab)
+            if (!runtime.TryGetRegisteredPrefab(prefab.PrefabId, out var registered) || registered != prefab)
                 throw new InvalidOperationException($"Prefab '{prefab.name}' is not registered on this NetworkManager");
             return Spawn(prefab.PrefabId, position, rotation, owner);
         }
@@ -292,7 +258,7 @@ namespace AtlasNet
         {
             if (!IsServer || source == null || source.Manager != runtime || !source.HasAuthority)
                 throw new InvalidOperationException("Only a spawned authority can request a spawn");
-            if (prefab == null || !registry.TryGetValue(prefab.PrefabId, out var registered) || registered != prefab)
+            if (prefab == null || !runtime.TryGetRegisteredPrefab(prefab.PrefabId, out var registered) || registered != prefab)
                 throw new InvalidOperationException("Requested prefab is not registered on this NetworkManager");
             if (!isWorker)
             {
@@ -890,7 +856,7 @@ namespace AtlasNet
             ulong authorityWorker = reader.ReadULong();
             uint authorityEpoch = reader.ReadUInt();
             if (spawned.ContainsKey(id)) throw new InvalidOperationException($"Duplicate {recipient.ToLowerInvariant()} entity {id}");
-            if (!registry.TryGetValue(prefabId, out var prefab))
+            if (!runtime.TryGetRegisteredPrefab(prefabId, out var prefab))
                 throw new InvalidOperationException($"{recipient} lacks registered prefab '{prefabId}' for entity {id}. Register the same prefab ID on every instance.");
             byte[] snapshot = reader.ReadBytes();
             int count = reader.ReadInt();

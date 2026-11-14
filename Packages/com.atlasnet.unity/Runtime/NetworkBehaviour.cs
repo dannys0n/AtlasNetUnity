@@ -107,7 +107,8 @@ namespace AtlasNet
         public bool HasAuthority => NetworkObject != null && NetworkObject.HasAuthority;
         public bool IsOwner => NetworkObject != null && NetworkObject.IsOwner;
         public SessionId OwnerSession => NetworkObject.OwnerSession;
-        internal byte BehaviourIndex { get; private set; }
+        /// <summary>Replication slot of this behaviour on its spawned object.</summary>
+        public byte BehaviourIndex { get; private set; }
 
         internal void Initialize(NetworkObject networkObject, byte index)
         {

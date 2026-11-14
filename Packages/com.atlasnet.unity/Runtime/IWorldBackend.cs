@@ -4,7 +4,15 @@ using UnityEngine;
 
 namespace AtlasNet
 {
-    internal interface IFlushableWorldBackend { void FlushSend(); }
+    /// <summary>Optional late-frame send flush for backend adapters.</summary>
+    public interface IFlushableWorldBackend { void FlushSend(); }
+
+    /// <summary>Optional transport metrics and presentation clock for backend adapters.</summary>
+    public interface IWorldBackendTelemetry
+    {
+        float TickInterpolation { get; }
+        bool TryGetPeerMetrics(SessionId session, out long sent, out float ping);
+    }
 
     // Semantic Unity/backend boundary, not a native ABI or a transport interface.
     // All operations and callbacks execute on Unity's main thread. A native bridge

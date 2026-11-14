@@ -3,7 +3,7 @@ namespace AtlasNet
 {
     internal sealed partial class LocalWorldBackend
     {
-        internal bool TryGetPeerMetrics(SessionId session, out long sent, out float ping)
+        public bool TryGetPeerMetrics(SessionId session, out long sent, out float ping)
         {
 #if !ATLASNET_STANDALONE
             if (transport is UnityMessageTransport unity)
