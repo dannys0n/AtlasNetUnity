@@ -33,7 +33,7 @@ Put your own scripts in `Assets` and import the `AtlasNet` namespace. If they be
 
 1. Add `NetworkObject` to the prefab root and save the prefab asset.
 2. Create **AtlasNet → Network Prefabs List** through Unity's asset creation menu.
-3. Add the player and other spawnable `NetworkObject` prefabs to the list's **Prefabs** array.
+3. Add the player and other spawnable `NetworkObject` prefabs to the list's **Network Prefabs** list.
 4. Assign the list to **NetworkManager → Network Prefabs Lists**.
 5. Assign the same player to **Default Player Prefab** if it should spawn for connecting sessions.
 
@@ -52,9 +52,12 @@ Putting a `NetworkObject` in a scene or calling ordinary `Instantiate` does not 
 | Section / field | Purpose |
 | --- | --- |
 | **Network Settings → Tick Rate** | Networking and `OnNetworkTick` cadence; default `30` |
-| **Local Address / Port** | Current local TCP endpoint; defaults `127.0.0.1:7777` |
-| **Local Worker Regions → Automatic Handoffs** | Enable local backend boundary-based authority movement |
-| **World Minimum X/Z / World Maximum X/Z** | Local demo region bounds; match the playable map |
+| **Local Address / Port** | Client destination; defaults `127.0.0.1:7777` |
+| **Dummy Backend Partitioning → Automatic Handoffs** | Enable local backend boundary-based authority movement |
+| **Partition Center / Debug View Extent** | Worker partition origin and debug display crop |
+| **Server Transport / Native Client Transport** | Default server accepts UDP and WebSocket on the same port. Native clients default to UDP. |
+| **Listen Address** | Interface the server binds to. The default is all IPv4 interfaces. |
+| **Advanced Transport** | UDP and WebSocket idle timeouts in milliseconds. Zero disables idle disconnect for that transport. Configure before starting. |
 | **Boundary Margin** | Local boundary policy margin; not a gameplay authority test |
 | **Prefab Settings → Default Player Prefab** | Optional automatically spawned player |
 | **Network Prefabs Lists** | Reusable `.asset` registrations for spawnable prefabs |
@@ -63,7 +66,7 @@ In Play Mode, the Inspector shows role, tick, tracked entity IDs, local replicas
 
 ## Choose transform writers
 
-`NetworkTransform` synchronizes position and rotation with independent writers. **Target** defaults to its own transform; assign a child explicitly if needed.
+`NetworkTransform` synchronizes position and rotation. Set **Authority Mode** to **Server** or **Owner** for one writer. Choose **Separate Position and Rotation** to assign writers individually. **Target** defaults to its own transform; assign a child explicitly if needed.
 
 | Setup | Position Writer | Rotation Writer |
 | --- | --- | --- |
@@ -73,7 +76,7 @@ In Play Mode, the Inspector shows role, tick, tracked entity IDs, local replicas
 
 Enable **Position** and **Rotation** only for channels this component should synchronize. These are whole position/rotation channels, not NGO's complete per-axis/scale configuration surface.
 
-**Interpolate Remote Copies** smooths received transform channels on clients over a network tick. Locally owner-written channels are not corrected by those received server updates. Received server-written position can still be interpolated for the owning client; that is not client-side prediction.
+**Interpolate Remote Copies** buffers and smooths received transform channels on clients. Locally owner-written channels are not corrected by those received server updates. Received server-written position can still be interpolated for the owning client; that is not client-side prediction.
 
 For a physics player, keep owner-written look on a separate visual/aim pivot. Do not make the Rigidbody root owner-rotated while also configuring it for server-authored physics.
 

@@ -145,13 +145,18 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: AtlasNet.Unity::AtlasNet.NetworkTransform
   target: {fileID: 0}
+  inLocalSpace: 0
   syncPosition: 1
   syncRotation: 1
   positionWriter: 0
   rotationWriter: 0
-  interpolate: 1
   sendIntervalTicks: 1
-  interpolationBufferTicks: 3
+  positionThreshold: 0.001
+  rotationThreshold: 0.1
+  interpolate: 1
+  interpolationBufferTicks: 1
+  snapOnLargeMove: 1
+  snapDistance: 5
 --- !u!54 &7648394084561034851
 Rigidbody:
   m_ObjectHideFlags: 0

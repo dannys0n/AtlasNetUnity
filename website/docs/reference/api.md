@@ -20,6 +20,7 @@ This is a hand-written guide to the current small API, not generated coverage of
 | `TryGet(id, out obj)` | Look up a **local resident** entity replica |
 | `SpawnedObjects`, `SpawnedCount` | Live local replicas, not every world entity |
 | `TrackedEntityCount` | Canonical directory size on the first server; not proof of local simulation |
+| `GetTransportCapabilities(peer)`, `TryGetPeerMetrics(peer, out sent, out ping)` | Connection capabilities and available outgoing-byte and round-trip metrics |
 | `Tick`, `TickRate` | Current network tick and configured cadence |
 | `SessionJoined`, `SessionLeft` | Session lifecycle events; not a durable account/reconnect system |
 | `PlayerSpawnPosition` | Optional session-to-position callback for automatic player spawning |
@@ -73,6 +74,7 @@ Manual serialization must have a matching read/write layout. The framework does 
 | `NetworkPrefabsList` | Reusable `.asset` prefab references, assigned on the manager |
 | `NetworkTransform` | Inspector target, position/rotation toggles, independent `TransformWriter.Server`/`Owner`, interpolation |
 | `NetworkRigidbody` | Root dynamic physics, server/server transform, automatic kinematic replica handling |
+| `PredictedCharacterController`, `PredictedBehaviour<TInput, TState>` | Provisional [client prediction API](../guides/prediction.md) for built-in and custom motors |
 | `NetworkAnimator` | Animator reference, `AnimatorWriter.Server`/`Owner`, `SetTrigger(string)` |
 | `NetworkInterestSource` | Local-demo `Radius` and `ExitPadding` |
 

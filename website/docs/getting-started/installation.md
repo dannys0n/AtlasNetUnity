@@ -25,21 +25,12 @@ Unity imports the runtime, editor inspectors, and RPC code generator as a packag
 
 Unity can also install from a local `Packages/com.atlasnet.unity/package.json` checkout when you are developing the framework itself.
 
-## Import the optional sample
+## Import samples
 
-Select **AtlasNet Unity** in Package Manager. In **Samples**, import **Simple Authority Demo**.
+In Package Manager, select **AtlasNet Unity → Samples**. Import **00 Shared** first, then **01 Client Authority**. For predicted movement, import **09 Client Prediction** in a URP project. **Soccer** also requires Unity UI and TMP Essential Resources.
 
-Unity copies the sample into a path similar to:
+Unity copies samples under `Assets/Samples/AtlasNet Unity/<package version>/`. An existing imported copy stays on disk when you update the package. Reimport to get updated sample files and preserve any local edits first.
 
-```text
-Assets/Samples/AtlasNet Unity/0.1.0/Simple Authority/
-├── Scenes/
-├── Prefabs/
-├── Scripts/
-└── Materials/
-```
-
-The imported copy is yours to inspect and modify. Updating the package does not automatically rewrite an already imported sample. Keep custom changes separate before reimporting.
 
 ## Configure input for the sample
 

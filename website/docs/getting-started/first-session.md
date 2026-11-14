@@ -9,14 +9,16 @@ Open a scene from the imported sample's `Scenes` folder. Use the same scene and 
 
 | Scene | What to examine |
 | --- | --- |
-| `ClientCrossServer` | Owner-written movement and aim, cross-worker interest, and boundary handoff |
-| `ServerCrossServer` | Input intent sent to a server-authoritative movement controller; aim stays client-written |
-| `ScaleDemo` | Multiple moving entities and local-worker residency/metrics; not a universal capacity benchmark |
-| `PhysicsDemo` | A separate physics player and dynamic networked rigidbodies |
+| `01_ClientAuthority` | Owner-written movement and aim, cross-worker interest, and boundary handoff |
+| `03_ServerAuthority` | Input intent sent to a server-authoritative movement controller; aim stays client-written |
+| `05_InterestAndScale` | Multiple moving entities and local-worker residency/metrics; not a universal capacity benchmark |
+| `04_Physics` | A separate physics player and dynamic networked rigidbodies |
 
 The supplied simple movement examples currently use `CharacterController`. The physics scene is a separate Rigidbody example. The separate shooter repository is not required to run these scenes.
 
 ## Start one world, then join it
+
+For the quickest test, open **01_ClientAuthority** in two instances. Select **Start World (Server)** in the first and **Join as Client** in the second.
 
 For an easy-to-read multi-worker test, use four instances:
 

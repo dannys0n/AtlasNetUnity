@@ -105,7 +105,7 @@ Debug shapes are requested through optional APIs such as `RequestLocalRegionForD
 
 ## Local backend versus future integration
 
-Today, clients and workers use local TCP and the first server relays traffic. The expected production arrangement is a persistent client-to-ingress connection, automatic retargeting to the authoring server, and direct worker-to-worker interest/authoritative packet paths managed by AtlasNet.
+The development coordinator relays traffic between clients and workers. A default server accepts native UDP and browser WebSocket clients in the same world. TCP-only mode is also available. The expected production arrangement is a persistent client-to-ingress connection, automatic retargeting to the authoring server, and direct worker-to-worker interest/authoritative packet paths managed by AtlasNet.
 
 That C++ bridge is **not connected yet**. The developer-facing contract is entity/session-directed gameplay, single-writer state, lifecycle notifications, and transferable simulation state. The local coordinator topology is not an API game scripts should depend on.
 

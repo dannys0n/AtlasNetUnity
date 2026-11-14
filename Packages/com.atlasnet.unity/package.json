@@ -43,6 +43,11 @@
       "path": "Samples~/AnimatorSync"
     },
     {
+      "displayName": "09 Client Prediction",
+      "description": "Requires 00 Shared and URP. Try the built-in predicted character controller and a custom dash motor.",
+      "path": "Samples~/ClientPrediction"
+    },
+    {
       "displayName": "Soccer",
       "description": "Requires 00 Shared, URP, Unity UI and imported TMP Essential Resources. Includes Server Authoritative Soccer and Client Predicted Soccer. Both use authoritative ball physics and scoring.",
       "path": "Samples~/Soccer"

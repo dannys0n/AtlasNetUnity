@@ -20,7 +20,7 @@ The sample uses legacy `UnityEngine.Input`. Enable Input Manager or Both under A
 
 ## Clients spawn outside the map
 
-Inspect the manager's **World Minimum/Maximum X/Z** and the launcher's `PlayerSpawnPosition` callback. Copying networking into a differently sized shooter map does not automatically adapt spawn points or world bounds. Keep spawn points inside valid geometry; changing an interest radius will not repair a bad spawn position.
+Inspect the launcher's `PlayerSpawnPosition` callback. **Partition Center** controls worker partitioning and **Debug View Extent** only crops the debug view. Copying networking into a differently sized shooter map does not automatically adapt spawn points or world bounds. Keep spawn points inside valid geometry; changing an interest radius will not repair a bad spawn position.
 
 ## Joining waits until a window is focused
 
@@ -50,7 +50,7 @@ Use `NetworkAnimator.SetTrigger` for network trigger events, replicate the inten
 
 RPC methods must end in `Rpc`, be instance `void` methods, and use supported payloads. Remove overloads, `ref`/`out`, generic behaviours, and exception handlers from attributed bodies. Call only while network-spawned.
 
-Use matching package revisions, prefab registrations, behaviour order, and variable/RPC layouts in all instances. The current local protocol version is `9`, an implementation detail—not a stable production protocol. A package update can require updating every participant and refreshing imported samples.
+Use matching package revisions, prefab registrations, behaviour order, and variable/RPC layouts in all instances. The local wire protocol can change between revisions. A package update can require updating every participant and refreshing imported samples.
 
 ## Why does a server know about a distant entity?
 
@@ -60,9 +60,8 @@ A client can receive all entities on its current authoring worker even outside i
 
 ## What this prototype does not promise
 
-- Client-side prediction, reconciliation, rewind, or lag compensation.
-- Real AtlasNet C++ integration, ingress retargeting, production worker links, or multiple selectable transports.
-- UDP/unreliable RPC channels; the local backend currently uses reliable ordered TCP.
+- A stable prediction API, general physics rollback, rewind, or lag compensation. See [client prediction](./guides/prediction.md) for the supported character workflow.
+- Real AtlasNet C++ integration, ingress retargeting, or production worker links.
 - Seamless reconnect, session resumption, worker crash recovery, persistence, or durable identities.
 - Shared/distributed PhysX, deterministic cross-worker contacts, or automatic force/collision replication.
 - Automatic NGO-style in-scene network object discovery, arbitrary payload/collection serialization, or drop-in NGO compatibility.

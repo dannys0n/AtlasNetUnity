@@ -126,7 +126,7 @@ This sample illustrates routing, not a complete combat security or lag-compensat
 
 ## Delivery and current constraints
 
-The local transport is **TCP: reliable and ordered**. There is no implemented per-RPC unreliable/reliable selector. Do not copy FishNet channel parameters or NGO delivery options into AtlasNet examples and assume they exist.
+Set `Delivery` on the RPC attribute to `RpcDelivery.Reliable` (default), `Unreliable`, or `UnreliableSequenced`. UDP supports unreliable delivery. WebSocket and TCP run over reliable streams, so do not assume UDP loss or latency behavior on those connections. Use `NetworkManager.GetTransportCapabilities(peer)` to inspect the connection.
 
 RPC methods must be non-generic instance `void` methods whose names end in `Rpc`. Use unique names rather than overloads, and no `ref`/`out` arguments. The current generator rejects generic RPC behaviours and RPC bodies with exception handlers; keep `try`/`catch` out of the attributed body. If needed, perform that work in an ordinary helper called by it.
 

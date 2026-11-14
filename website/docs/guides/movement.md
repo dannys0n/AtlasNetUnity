@@ -161,6 +161,10 @@ Yaw travels with intent to define which direction “forward” meant for that i
 
 This minimal example is **not prediction** and is not a complete hostile-client validation layer. A joined client waits for received server movement. For a production motor, also validate input ranges/finiteness, rates, stale input, and gameplay rules.
 
+## Client prediction
+
+For server-authoritative movement with immediate local response, use [client prediction](./prediction.md). The predicted component drives the root pose and reconciles the owner using server snapshots.
+
 ## Keep mouse look local
 
 Owner mouse look should run in rendered-frame `Update`, not wait for a round trip or move a physics root to match a received server yaw. `SimpleLook` applies immediate local yaw/pitch, then publishes owner-written state on network ticks.

@@ -1,47 +1,17 @@
 # AtlasNet Unity
 
-A Unity networking framework prototype exploring multi-worker worlds, spatial interest management, and authority handoffs through familiar GameObject and prefab workflows.
+An experimental Unity networking framework for shared worlds that span multiple simulation workers. Build with familiar GameObjects, prefabs, RPCs, and replicated variables. AtlasNet Unity demonstrates spatial interest and authority handoffs, with native UDP and browser WebSocket clients sharing one world.
 
-## Highlights
+The current prototype runs on a local development backend. Integration with the AtlasNet C++ backend is pending. Client prediction is available for testing and its API is provisional.
 
-- Networked objects, transforms, Animator state, RPCs, and replicated variables.
-- Client- and server-authoritative gameplay with configurable transports.
-- Native UDP and browser WebSocket clients connected to the same server.
-- Spatial interest filtering and authority transfers between workers.
-- Interactive samples covering movement, physics, scaling, animation, and a small multiplayer soccer game.
+## Quick start
 
-## Current status
-
-The project uses a **local dummy backend** to demonstrate and validate the framework while integration with the production AtlasNet C++ backend is pending. The local project includes client prediction and cross-worker physics samples. Production integration and hardening are in progress.
-
-The Unity project targets **Unity 6000.6.2f1**. Package version **0.2.0** adds per-peer transport metrics and a configurable UDP idle timeout.
-
-## M2 presentation
-
-[![AtlasNet Unity M2 presentation](website/static/m2/slides/slide-01.png)](https://dannys0n.github.io/AtlasNetUnity/m2/)
-
-The presentation scenes live in `Assets/M2/Scenes`. The demo keeps client connections active while switching between synchronized slides and gameplay. Join by QR code or IP address. During a session, press **Tab** to see outbound traffic and per-client send rate (KiB/s) and ping (ms). Ping displays a dash when a measurement is unavailable.
-
-## Install
-
-In Unity Package Manager, choose **Install package from Git URL**:
+In Unity Package Manager, choose **Install package from Git URL** and paste:
 
 ```text
 https://github.com/dannys0n/AtlasNetUnity.git?path=/Packages/com.atlasnet.unity#main
 ```
 
-Import **00 Shared** from the package's Samples section first, then the demonstrations you want to explore. Soccer additionally requires URP, Unity UI, and TMP Essential Resources.
+Import **00 Shared**, then **01 Client Authority**. Open **01_ClientAuthority** and select **Start World (Server)** in one instance and **Join as Client** in another.
 
-Start with **01 Client Authority**. Select **Host** in one instance and **Join as Client** in another. Use WASD to move and F to try the RPC counter.
-
-## Local prediction samples
-
-Under **Assets → Samples → AtlasNet Unity → 0.1.0**, open the same scene in each instance, then select **Host** in one and **Join** in the other.
-
-- **09_ClientPrediction** uses the drop-in predicted character controller.
-- **09_CustomPrediction** demonstrates typed input and state with a dash cooldown.
-- Under **Soccer**, open **Server Authoritative Soccer** for server-simulated movement or **Client Predicted Soccer** for local prediction. The predicted variant predicts player movement and turning. The server or worker handles ball contacts, ball physics, and scoring.
-
-The UPM package contains the networking runtime and importable samples. Open this repository as a Unity project to run the M2 presentation.
-
-[Documentation and setup guides](https://dannys0n.github.io/AtlasNetUnity/)
+[Documentation](https://dannys0n.github.io/AtlasNetUnity/) · [M2 presentation](https://dannys0n.github.io/AtlasNetUnity/m2/)
