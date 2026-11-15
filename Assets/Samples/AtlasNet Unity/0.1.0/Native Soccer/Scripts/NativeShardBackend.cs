@@ -7,7 +7,9 @@ using EntityId = AtlasNet.EntityId;
 
 internal sealed partial class NativeShardBackend : IWorldBackend, IWorldBackendTelemetry
 {
+    internal static readonly byte[] SpectatorAdmission = { 0x41, 0x54, 0x4C, 0x53, 1 };
     private readonly NetworkManager manager;
+    private readonly NetworkObject observerPrefab;
     private readonly HashSet<EntityId> frozen = new();
     private readonly Dictionary<EntityId, Vector3> positions = new();
     private readonly UnityShardMigration migration;
@@ -19,9 +21,10 @@ internal sealed partial class NativeShardBackend : IWorldBackend, IWorldBackendT
     private ulong nextRegistration;
     private uint nextSnapshotTick;
 
-    public NativeShardBackend(NetworkManager manager)
+    public NativeShardBackend(NetworkManager manager, NetworkObject observerPrefab)
     {
         this.manager = manager;
+        this.observerPrefab = observerPrefab;
         migration = new UnityShardMigration(manager, Capture, Freeze, Restore);
     }
 
@@ -61,28 +64,35 @@ internal sealed partial class NativeShardBackend : IWorldBackend, IWorldBackendT
             if (JToken.DeepEquals(displayedRegion, shape)) return debugRegionVersion;
             displayedRegion = shape;
             debugRegionVersion++;
-            debugOutline.Clear();
-            if (shape == null) return debugRegionVersion;
-            int z = shape.Value<int>("dimension") == 2 ? 1 : 2;
-            var min = shape["min"];
-            var max = shape["max"];
-            float left = Mathf.Max(-65, (float?)min[0] ?? -65);
-            float right = Mathf.Min(65, (float?)max[0] ?? 65);
-            float bottom = Mathf.Max(-40, (float?)min[z] ?? -40);
-            float top = Mathf.Min(40, (float?)max[z] ?? 40);
-            if (left >= right || bottom >= top) return debugRegionVersion;
-            debugOutline.Add(new Vector2(left, bottom));
-            debugOutline.Add(new Vector2(right, bottom));
-            debugOutline.Add(new Vector2(right, top));
-            debugOutline.Add(new Vector2(left, top));
-            foreach (var plane in shape["planes"])
-            {
-                var normal = plane["normal"];
-                BackendSmokeLauncher.Clip(debugOutline, new Vector2((float)normal[0], (float)normal[z]), (float)plane["offset"]);
-            }
+            BuildRegionOutline(shape, debugOutline);
             return debugRegionVersion;
         }
     }
+
+    internal static void BuildRegionOutline(JObject shape, List<Vector2> outline)
+    {
+        outline.Clear();
+        if (shape?["min"] is not JArray min || shape["max"] is not JArray max) return;
+        int z = shape.Value<int>("dimension") == 2 ? 1 : 2;
+        if (min.Count <= z || max.Count <= z) return;
+        float left = Mathf.Max(-65, (float?)min[0] ?? -65);
+        float right = Mathf.Min(65, (float?)max[0] ?? 65);
+        float bottom = Mathf.Max(-40, (float?)min[z] ?? -40);
+        float top = Mathf.Min(40, (float?)max[z] ?? 40);
+        if (left >= right || bottom >= top) return;
+        outline.Add(new Vector2(left, bottom));
+        outline.Add(new Vector2(right, bottom));
+        outline.Add(new Vector2(right, top));
+        outline.Add(new Vector2(left, top));
+        if (shape["planes"] is not JArray planes) return;
+        foreach (var plane in planes)
+        {
+            if (plane["normal"] is not JArray normal || normal.Count <= z) continue;
+            BackendSmokeLauncher.Clip(outline, new Vector2((float)normal[0], (float)normal[z]),
+                plane.Value<float>("offset"));
+        }
+    }
+
     public int LocalAuthorityCount => manager.SpawnedCount - frozen.Count;
     public Func<SessionId, Vector3> PlayerSpawnPosition { get; set; }
 
@@ -212,15 +222,18 @@ internal sealed partial class NativeShardBackend : IWorldBackend, IWorldBackendT
     {
         var id = new EntityId(request.Value<ulong>("entity"));
         var owner = new SessionId(request.Value<ulong>("client"));
-        if (!manager.PlayerPrefab || id.Value == 0 || owner.Value == 0) return false;
+        byte[] admission = request["admission"]?.ToObject<byte[]>() ?? Array.Empty<byte>();
+        bool spectator = admission.AsSpan().SequenceEqual(SpectatorAdmission);
+        var prefab = spectator ? observerPrefab : manager.PlayerPrefab;
+        if (!prefab || id.Value == 0 || owner.Value == 0) return false;
         if (manager.TryGet(id, out var existing)) return existing.OwnerSession == owner;
         foreach (var player in manager.SpawnedObjects)
             if (player.OwnerSession == owner) return false;
         var position = (JArray)request["position"];
-        var spawn = PlayerSpawnPosition?.Invoke(owner) ??
-            new Vector3(position[0].Value<float>(), position[2].Value<float>(), position[1].Value<float>());
-        manager.CreateReplica(manager.PlayerPrefab, id, owner, spawn, Quaternion.identity, LocalWorkerId, 1);
-        SessionJoined?.Invoke(owner);
+        var placement = new Vector3(position[0].Value<float>(), position[2].Value<float>(), position[1].Value<float>());
+        var spawn = spectator ? placement : PlayerSpawnPosition?.Invoke(owner) ?? placement;
+        manager.CreateReplica(prefab, id, owner, spawn, Quaternion.identity, LocalWorkerId, 1);
+        if (!spectator) SessionJoined?.Invoke(owner);
         return true;
     }
 
@@ -361,6 +374,7 @@ internal sealed partial class NativeShardBackend : IWorldBackend, IWorldBackendT
             admission.Write(obj.OwnerSession);
             Publish(obj, SessionSignal, admission, obj.OwnerSession);
         }
+        if (observerPrefab && obj.PrefabId == observerPrefab.PrefabId) return;
         using var writer = new NetWriter();
         WriteEntityHeader(writer, obj);
         writer.Write(obj.PrefabId);

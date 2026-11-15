@@ -1,4 +1,4 @@
-"""Serve M2 desktop/mobile Web builds on one LAN address. Ctrl+C stops the server."""
+"""Serve AtlasNet Web builds over HTTP. Ctrl+C stops the server."""
 import argparse
 import functools
 import gzip
@@ -19,6 +19,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             if str(path).endswith(suffix): path = str(path)[:-len(suffix)]; break
         return super().guess_type(path)
     def do_GET(self):
+        if self.server.native:
+            self.directory = str(BUILDS["native"])
+            self.serve_asset()
+            return
         request = urlsplit(self.path)
         parts = request.path.strip("/").split("/", 1)
         kind = parts[0]
@@ -37,6 +41,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self.redirect(kind, request.query); return
         self.directory = str(BUILDS[kind])
         self.path = "/" + (parts[1] if len(parts)>1 else "") + (("?" + request.query) if request.query else "")
+        self.serve_asset()
+    def serve_asset(self):
         source=Path(self.translate_path(urlsplit(self.path).path))
         packed=Path(str(source)+".gz")
         if "gzip" in self.headers.get("Accept-Encoding","") and source.is_file() and packed.is_file() and packed.stat().st_mtime>=source.stat().st_mtime:
@@ -62,13 +68,16 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("demo",nargs="?",default="m2",choices=("soccer","m2"))
+    parser.add_argument("demo",nargs="?",default="m2",choices=("soccer","m2","native"))
     parser.add_argument("--port",type=int,default=8094)
+    parser.add_argument("--bind",default="0.0.0.0")
     parser.add_argument("--game-port",type=int,default=7777)
     args=parser.parse_args()
     global BUILDS
-    prefix="M2" if args.demo=="m2" else "Soccer"
+    prefix = {"m2": "M2", "soccer": "Soccer", "native": "Native Soccer"}[args.demo]
     BUILDS={"desktop":ROOT/(prefix+"-Desktop"),"mobile":ROOT/(prefix+"-Mobile")}
+    if args.demo == "native":
+        BUILDS = {"native": ROOT / "Native-Soccer-Web"}
     if not all(1<=p<=65535 for p in (args.port,args.game_port)): parser.error("Ports must be 1-65535")
     if not any((b/"index.html").is_file() for b in BUILDS.values()):
         parser.error("No " + prefix + " Web builds found. Expected index.html in:\n" + "\n".join(str(b) for b in BUILDS.values()))
@@ -87,8 +96,14 @@ def main():
                     shutil.copyfileobj(raw,compressed,1024*1024)
             if source.stat().st_mtime==stamp: temporary.replace(packed)
             else: temporary.unlink()
-    with http.server.ThreadingHTTPServer(("0.0.0.0",args.port),functools.partial(Handler,directory=str(ROOT))) as server:
-        server.daemon_threads=True; server.game_port=args.game_port
+    with http.server.ThreadingHTTPServer((args.bind,args.port),functools.partial(Handler,directory=str(ROOT))) as server:
+        server.daemon_threads=True; server.game_port=args.game_port; server.native = args.demo == "native"
+        if server.native:
+            print(f"Native Soccer Web is listening on {args.bind}:{args.port}. Join by opening the page on a browser.", flush=True)
+            print("Start the real AtlasNet stack with the WebSocket gateway on port 5921.", flush=True)
+            try: server.serve_forever()
+            except KeyboardInterrupt: print("Stopped.", flush=True)
+            return
         print("Open M2_Launcher in Unity." if args.demo=="m2" else "Open Server Authoritative Soccer in Unity.",flush=True)
         print("Then click Host or Start server only.",flush=True)
         addresses={"127.0.0.1"}

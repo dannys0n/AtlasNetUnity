@@ -30,6 +30,7 @@ namespace AtlasNet.Samples.Soccer
         SoccerMatch match;
         bool createdBall;
         public Func<bool> TryClaimInitialBall { get; set; }
+        public bool UseExternalConnection { get; set; }
         Camera view;
         NetworkObject local;
         PredictedSoccerMotor localMotor;
@@ -42,7 +43,7 @@ namespace AtlasNet.Samples.Soccer
         }
         void Start()
         {
-            if (Application.platform == RuntimePlatform.WebGLPlayer && Uri.TryCreate(Application.absoluteURL, UriKind.Absolute, out var uri))
+            if (!UseExternalConnection && Application.platform == RuntimePlatform.WebGLPlayer && Uri.TryCreate(Application.absoluteURL, UriKind.Absolute, out var uri))
             {
                 foreach (var item in uri.Query.TrimStart('?').Split('&'))
                 {
@@ -75,7 +76,7 @@ namespace AtlasNet.Samples.Soccer
                 clockSecond = second;
                 clock.text = now.ToString("HH:mm:ss");
             }
-            connectionPanel.SetActive(!manager.IsRunning);
+            connectionPanel.SetActive(!UseExternalConnection && !manager.IsRunning);
             joinPanel.SetActive(manager.IsRunning && manager.IsServer && !string.IsNullOrWhiteSpace(webBaseUrl));
             waveButton.SetActive(manager.IsClient && local && local.IsSpawned);
             if (!manager.IsRunning) { match = null; local = null; localMotor = null; createdBall = false; return; }
@@ -135,7 +136,7 @@ namespace AtlasNet.Samples.Soccer
                 qr.SetPixel(x, size - 1 - y, code.GetModule(x - 4, y - 4) ? Color.black : Color.white);
             qr.Apply(); qrView.texture = qr;
         }
-        static string LanAddress()
+        internal static string LanAddress()
         {
 #if !UNITY_WEBGL || UNITY_EDITOR
             foreach (var nic in NetworkInterface.GetAllNetworkInterfaces())

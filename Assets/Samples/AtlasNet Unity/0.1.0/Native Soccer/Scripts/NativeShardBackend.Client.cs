@@ -13,7 +13,7 @@ internal sealed partial class NativeShardBackend
     private const int HeaderSize = 21;
     private const uint SessionSignal = 0x415506;
 
-    private sealed class ClientConnection
+    private sealed partial class ClientConnection
     {
         public readonly ConcurrentQueue<byte[]> Incoming = new();
         public readonly ConcurrentQueue<byte[]> Outgoing = new();
@@ -21,13 +21,14 @@ internal sealed partial class NativeShardBackend
         public volatile string Error;
         public long BytesSent;
 
-        public void Run(string endpoint)
+#if !UNITY_WEBGL || UNITY_EDITOR
+        public void Run(string endpoint, byte[] admission)
         {
             try
             {
                 if (NativeClient.anu_abi_version() != 1) throw new IOException("Unexpected AtlasNet client ABI.");
                 using var handle = NativeClient.anu_create();
-                if (handle.IsInvalid || NativeClient.anu_connect(handle, endpoint, null, 0) != NativeClient.Result.Ok)
+                if (handle.IsInvalid || NativeClient.anu_connect(handle, endpoint, admission, (uint)admission.Length) != NativeClient.Result.Ok)
                     throw new IOException("AtlasNet ingress connection failed.");
 
                 var buffer = new byte[65536];
@@ -48,6 +49,7 @@ internal sealed partial class NativeShardBackend
             }
             catch (Exception error) { Error = error.Message; }
         }
+#endif
     }
 
     private ClientConnection client;
@@ -68,17 +70,30 @@ internal sealed partial class NativeShardBackend
         if (IsRunning) throw new InvalidOperationException("An AtlasNet session is already running.");
         ValidateRegistry();
         var transport = new ClientConnection();
-        string endpoint = $"{manager.Address}:{manager.Port}";
+        byte[] admission = manager.ConnectionData ?? Array.Empty<byte>();
+
         Tick = 0;
         accumulated = 0;
         nextCommand = 0;
+#if UNITY_WEBGL && !UNITY_EDITOR
+        transport.OpenWebSocket(manager.Address, manager.Port, admission);
+#else
+        string endpoint = $"{manager.Address}:{manager.Port}";
+        new Thread(() => transport.Run(endpoint, admission)) { IsBackground = true, Name = "AtlasNet native client" }.Start();
+#endif
         client = transport;
-        new Thread(() => transport.Run(endpoint)) { IsBackground = true, Name = "AtlasNet native client" }.Start();
     }
 
     private void StopClient()
     {
-        if (client != null) client.Stopping = true;
+        if (client != null)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            client.CloseWebSocket();
+#else
+            client.Stopping = true;
+#endif
+        }
         client = null;
         removedEntities.Clear();
         DebugRegions.Clear();
@@ -87,6 +102,9 @@ internal sealed partial class NativeShardBackend
 
     private void PollClient(float deltaTime)
     {
+#if UNITY_WEBGL && !UNITY_EDITOR
+        client.PollWebSocket();
+#endif
         if (client.Error != null) throw new IOException(client.Error);
         for (int i = 0; i < 128 && client.Incoming.TryDequeue(out var packet); i++)
             ReceiveClientSignal(packet);
@@ -116,14 +134,18 @@ internal sealed partial class NativeShardBackend
         payload.Write(behaviour);
         payload.Write(method);
         payload.WriteBytes(content.ToArray());
-        byte[] body = payload.ToArray();
+        if (client.Outgoing.Count >= 128) throw new IOException("AtlasNet client command queue is full.");
+        client.Outgoing.Enqueue(EncodeClientPacket(12, 1, payload.ToArray()));
+    }
 
+    private static byte[] EncodeClientPacket(ushort instruction, uint channel, byte[] body)
+    {
         using var writer = new NetWriter();
         writer.Write(PacketMagic);
         writer.Write((byte)1);
-        writer.Write(1u);
+        writer.Write(channel);
         writer.Write((ushort)0);
-        writer.Write((ushort)12);
+        writer.Write(instruction);
         writer.Write(0u);
         writer.Write((uint)body.Length);
         writer.WriteRaw(body);
@@ -137,8 +159,7 @@ internal sealed partial class NativeShardBackend
         }
         crc = ~crc;
         for (int i = 0; i < 4; i++) packet[13 + i] = (byte)(crc >> (i * 8));
-        if (client.Outgoing.Count >= 128) throw new IOException("AtlasNet client command queue is full.");
-        client.Outgoing.Enqueue(packet);
+        return packet;
     }
 
     private void ReceiveClientSignal(byte[] packet)

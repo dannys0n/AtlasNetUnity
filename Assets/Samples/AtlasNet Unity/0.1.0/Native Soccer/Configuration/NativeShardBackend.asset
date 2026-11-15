@@ -12,3 +12,4 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 5f48eee7cbd75b54b854c55a44392235, type: 3}
   m_Name: NativeShardBackend
   m_EditorClassIdentifier: Assembly-CSharp::NativeShardBackendProvider
+  observerPrefab: {fileID: 11400001, guid: 4189a24aa77b4cfe990a0129fe8c87d2, type: 3}

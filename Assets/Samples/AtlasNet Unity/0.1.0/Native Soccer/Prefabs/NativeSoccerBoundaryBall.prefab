@@ -131,7 +131,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a1000000000000000000000000000001, type: 3}
   m_Name: 
   m_EditorClassIdentifier: AtlasNet.Unity::AtlasNet.NetworkObject
-  prefabId: GlobalObjectId_V1-1-c4993ca7853da434781c368846190f7b-1734352190790020567-0
+  prefabId: GlobalObjectId_V1-1-9901eb64c98219140afaf04c91927092-1734352190790020567-0
 --- !u!114 &4745973896117840513
 MonoBehaviour:
   m_ObjectHideFlags: 0

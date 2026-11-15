@@ -7,10 +7,18 @@ public sealed class BackendSmokeLauncher : MonoBehaviour
 {
     [SerializeField] private WorldBackendProvider backendProvider;
     [SerializeField] private Camera overviewCamera;
+    [SerializeField] private bool spectatorMode;
+    [SerializeField] private Material spectatorRegionMaterial;
+    [SerializeField] private string spectatorJoinUrl = "http://localhost:8094/";
+    private NativeSoccerSpectator spectator;
 
     private NetworkManager manager;
     private string address = "127.0.0.1";
+#if UNITY_WEBGL && !UNITY_EDITOR
+    private string port = "5921";
+#else
     private string port = "5919";
+#endif
     private string error;
     private bool showRegions;
     private bool traceSoccer;
@@ -20,11 +28,27 @@ public sealed class BackendSmokeLauncher : MonoBehaviour
     private void Awake()
     {
         manager = GetComponent<NetworkManager>();
+        if (TryGetComponent(out AtlasNet.Samples.Soccer.SoccerSession soccer))
+            soccer.UseExternalConnection = true;
         Application.runInBackground = true;
+        if (spectatorMode && overviewCamera)
+            spectator = new NativeSoccerSpectator(manager, overviewCamera, spectatorRegionMaterial, ResolveJoinUrl());
+#if UNITY_WEBGL && !UNITY_EDITOR
+        if (Uri.TryCreate(Application.absoluteURL, UriKind.Absolute, out Uri page))
+        {
+            address = page.GetLeftPart(UriPartial.Authority);
+            if (page.Scheme == "https")
+            {
+                address += "/atlasnet";
+                port = page.Port.ToString();
+            }
+        }
+#endif
     }
 
     private void Start()
     {
+#if !UNITY_WEBGL || UNITY_EDITOR
         string[] args = Environment.GetCommandLineArgs();
         traceSoccer = Array.IndexOf(args, "-atlasnet-trace-soccer") >= 0;
         if (Array.IndexOf(args, "-atlasnet-socket") >= 0)
@@ -46,7 +70,29 @@ public sealed class BackendSmokeLauncher : MonoBehaviour
         address = args[join + 1];
         port = args[join + 2];
         StartSession(false);
+#endif
     }
+
+    private string ResolveJoinUrl()
+    {
+        if (!Uri.TryCreate(spectatorJoinUrl, UriKind.Absolute, out var configured) ||
+            (configured.Scheme != "http" && configured.Scheme != "https")) return null;
+        if (!configured.IsLoopback) return configured.AbsoluteUri;
+        var url = new UriBuilder(configured);
+#if UNITY_WEBGL && !UNITY_EDITOR
+        if (Uri.TryCreate(Application.absoluteURL, UriKind.Absolute, out var page))
+        {
+            url.Host = page.Host;
+            url.Scheme = page.Scheme;
+            url.Port = page.Port;
+        }
+#else
+        url.Host = AtlasNet.Samples.Soccer.SoccerSession.LanAddress();
+#endif
+        return url.Uri.AbsoluteUri;
+    }
+
+    private void OnDestroy() => spectator?.Dispose();
 
     private static bool ClaimBall()
     {
@@ -77,6 +123,7 @@ public sealed class BackendSmokeLauncher : MonoBehaviour
                     portNumber < 1 || portNumber > 65535)
                     throw new ArgumentException("Enter an AtlasNet ingress address and a valid port.");
                 manager.ConfigureConnection(address.Trim(), portNumber);
+                manager.ConnectionData = spectatorMode ? NativeShardBackend.SpectatorAdmission : Array.Empty<byte>();
             }
 
             manager.SetBackend(backendProvider);
@@ -132,6 +179,11 @@ public sealed class BackendSmokeLauncher : MonoBehaviour
     private void LateUpdate()
     {
         if (!overviewCamera) return;
+        if (spectator != null)
+        {
+            spectator.Update();
+            return;
+        }
         bool showOverview = true;
         if (manager.IsConnectedClient)
         {
@@ -151,15 +203,19 @@ public sealed class BackendSmokeLauncher : MonoBehaviour
     private void OnGUI()
     {
         GUILayout.BeginArea(new Rect(12, 12, 400, 310), GUI.skin.box);
-        GUILayout.Label("AtlasNet backend smoke test");
+        GUILayout.Label(spectatorMode ? "AtlasNet Soccer spectator" : "AtlasNet backend smoke test");
         if (!manager.IsRunning)
         {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            GUILayout.Label("WebSocket address / port");
+#else
             GUILayout.Label("Ingress address / port");
+#endif
             address = GUILayout.TextField(address);
             port = GUILayout.TextField(port);
             bool wasEnabled = GUI.enabled;
             GUI.enabled = wasEnabled && backendProvider != null;
-            if (GUILayout.Button("Join AtlasNet")) StartSession(false);
+            if (GUILayout.Button(spectatorMode ? "Connect spectator" : "Join AtlasNet")) StartSession(false);
             GUI.enabled = wasEnabled;
             if (!backendProvider)
                 GUILayout.Label("Assign the real backend provider in the Inspector.");
@@ -176,9 +232,13 @@ public sealed class BackendSmokeLauncher : MonoBehaviour
                 GUILayout.Label($"Position {replica.transform.position:F2}");
                 break;
             }
-            GUILayout.Label("WASD to move");
-            showRegions = GUILayout.Toggle(showRegions, "Shard ownership");
-            if (showRegions) DrawRegions();
+            if (spectator != null) spectator.DrawControls();
+            else
+            {
+                GUILayout.Label("WASD to move");
+                showRegions = GUILayout.Toggle(showRegions, "Shard ownership");
+                if (showRegions) DrawRegions();
+            }
             if (GUILayout.Button("Disconnect")) manager.Stop();
         }
 
@@ -186,6 +246,7 @@ public sealed class BackendSmokeLauncher : MonoBehaviour
         var reason = manager.DisconnectReason;
         if (!string.IsNullOrEmpty(reason)) GUILayout.Label(reason);
         GUILayout.EndArea();
+        spectator?.DrawJoinCode();
     }
     private static void DrawRegions()
     {
