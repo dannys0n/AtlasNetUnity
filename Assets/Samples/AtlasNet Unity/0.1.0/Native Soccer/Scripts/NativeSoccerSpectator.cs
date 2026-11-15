@@ -23,13 +23,12 @@ internal sealed class NativeSoccerSpectator
     private readonly Vector3 startPosition;
     private readonly Quaternion startRotation;
     private readonly Dictionary<ulong, Region> regions = new();
-    private readonly HashSet<ulong> selected = new();
+    private readonly HashSet<ulong> hiddenShards = new();
     private readonly List<NetworkObject> candidates = new();
     private readonly List<ulong> staleRegions = new();
     private readonly List<Vector2> outline = new();
     private readonly Texture2D qr;
     private NetworkObject focus;
-    private bool filter;
     private bool showRegions = true;
     private double nextFocus;
     private Vector2 scroll;
@@ -59,7 +58,7 @@ internal sealed class NativeSoccerSpectator
     }
 
     public string JoinUrl { get; }
-    private bool Includes(ulong worker) => !filter || selected.Contains(worker);
+    private bool Includes(ulong worker) => !hiddenShards.Contains(worker);
 
     public void Update()
     {
@@ -130,7 +129,7 @@ internal sealed class NativeSoccerSpectator
         {
             DestroyRegion(regions[worker]);
             regions.Remove(worker);
-            selected.Remove(worker);
+            hiddenShards.Remove(worker);
         }
     }
 
@@ -160,22 +159,15 @@ internal sealed class NativeSoccerSpectator
         if (focus) GUILayout.Label($"Following {focus.EntityId} · shard {focus.SimulationWorker}");
         if (GUILayout.Button("Follow another player")) PickFocus();
         showRegions = GUILayout.Toggle(showRegions, "Show authority regions");
-        bool nextFilter = GUILayout.Toggle(filter, "Filter shards");
-        if (nextFilter && !filter && selected.Count == 0)
-            foreach (ulong worker in regions.Keys) selected.Add(worker);
-        filter = nextFilter;
         scroll = GUILayout.BeginScrollView(scroll, GUILayout.MaxHeight(136));
         foreach (var entry in regions)
         {
             Color previous = GUI.contentColor;
             GUI.contentColor = entry.Value.Color;
-            string label = $"Shard {entry.Key}";
-            if (filter)
-            {
-                if (GUILayout.Toggle(selected.Contains(entry.Key), label)) selected.Add(entry.Key);
-                else selected.Remove(entry.Key);
-            }
-            else GUILayout.Label(label);
+            if (GUILayout.Toggle(Includes(entry.Key), $"Shard {entry.Key}"))
+                hiddenShards.Remove(entry.Key);
+            else
+                hiddenShards.Add(entry.Key);
             GUI.contentColor = previous;
         }
         GUILayout.EndScrollView();
@@ -184,10 +176,18 @@ internal sealed class NativeSoccerSpectator
     public void DrawJoinCode()
     {
         if (!qr) return;
-        const int size = 196;
-        GUILayout.BeginArea(new Rect(Screen.width - 248, 12, 236, 246), GUI.skin.box);
+        // Match the Soccer HUD's 1600x900 reference canvas and equal axis weighting.
+        float scale = Mathf.Sqrt(Screen.width / 1600f * (Screen.height / 900f));
+        float size = Mathf.Min(Mathf.Round(340 * scale), Screen.width - 56);
+        float panelWidth = size + 32;
+        GUILayout.BeginArea(new Rect(Screen.width - panelWidth - 12, 12, panelWidth, size + 50), GUI.skin.box);
         GUILayout.Label("Join Native Soccer");
-        GUILayout.Label(qr, GUILayout.Width(size), GUILayout.Height(size));
+        GUILayout.BeginHorizontal();
+        GUILayout.FlexibleSpace();
+        Rect qrRect = GUILayoutUtility.GetRect(size, size, GUILayout.ExpandWidth(false));
+        GUI.DrawTexture(qrRect, qr, ScaleMode.ScaleToFit);
+        GUILayout.FlexibleSpace();
+        GUILayout.EndHorizontal();
         GUILayout.Label(JoinUrl);
         GUILayout.EndArea();
     }

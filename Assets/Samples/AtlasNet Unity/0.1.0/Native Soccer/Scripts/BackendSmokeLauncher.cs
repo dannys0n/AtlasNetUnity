@@ -7,10 +7,12 @@ public sealed class BackendSmokeLauncher : MonoBehaviour
 {
     [SerializeField] private WorldBackendProvider backendProvider;
     [SerializeField] private Camera overviewCamera;
-    [SerializeField] private bool spectatorMode;
+    [SerializeField] private bool useSharedSoccerCamera;
     [SerializeField] private Material spectatorRegionMaterial;
     [SerializeField] private string spectatorJoinUrl = "http://localhost:8094/";
     private NativeSoccerSpectator spectator;
+    private Vector3 overviewPosition;
+    private Quaternion overviewRotation;
 
     private NetworkManager manager;
     private string address = "127.0.0.1";
@@ -28,11 +30,15 @@ public sealed class BackendSmokeLauncher : MonoBehaviour
     private void Awake()
     {
         manager = GetComponent<NetworkManager>();
+        showRegions = useSharedSoccerCamera;
         if (TryGetComponent(out AtlasNet.Samples.Soccer.SoccerSession soccer))
             soccer.UseExternalConnection = true;
         Application.runInBackground = true;
-        if (spectatorMode && overviewCamera)
-            spectator = new NativeSoccerSpectator(manager, overviewCamera, spectatorRegionMaterial, ResolveJoinUrl());
+        if (overviewCamera)
+        {
+            overviewPosition = overviewCamera.transform.position;
+            overviewRotation = overviewCamera.transform.rotation;
+        }
 #if UNITY_WEBGL && !UNITY_EDITOR
         if (Uri.TryCreate(Application.absoluteURL, UriKind.Absolute, out Uri page))
         {
@@ -69,7 +75,7 @@ public sealed class BackendSmokeLauncher : MonoBehaviour
         }
         address = args[join + 1];
         port = args[join + 2];
-        StartSession(false);
+        StartSession(false, Array.IndexOf(args, "-atlasnet-spectate") >= 0);
 #endif
     }
 
@@ -87,7 +93,10 @@ public sealed class BackendSmokeLauncher : MonoBehaviour
             url.Port = page.Port;
         }
 #else
-        url.Host = AtlasNet.Samples.Soccer.SoccerSession.LanAddress();
+        string host = address.Trim();
+        bool loopback = host.Equals("localhost", StringComparison.OrdinalIgnoreCase) ||
+            (System.Net.IPAddress.TryParse(host, out var ip) && System.Net.IPAddress.IsLoopback(ip));
+        url.Host = loopback ? AtlasNet.Samples.Soccer.SoccerSession.LanAddress() : host;
 #endif
         return url.Uri.AbsoluteUri;
     }
@@ -110,7 +119,7 @@ public sealed class BackendSmokeLauncher : MonoBehaviour
         }
     }
 
-    private void StartSession(bool server)
+    private void StartSession(bool server, bool spectate = false)
     {
         try
         {
@@ -123,12 +132,22 @@ public sealed class BackendSmokeLauncher : MonoBehaviour
                     portNumber < 1 || portNumber > 65535)
                     throw new ArgumentException("Enter an AtlasNet ingress address and a valid port.");
                 manager.ConfigureConnection(address.Trim(), portNumber);
-                manager.ConnectionData = spectatorMode ? NativeShardBackend.SpectatorAdmission : Array.Empty<byte>();
+                if (spectate && (!useSharedSoccerCamera || !overviewCamera))
+                    throw new InvalidOperationException("This scene has no Soccer spectator camera.");
+                manager.ConnectionData = spectate ? NativeShardBackend.SpectatorAdmission : Array.Empty<byte>();
             }
 
             manager.SetBackend(backendProvider);
             if (server) manager.StartServer();
-            else manager.StartClient();
+            else
+            {
+                manager.StartClient();
+                if (spectate)
+                {
+                    overviewCamera.transform.SetPositionAndRotation(overviewPosition, overviewRotation);
+                    spectator = new NativeSoccerSpectator(manager, overviewCamera, spectatorRegionMaterial, ResolveJoinUrl());
+                }
+            }
             error = null;
         }
         catch (Exception exception)
@@ -141,16 +160,24 @@ public sealed class BackendSmokeLauncher : MonoBehaviour
 
     private void Update()
     {
-        if (TryGetComponent(out ClientBoundaryOverlay overlay)) overlay.Visible = showRegions;
+        if (spectator != null && !manager.IsRunning)
+        {
+            spectator.Dispose();
+            spectator = null;
+        }
+        if (useSharedSoccerCamera && overviewCamera && !manager.IsRunning)
+            overviewCamera.transform.SetPositionAndRotation(overviewPosition, overviewRotation);
+        if (TryGetComponent(out ClientBoundaryOverlay overlay)) overlay.Visible = showRegions && spectator == null;
         TryRunGoalFixture();
         if (!traceSoccer || !manager.IsConnectedClient || Time.unscaledTimeAsDouble < nextTrace) return;
         nextTrace = Time.unscaledTimeAsDouble + 0.25;
         foreach (var replica in manager.SpawnedObjects)
         {
             if (!replica.TryGetComponent(out AtlasNet.Samples.Soccer.SoccerMatch match)) continue;
+            manager.TryGetPeerMetrics(default, out _, out float ping);
             Debug.Log($"Soccer session={manager.LocalSession.Value} ball={replica.EntityId.Value} " +
                 $"worker={replica.SimulationWorker} epoch={replica.AuthorityEpoch} " +
-                $"position={replica.transform.position:F2} blue={match.BlueScore.Value} orange={match.OrangeScore.Value}");
+                $"position={replica.transform.position:F2} blue={match.BlueScore.Value} orange={match.OrangeScore.Value} ping={ping:F1}ms");
             break;
         }
     }
@@ -184,6 +211,7 @@ public sealed class BackendSmokeLauncher : MonoBehaviour
             spectator.Update();
             return;
         }
+        if (useSharedSoccerCamera) return;
         bool showOverview = true;
         if (manager.IsConnectedClient)
         {
@@ -203,7 +231,7 @@ public sealed class BackendSmokeLauncher : MonoBehaviour
     private void OnGUI()
     {
         GUILayout.BeginArea(new Rect(12, 12, 400, 310), GUI.skin.box);
-        GUILayout.Label(spectatorMode ? "AtlasNet Soccer spectator" : "AtlasNet backend smoke test");
+        GUILayout.Label(spectator != null ? "AtlasNet Soccer spectator" : useSharedSoccerCamera ? "AtlasNet Soccer" : "AtlasNet backend smoke test");
         if (!manager.IsRunning)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
@@ -215,7 +243,8 @@ public sealed class BackendSmokeLauncher : MonoBehaviour
             port = GUILayout.TextField(port);
             bool wasEnabled = GUI.enabled;
             GUI.enabled = wasEnabled && backendProvider != null;
-            if (GUILayout.Button(spectatorMode ? "Connect spectator" : "Join AtlasNet")) StartSession(false);
+            if (GUILayout.Button("Join AtlasNet")) StartSession(false);
+            if (useSharedSoccerCamera && GUILayout.Button("Spectate")) StartSession(false, true);
             GUI.enabled = wasEnabled;
             if (!backendProvider)
                 GUILayout.Label("Assign the real backend provider in the Inspector.");
@@ -225,6 +254,8 @@ public sealed class BackendSmokeLauncher : MonoBehaviour
             GUILayout.Label(manager.IsServer ? "Shard server" :
                 manager.IsConnectedClient ? "Connected client" : "Connecting...");
             GUILayout.Label($"Session {manager.LocalSession}  |  Tick {manager.Tick}  |  Replicas {manager.SpawnedCount}");
+            if (manager.IsConnectedClient && manager.TryGetPeerMetrics(default, out _, out float ping) && ping >= 0)
+                GUILayout.Label($"Ping {ping:F0} ms");
             foreach (var replica in manager.SpawnedObjects)
             {
                 if (!replica.IsOwner) continue;
