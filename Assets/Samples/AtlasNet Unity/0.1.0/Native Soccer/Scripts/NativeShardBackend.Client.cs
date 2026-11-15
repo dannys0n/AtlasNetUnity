@@ -12,6 +12,18 @@ internal sealed partial class NativeShardBackend
     private const uint PacketMagic = 0x41544C43;
     private const int HeaderSize = 21;
     private const uint SessionSignal = 0x415506;
+    private const uint PingReplySignal = 0x415509;
+    private const byte AdapterBehaviour = byte.MaxValue;
+    private const uint PingProbeMethod = 1;
+    private const byte SessionSupportsPing = 1;
+    private const double PingInterval = 1;
+    private const double PingTimeout = 4;
+    private bool pingSupported;
+    private uint nextPingId;
+    private uint pendingPingId;
+    private double pingSentAt;
+    private double nextPingAt;
+    private float roundTripMilliseconds = -1;
 
     private sealed partial class ClientConnection
     {
@@ -61,7 +73,7 @@ internal sealed partial class NativeShardBackend
     public bool TryGetPeerMetrics(SessionId session, out long sent, out float ping)
     {
         sent = BytesSent;
-        ping = -1;
+        ping = IsClient && session.Value == 0 ? roundTripMilliseconds : -1;
         return IsClient && LocalSession.Value != 0 && session.Value == 0;
     }
 
@@ -98,6 +110,10 @@ internal sealed partial class NativeShardBackend
         removedEntities.Clear();
         DebugRegions.Clear();
         LocalSession = default;
+        pingSupported = false;
+        pendingPingId = 0;
+        nextPingAt = 0;
+        roundTripMilliseconds = -1;
     }
 
     private void PollClient(float deltaTime)
@@ -109,6 +125,8 @@ internal sealed partial class NativeShardBackend
         for (int i = 0; i < 128 && client.Incoming.TryDequeue(out var packet); i++)
             ReceiveClientSignal(packet);
 
+        SamplePing(Time.realtimeSinceStartupAsDouble);
+
         float interval = 1f / manager.TickRate;
         accumulated = Mathf.Min(accumulated + deltaTime, interval * 4);
         while (LocalSession.Value != 0 && accumulated >= interval)
@@ -119,12 +137,52 @@ internal sealed partial class NativeShardBackend
         }
     }
 
+    private void SamplePing(double now)
+    {
+        if (!pingSupported || LocalSession.Value == 0) return;
+        if (pendingPingId != 0)
+        {
+            if (now - pingSentAt < PingTimeout) return;
+            pendingPingId = 0;
+            roundTripMilliseconds = -1;
+        }
+        if (now < nextPingAt || !client.Outgoing.IsEmpty) return;
+
+        if (++nextPingId == 0) nextPingId = 1;
+        pendingPingId = nextPingId;
+        pingSentAt = now;
+        nextPingAt = now + PingInterval;
+        using var contents = new NetWriter();
+        contents.Write(pendingPingId);
+        QueueClientCommand(AdapterBehaviour, PingProbeMethod, contents.ToArray());
+    }
+
+    private void ReceivePingReply(NetReader reader)
+    {
+        if (pendingPingId == 0 || reader.ReadUInt() != pendingPingId) return;
+        pendingPingId = 0;
+        double elapsed = Time.realtimeSinceStartupAsDouble - pingSentAt;
+        if (elapsed > PingTimeout)
+        {
+            roundTripMilliseconds = -1;
+            return;
+        }
+        float sample = (float)(elapsed * 1000);
+        roundTripMilliseconds = roundTripMilliseconds < 0 ? sample :
+            Mathf.Lerp(roundTripMilliseconds, sample, .25f);
+    }
+
     private ulong nextCommand;
 
     private void SendClientCommand(byte behaviour, uint method, Action<NetWriter> write)
     {
         using var content = new NetWriter();
         write?.Invoke(content);
+        QueueClientCommand(behaviour, method, content.ToArray());
+    }
+
+    private void QueueClientCommand(byte behaviour, uint method, byte[] contents)
+    {
         using var payload = new NetWriter();
         payload.Write((byte)0); // Reliable
         payload.Write((byte)0); // Ordered
@@ -133,7 +191,7 @@ internal sealed partial class NativeShardBackend
         payload.Write(++nextCommand);
         payload.Write(behaviour);
         payload.Write(method);
-        payload.WriteBytes(content.ToArray());
+        payload.WriteBytes(contents);
         if (client.Outgoing.Count >= 128) throw new IOException("AtlasNet client command queue is full.");
         client.Outgoing.Enqueue(EncodeClientPacket(12, 1, payload.ToArray()));
     }
@@ -178,6 +236,11 @@ internal sealed partial class NativeShardBackend
         reader.ReadUInt();
         if (reader.ReadUInt() != packet.Length - HeaderSize - 12)
             throw new IOException("Invalid AtlasNet signal size.");
+        if (signal == PingReplySignal)
+        {
+            if (packet.Length == HeaderSize + 12 + sizeof(uint)) ReceivePingReply(reader);
+            return;
+        }
         if (signal == 0x415508)
         {
             ulong source = reader.ReadULong();
@@ -190,6 +253,7 @@ internal sealed partial class NativeShardBackend
         {
             if (LocalSession.Value != 0) return;
             LocalSession = reader.ReadSessionId();
+            pingSupported = reader.HasRemaining && (reader.ReadByte() & SessionSupportsPing) != 0;
             SessionJoined?.Invoke(LocalSession);
             return;
         }

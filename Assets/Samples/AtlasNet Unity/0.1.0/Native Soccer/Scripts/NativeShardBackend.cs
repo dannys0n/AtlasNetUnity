@@ -32,7 +32,7 @@ internal sealed partial class NativeShardBackend : IWorldBackend, IWorldBackendT
     public bool IsClient => client != null;
     public bool IsHost => false;
     public bool IsRunning => IsServer || IsClient;
-    public bool IsWorker => !ownsOrigin;
+    public bool IsWorker => IsServer && !ownsOrigin;
     public SessionId LocalSession { get; private set; }
     public uint Tick { get; private set; }
     public int TrackedEntityCount => manager.SpawnedCount;
@@ -199,6 +199,16 @@ internal sealed partial class NativeShardBackend : IWorldBackend, IWorldBackendT
                 uint method = payload.ReadUInt();
                 byte[] arguments = payload.ReadBytes();
                 if (payload.HasRemaining) throw new InvalidOperationException("Trailing shard command data.");
+                if (behaviour == AdapterBehaviour)
+                {
+                    if (method == PingProbeMethod && arguments.Length == sizeof(uint) && obj.OwnerSession.Value != 0)
+                    {
+                        using var pong = new NetWriter();
+                        pong.WriteRaw(arguments);
+                        Publish(obj, PingReplySignal, pong, obj.OwnerSession);
+                    }
+                    continue;
+                }
                 manager.DispatchBackendRpc(entity, behaviour, method, arguments, obj.OwnerSession, RpcDestination.Authority);
             }
             return;
@@ -372,6 +382,7 @@ internal sealed partial class NativeShardBackend : IWorldBackend, IWorldBackendT
         {
             using var admission = new NetWriter();
             admission.Write(obj.OwnerSession);
+            admission.Write(SessionSupportsPing);
             Publish(obj, SessionSignal, admission, obj.OwnerSession);
         }
         if (observerPrefab && obj.PrefabId == observerPrefab.PrefabId) return;
