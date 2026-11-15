@@ -14,7 +14,7 @@ No AtlasNet service, Docker container, WSL setup, or other networking framework 
 Open Unity's Package Manager, choose **Install package from git URL** (wording varies by Unity version), and enter:
 
 ```text
-https://github.com/dannys0n/AtlasNetUnity.git?path=/Packages/com.atlasnet.unity#main
+https://github.com/dannys0n/AtlasNetUnity.git?path=/Packages/com.atlasnet.unity#v0.3.0-preview.1
 ```
 
 Unity imports the runtime, editor inspectors, and RPC code generator as a package. Your gameplay scripts and prefabs stay in your project's `Assets` folder; you should not copy package runtime files there.
