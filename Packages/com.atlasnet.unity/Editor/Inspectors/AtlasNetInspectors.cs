@@ -167,7 +167,11 @@ namespace AtlasNet.Editor
                 EditorGUILayout.LabelField("Synchronization", EditorStyles.boldLabel);
                 EditorGUILayout.PropertyField(syncPosition);
                 EditorGUILayout.PropertyField(syncRotation);
+                var syncScale = serializedObject.FindProperty("syncScale");
+                EditorGUILayout.PropertyField(syncScale);
                 DrawAuthority(syncPosition, syncRotation);
+                if (AnyEnabled(syncScale))
+                    EditorGUILayout.PropertyField(serializedObject.FindProperty("scaleWriter"));
 
                 EditorGUILayout.Space();
                 EditorGUILayout.PropertyField(interpolate, new GUIContent("Interpolate Remote Copies", interpolate.tooltip));
@@ -388,6 +392,7 @@ namespace AtlasNet.Editor
             serializedObject.Update();
             var animator = serializedObject.FindProperty("animator");
             EditorGUILayout.PropertyField(animator, new GUIContent("Animator"));
+            EditorGUILayout.PropertyField(serializedObject.FindProperty("sendIntervalTicks"));
             EditorGUILayout.PropertyField(serializedObject.FindProperty("writer"), new GUIContent("Authority Mode"));
             serializedObject.ApplyModifiedProperties();
             if (!serializedObject.isEditingMultipleObjects && animator.objectReferenceValue == null)

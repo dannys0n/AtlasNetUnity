@@ -633,7 +633,7 @@ namespace AtlasNet
             }
         }
 
-        public void SendTransform(NetworkTransform component, byte flags, Vector3 position, Quaternion rotation)
+        public void SendTransform(NetworkTransform component, byte flags, Vector3 position, Quaternion rotation, Vector3 scale)
         {
             if (isWorker)
             {
@@ -646,6 +646,7 @@ namespace AtlasNet
                     update.Write(flags);
                     if ((flags & 1) != 0) update.Write(position);
                     if ((flags & 2) != 0) update.Write(rotation);
+                    if ((flags & 4) != 0) update.Write(scale);
                     SendToServer(update.ToArray());
                 }
                 return;
@@ -658,12 +659,14 @@ namespace AtlasNet
                 writer.Write(flags);
                 if ((flags & 1) != 0) writer.Write(position);
                 if ((flags & 2) != 0) writer.Write(rotation);
+                if ((flags & 4) != 0) writer.Write(scale);
                 byte[] data = writer.ToArray();
                 if (IsServer)
                 {
                     if (component.IsOwner &&
                         (((flags & 1) != 0 && component.PositionWriter == TransformWriter.Owner) ||
-                         ((flags & 2) != 0 && component.RotationWriter == TransformWriter.Owner)))
+                         ((flags & 2) != 0 && component.RotationWriter == TransformWriter.Owner) ||
+                         ((flags & 4) != 0 && component.ScaleWriter == TransformWriter.Owner)))
                         RememberOwnerUpdate(component.NetworkObject.EntityId, data);
                     SendToObservers(component.NetworkObject.EntityId, data);
                     SendToWorkers(component.NetworkObject.EntityId, data);
@@ -1015,18 +1018,20 @@ namespace AtlasNet
             byte flags = reader.ReadByte();
             Vector3 position = (flags & 1) != 0 ? reader.ReadVector3() : default;
             Quaternion rotation = (flags & 2) != 0 ? reader.ReadQuaternion() : default;
+            Vector3 scale = (flags & 4) != 0 ? reader.ReadVector3() : default;
             if (IsServer && !isWorker)
             {
                 if (!clientSessions.Contains(sender) || !directory.TryGetValue(id, out var entity) ||
-                    entity.Owner != sender || flags == 0 || (flags & ~3) != 0)
+                    entity.Owner != sender || flags == 0 || (flags & ~7) != 0)
                     throw new InvalidOperationException($"Unauthorized transform update for entity {id} from session {sender}");
                 var schema = Schema(id, index);
                 if (!schema.IsTransform ||
                     ((flags & 1) != 0 && (!schema.SyncPosition || schema.PositionWriter != TransformWriter.Owner)) ||
-                    ((flags & 2) != 0 && (!schema.SyncRotation || schema.RotationWriter != TransformWriter.Owner)))
+                    ((flags & 2) != 0 && (!schema.SyncRotation || schema.RotationWriter != TransformWriter.Owner)) ||
+                    ((flags & 4) != 0 && (!schema.SyncScale || schema.ScaleWriter != TransformWriter.Owner)))
                     throw new InvalidOperationException($"Unauthorized transform channel for entity {id}");
                 if (FindBehaviour(id, index) is NetworkTransform local)
-                    local.AcceptOwnerState(sender, flags, position, rotation);
+                    local.AcceptOwnerState(sender, flags, position, rotation, scale);
                 using (var writer = new NetWriter())
                 {
                     writer.Write((byte)Packet.Transform);
@@ -1035,6 +1040,7 @@ namespace AtlasNet
                     writer.Write(flags);
                     if ((flags & 1) != 0) writer.Write(position);
                     if ((flags & 2) != 0) writer.Write(rotation);
+                    if ((flags & 4) != 0) writer.Write(scale);
                     byte[] update = writer.ToArray();
                     RememberOwnerUpdate(id, update);
                     SendToObservers(id, update);
@@ -1046,9 +1052,9 @@ namespace AtlasNet
             if (transform == null) return;
             if (isWorker)
             {
-                transform.AcceptServerState(flags, position, rotation);
+                transform.AcceptServerState(flags, position, rotation, scale);
             }
-            else transform.AcceptServerState(flags, position, rotation);
+            else transform.AcceptServerState(flags, position, rotation, scale);
         }
 
         private void ReceiveAnimator(SessionId sender, NetReader reader)

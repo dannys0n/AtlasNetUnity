@@ -11,11 +11,21 @@ internal sealed partial class NativeShardBackend
 {
     private const uint PacketMagic = 0x41544C43;
     private const int HeaderSize = 21;
-    private const uint SessionSignal = 0x415506;
+    internal const uint SessionSignal = 0x415506;
     private const uint PingReplySignal = 0x415509;
-    private const byte AdapterBehaviour = byte.MaxValue;
+    internal const byte AdapterBehaviour = byte.MaxValue;
     private const uint PingProbeMethod = 1;
     private const byte SessionSupportsPing = 1;
+    private const byte SessionSupportsRemoteContact = 2;
+    private const byte SessionSupportsScaleInterest = 4;
+    private bool scaleInterestSupported;
+    private readonly System.Collections.Generic.HashSet<EntityId> visibleScaleEntities = new();
+    internal const uint RemoteBallContactMethod = 2;
+    internal const uint LoadMoveMethod = 3;
+    internal const uint ScalePoseMethod = 4;
+    internal const uint ReadyMethod = 5;
+    private bool remoteContactSupported;
+    private double nextBallContactProbe;
     private const double PingInterval = 1;
     private const double PingTimeout = 4;
     private bool pingSupported;
@@ -48,7 +58,7 @@ internal sealed partial class NativeShardBackend
                 {
                     while (!Stopping && Outgoing.TryDequeue(out byte[] packet))
                     {
-                        if (NativeClient.anu_send(handle, packet, (uint)packet.Length) != NativeClient.Result.Ok)
+                        if (NativeClient.anu_send(handle, packet, (uint)packet.Length) == NativeClient.Result.Error)
                             throw new IOException("AtlasNet command send failed.");
                         Interlocked.Add(ref BytesSent, packet.Length);
                     }
@@ -66,7 +76,17 @@ internal sealed partial class NativeShardBackend
 
     private ClientConnection client;
     internal static readonly System.Collections.Generic.Dictionary<ulong, Newtonsoft.Json.Linq.JObject> DebugRegions = new();
+    private readonly System.Collections.Generic.Dictionary<ulong, Newtonsoft.Json.Linq.JObject> pendingRegions = new();
+    private readonly System.Collections.Generic.Dictionary<ulong, double> regionLastSeen = new();
+    private readonly System.Collections.Generic.List<ulong> expiredRegions = new();
+    private ulong regionGeneration;
+    private double regionApplyAt;
+
     private readonly System.Collections.Generic.HashSet<EntityId> removedEntities = new();
+    private readonly System.Collections.Generic.Dictionary<(EntityId, uint), uint> streamInstances = new();
+    private readonly System.Collections.Generic.Dictionary<EntityId,
+        System.Collections.Generic.Dictionary<(byte, uint), (uint Epoch, uint Sequence)>> rpcStreams = new();
+    private readonly System.Collections.Generic.Dictionary<EntityId, double> lastTransformAt = new();
 
     public float TickInterpolation => 1f;
 
@@ -108,11 +128,22 @@ internal sealed partial class NativeShardBackend
         }
         client = null;
         removedEntities.Clear();
+        visibleScaleEntities.Clear();
+        scaleInterestSupported = false;
+        streamInstances.Clear();
+        rpcStreams.Clear();
+        lastTransformAt.Clear();
         DebugRegions.Clear();
+        pendingRegions.Clear();
+        regionLastSeen.Clear();
+        regionGeneration = 0;
+        regionApplyAt = 0;
         LocalSession = default;
         pingSupported = false;
         pendingPingId = 0;
         nextPingAt = 0;
+        nextBallContactProbe = 0;
+        remoteContactSupported = false;
         roundTripMilliseconds = -1;
     }
 
@@ -125,7 +156,10 @@ internal sealed partial class NativeShardBackend
         for (int i = 0; i < 128 && client.Incoming.TryDequeue(out var packet); i++)
             ReceiveClientSignal(packet);
 
-        SamplePing(Time.realtimeSinceStartupAsDouble);
+        double now = Time.realtimeSinceStartupAsDouble;
+        UpdateDebugRegions(now);
+        SamplePing(now);
+        ProbeRemoteBallContact(now);
 
         float interval = 1f / manager.TickRate;
         accumulated = Mathf.Min(accumulated + deltaTime, interval * 4);
@@ -135,6 +169,30 @@ internal sealed partial class NativeShardBackend
             Tick++;
             manager.TickBackendReplicas();
         }
+    }
+
+    private void ProbeRemoteBallContact(double now)
+    {
+        if (!remoteContactSupported || now < nextBallContactProbe) return;
+        nextBallContactProbe = now + .08;
+        AtlasNet.Samples.Soccer.SoccerBall ball = null;
+        NetworkObject player = null;
+        foreach (var obj in manager.SpawnedObjects)
+        {
+            if (obj.IsOwner && obj.TryGetComponent<AtlasNet.Samples.Soccer.SoccerPlayer>(out _))
+                player = obj;
+            if (obj.TryGetComponent(out AtlasNet.Samples.Soccer.SoccerBall candidate)) ball = candidate;
+        }
+        if (!player || !ball || player.SimulationWorker == ball.NetworkObject.SimulationWorker ||
+            !player.TryGetComponent(out CapsuleCollider capsule)) return;
+
+        if (!AtlasNet.Samples.Soccer.SoccerBall.TryGetContactCapsule(capsule,
+                out Vector3 center, out float halfSegment, out float radius)) return;
+        // The local player's collider can be disabled for physics on a native
+        // replica. Query its geometry directly and retry while contact is plausible.
+        if (!ball.IsWithinContactReach(center, halfSegment, radius, .65f) ||
+            client.Outgoing.Count >= 64) return;
+        SendClientCommand(AdapterBehaviour, RemoteBallContactMethod, writer => writer.Write(ball.NetworkObject.EntityId.Value));
     }
 
     private void SamplePing(double now)
@@ -174,29 +232,43 @@ internal sealed partial class NativeShardBackend
 
     private ulong nextCommand;
 
-    private void SendClientCommand(byte behaviour, uint method, Action<NetWriter> write)
+    private void SendClientCommand(byte behaviour, uint method, Action<NetWriter> write,
+        NetworkDelivery delivery = NetworkDelivery.ReliableOrdered)
     {
         using var content = new NetWriter();
         write?.Invoke(content);
-        QueueClientCommand(behaviour, method, content.ToArray());
+        QueueClientCommand(behaviour, method, content.ToArray(), delivery);
     }
 
-    private void QueueClientCommand(byte behaviour, uint method, byte[] contents)
+    private void QueueClientCommand(byte behaviour, uint method, byte[] contents,
+        NetworkDelivery delivery = NetworkDelivery.ReliableOrdered)
     {
+        var packet = EncodeGameplayCommand(behaviour, method, contents, ++nextCommand, delivery);
+        if (client.Outgoing.Count >= 128)
+        {
+            if (delivery != NetworkDelivery.ReliableOrdered) return;
+            throw new IOException("AtlasNet client command queue is full.");
+        }
+        client.Outgoing.Enqueue(packet);
+    }
+
+    internal static byte[] EncodeGameplayCommand(byte behaviour, uint method, byte[] contents,
+        ulong sequence, NetworkDelivery delivery)
+    {
+        bool reliable = delivery == NetworkDelivery.ReliableOrdered;
         using var payload = new NetWriter();
-        payload.Write((byte)0); // Reliable
-        payload.Write((byte)0); // Ordered
-        payload.Write((byte)1); // Immediate
-        payload.Write(0u);     // Default stream
-        payload.Write(++nextCommand);
+        payload.Write(reliable ? (byte)0 : (byte)1);
+        payload.Write((byte)delivery);
+        payload.Write(reliable ? (byte)1 : (byte)0);
+        payload.Write(reliable ? 0u : method);
+        payload.Write(sequence);
         payload.Write(behaviour);
         payload.Write(method);
         payload.WriteBytes(contents);
-        if (client.Outgoing.Count >= 128) throw new IOException("AtlasNet client command queue is full.");
-        client.Outgoing.Enqueue(EncodeClientPacket(12, 1, payload.ToArray()));
+        return EncodeClientPacket(12, 1, payload.ToArray());
     }
 
-    private static byte[] EncodeClientPacket(ushort instruction, uint channel, byte[] body)
+    internal static byte[] EncodeClientPacket(ushort instruction, uint channel, byte[] body)
     {
         using var writer = new NetWriter();
         writer.Write(PacketMagic);
@@ -233,9 +305,14 @@ internal sealed partial class NativeShardBackend
             throw new IOException("Invalid AtlasNet packet size.");
         if (instruction != 7) return;
         uint signal = reader.ReadUInt();
-        reader.ReadUInt();
+        uint instance = reader.ReadUInt();
         if (reader.ReadUInt() != packet.Length - HeaderSize - 12)
             throw new IOException("Invalid AtlasNet signal size.");
+        if (signal == ScalePoseBatchSignal)
+        {
+            if (LocalSession.Value != 0) ReceiveScalePoseBatch(reader);
+            return;
+        }
         if (signal == PingReplySignal)
         {
             if (packet.Length == HeaderSize + 12 + sizeof(uint)) ReceivePingReply(reader);
@@ -245,15 +322,56 @@ internal sealed partial class NativeShardBackend
         {
             ulong source = reader.ReadULong();
             var shape = Newtonsoft.Json.Linq.JToken.Parse(reader.ReadString());
-            if (shape is Newtonsoft.Json.Linq.JObject region) DebugRegions[source] = region;
-            else DebugRegions.Remove(source);
+            if (shape is Newtonsoft.Json.Linq.JObject region)
+            {
+                ulong generation = region.Value<ulong>("generation");
+                if (generation < regionGeneration) return;
+                double now = Time.realtimeSinceStartupAsDouble;
+                if (generation > regionGeneration)
+                {
+                    regionGeneration = generation;
+                    pendingRegions.Clear();
+                    regionLastSeen.Clear();
+                    regionApplyAt = now + .15;
+                }
+                regionLastSeen[source] = now;
+                if (regionApplyAt > 0) pendingRegions[source] = region;
+                else DebugRegions[source] = region;
+            }
+            else
+            {
+                pendingRegions.Remove(source);
+                regionLastSeen.Remove(source);
+                DebugRegions.Remove(source);
+            }
+            return;
+        }
+        if (signal == 0x415509)
+        {
+            if (LocalSession.Value != 0 && !scaleInterestSupported) return;
+            var observed = reader.ReadEntityId();
+            if (reader.ReadByte() != 0) visibleScaleEntities.Add(observed);
+            else
+            {
+                visibleScaleEntities.Remove(observed);
+                rpcStreams.Remove(observed);
+                streamInstances.Remove((observed, TransformSignal));
+                streamInstances.Remove((observed, AnimatorSignal));
+                lastTransformAt.Remove(observed);
+                if (manager.TryGet(observed, out var hidden) && !hidden.IsOwner)
+                    manager.RemoveReplica(observed);
+            }
             return;
         }
         if (signal == SessionSignal)
         {
             if (LocalSession.Value != 0) return;
             LocalSession = reader.ReadSessionId();
-            pingSupported = reader.HasRemaining && (reader.ReadByte() & SessionSupportsPing) != 0;
+            byte capabilities = reader.HasRemaining ? reader.ReadByte() : (byte)0;
+            scaleInterestSupported = (capabilities & SessionSupportsScaleInterest) != 0;
+            pingSupported = (capabilities & SessionSupportsPing) != 0;
+            remoteContactSupported = (capabilities & SessionSupportsRemoteContact) != 0;
+            QueueClientCommand(AdapterBehaviour, ReadyMethod, Array.Empty<byte>());
             SessionJoined?.Invoke(LocalSession);
             return;
         }
@@ -262,10 +380,15 @@ internal sealed partial class NativeShardBackend
         {
             var removed = reader.ReadEntityId();
             removedEntities.Add(removed);
+            visibleScaleEntities.Remove(removed);
+            rpcStreams.Remove(removed);
+            streamInstances.Remove((removed, TransformSignal));
+            streamInstances.Remove((removed, AnimatorSignal));
+            lastTransformAt.Remove(removed);
             manager.RemoveReplica(removed);
             return;
         }
-        if (LocalSession.Value == 0 || signal < SnapshotSignal || signal > RpcSignal) return;
+        if (LocalSession.Value == 0 || (signal < SnapshotSignal || signal > RpcSignal) && signal != SequencedRpcSignal) return;
         var entity = reader.ReadEntityId();
         if (removedEntities.Contains(entity)) return;
         ulong worker = reader.ReadULong();
@@ -278,11 +401,19 @@ internal sealed partial class NativeShardBackend
 
             var key = reader.ReadString();
             var owner = reader.ReadSessionId();
+            if (scaleInterestSupported && owner != LocalSession && !visibleScaleEntities.Contains(entity)) return;
             var position = reader.ReadVector3();
             var rotation = reader.ReadQuaternion();
             if (exists)
             {
-                if (epoch == replica.AuthorityEpoch) return;
+                if (epoch == replica.AuthorityEpoch &&
+                    lastTransformAt.TryGetValue(entity, out double last) &&
+                    Time.unscaledTimeAsDouble - last < 1.1) return;
+                if (epoch != replica.AuthorityEpoch)
+                {
+                    streamInstances.Remove((entity, TransformSignal));
+                    streamInstances.Remove((entity, AnimatorSignal));
+                }
                 using var restored = new NetReader(reader.ReadBytes());
                 manager.ApplyBackendReplicaSnapshot(entity, restored);
                 manager.SetBackendReplicaAuthority(entity, worker, epoch);
@@ -297,7 +428,16 @@ internal sealed partial class NativeShardBackend
             return;
         }
 
-        if (!exists || epoch != replica.AuthorityEpoch) return;
+        if (!exists) return;
+        if (epoch != replica.AuthorityEpoch)
+        {
+            // Scale poses carry their authoritative worker and epoch. An
+            // existing cube can resume movement before the full snapshot arrives.
+            if (signal != TransformSignal || !replica.TryGetComponent<ScaleMotion>(out _)) return;
+            streamInstances.Remove((entity, TransformSignal));
+            lastTransformAt.Remove(entity);
+            manager.SetBackendReplicaAuthority(entity, worker, epoch);
+        }
         byte behaviour = reader.ReadByte();
         switch (signal)
         {
@@ -305,16 +445,99 @@ internal sealed partial class NativeShardBackend
                 manager.DispatchBackendVariable(entity, behaviour, reader.ReadUShort(), reader.ReadBytes());
                 break;
             case TransformSignal:
-                manager.DispatchBackendTransform(entity, behaviour, reader.ReadByte(), reader.ReadVector3(), reader.ReadQuaternion());
+                if (!AcceptStreamInstance(entity, signal, instance)) break;
+                lastTransformAt[entity] = Time.unscaledTimeAsDouble;
+                byte flags = reader.ReadByte();
+                Vector3 position = reader.ReadVector3();
+                Quaternion rotation = reader.ReadQuaternion();
+                manager.DispatchBackendTransform(entity, behaviour, flags, position, rotation,
+                    (flags & 4) != 0 ? reader.ReadVector3() : default);
                 break;
             case AnimatorSignal:
-                manager.DispatchBackendAnimator(entity, behaviour, reader.ReadBytes());
+                byte[] animation = reader.ReadBytes();
+                bool trigger = animation.Length == 8 && animation[6] == (byte)AnimatorControllerParameterType.Trigger;
+                if (trigger || AcceptStreamInstance(entity, signal, instance))
+                    manager.DispatchBackendAnimator(entity, behaviour, animation);
                 break;
+            case SequencedRpcSignal:
             case RpcSignal:
                 uint method = reader.ReadUInt();
                 var destination = (RpcDestination)reader.ReadByte();
+                if (signal == SequencedRpcSignal)
+                {
+                    uint sequence = reader.ReadUInt();
+                    if (!rpcStreams.TryGetValue(entity, out var streams))
+                        rpcStreams.Add(entity, streams = new());
+                    var stream = (behaviour, method);
+                    if (streams.TryGetValue(stream, out var previous) && previous.Epoch == epoch &&
+                        unchecked((int)(sequence - previous.Sequence)) <= 0) break;
+                    streams[stream] = (epoch, sequence);
+                }
                 manager.DispatchBackendRpc(entity, behaviour, method, reader.ReadBytes(), default, destination, LocalSession);
                 break;
         }
+    }
+    private void ReceiveScalePoseBatch(NetReader reader)
+    {
+        ulong worker = reader.ReadULong();
+        uint tick = reader.ReadUInt();
+        int count = reader.ReadByte();
+        if (count == 0 || count > ScalePosesPerPacket) throw new IOException("Invalid Scale pose count.");
+        for (int i = 0; i < count; ++i)
+        {
+            EntityId entity = reader.ReadEntityId();
+            uint epoch = reader.ReadUInt();
+            byte behaviour = reader.ReadByte();
+            byte flags = reader.ReadByte();
+            Vector3 position = reader.ReadVector3();
+            Quaternion rotation = reader.ReadQuaternion();
+            Vector3 scale = (flags & 4) != 0 ? reader.ReadVector3() : default;
+            if (removedEntities.Contains(entity) ||
+                !manager.TryGet(entity, out var replica) || epoch < replica.AuthorityEpoch) continue;
+            if (epoch == replica.AuthorityEpoch)
+            {
+                if (worker != replica.SimulationWorker) continue;
+            }
+            else
+            {
+                if (!replica.TryGetComponent<ScaleMotion>(out _)) continue;
+                streamInstances.Remove((entity, TransformSignal));
+                manager.SetBackendReplicaAuthority(entity, worker, epoch);
+            }
+            if (!AcceptStreamInstance(entity, TransformSignal, tick)) continue;
+            lastTransformAt[entity] = Time.unscaledTimeAsDouble;
+            manager.DispatchBackendTransform(entity, behaviour, flags, position, rotation, scale);
+        }
+        if (reader.HasRemaining) throw new IOException("Unexpected Scale pose batch data.");
+    }
+
+    private void UpdateDebugRegions(double now)
+    {
+        if (regionApplyAt > 0)
+        {
+            if (now < regionApplyAt) return;
+            DebugRegions.Clear();
+            foreach (var region in pendingRegions) DebugRegions.Add(region.Key, region.Value);
+            pendingRegions.Clear();
+            regionApplyAt = 0;
+        }
+
+        expiredRegions.Clear();
+        foreach (var region in regionLastSeen)
+            if (now - region.Value > 3) expiredRegions.Add(region.Key);
+        foreach (ulong worker in expiredRegions)
+        {
+            regionLastSeen.Remove(worker);
+            DebugRegions.Remove(worker);
+        }
+    }
+
+    private bool AcceptStreamInstance(EntityId entity, uint signal, uint instance)
+    {
+        var stream = (entity, signal);
+        if (streamInstances.TryGetValue(stream, out uint previous) &&
+            unchecked((int)(instance - previous)) <= 0) return false;
+        streamInstances[stream] = instance;
+        return true;
     }
 }

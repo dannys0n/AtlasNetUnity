@@ -86,7 +86,10 @@ namespace AtlasNet.Samples.Soccer
             if (manager.IsServer && !manager.IsWorker && !createdBall)
             {
                 if (TryClaimInitialBall == null || TryClaimInitialBall())
-                    match = manager.Spawn(ballPrefab, new Vector3(0, SoccerBall.Radius, 0), Quaternion.identity).GetComponent<SoccerMatch>();
+                {
+                    float radius = ballPrefab.GetComponent<SoccerBall>().ContactRadius;
+                    match = manager.Spawn(ballPrefab, new Vector3(0, radius, 0), Quaternion.identity).GetComponent<SoccerMatch>();
+                }
                 createdBall = true;
             }
             blueScore.text = match ? match.BlueScore.Value.ToString() : "0";

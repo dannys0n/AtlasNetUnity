@@ -379,7 +379,7 @@ namespace AtlasNet
 
         internal IEnumerable<KeyValuePair<uint, MethodInfo>> RpcSchema => rpcMethods;
 
-        internal NetworkDelivery GetRpcDelivery(uint id)
+        public NetworkDelivery GetRpcDelivery(uint id)
         {if(!rpcMethods.TryGetValue(id,out var method))throw new InvalidOperationException($"Unknown RPC {id}");return (NetworkDelivery)method.GetCustomAttribute<RpcAttribute>().Delivery;}
 
         internal RpcInvokePermission GetRpcPermission(uint id)

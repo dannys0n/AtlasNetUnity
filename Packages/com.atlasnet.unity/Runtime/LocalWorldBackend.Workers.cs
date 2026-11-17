@@ -63,8 +63,10 @@ namespace AtlasNet
             public bool IsTransform;
             public bool SyncPosition;
             public bool SyncRotation;
+            public bool SyncScale;
             public TransformWriter PositionWriter;
             public TransformWriter RotationWriter;
+            public TransformWriter ScaleWriter;
             public bool IsPhysics;
             public bool IsAnimator;
             public AnimatorWriter AnimatorWriter;
@@ -169,8 +171,10 @@ namespace AtlasNet
                     schema.IsTransform = true;
                     schema.SyncPosition = transform.SyncPosition;
                     schema.SyncRotation = transform.SyncRotation;
+                    schema.SyncScale = transform.SyncScale;
                     schema.PositionWriter = transform.PositionWriter;
                     schema.RotationWriter = transform.RotationWriter;
+                    schema.ScaleWriter = transform.ScaleWriter;
                 }
                 schema.IsPhysics = behaviour is NetworkRigidbody;
                 if (behaviour is NetworkAnimator animator)
@@ -850,8 +854,9 @@ namespace AtlasNet
                         byte flags = reader.ReadByte();
                         Vector3 position = (flags & 1) != 0 ? reader.ReadVector3() : default;
                         Quaternion rotation = (flags & 2) != 0 ? reader.ReadQuaternion() : default;
+                        Vector3 scale = (flags & 4) != 0 ? reader.ReadVector3() : default;
                         if (behaviour is not NetworkTransform movement ||
-                            !movement.AcceptOwnerState(obj.OwnerSession, flags, position, rotation))
+                            !movement.AcceptOwnerState(obj.OwnerSession, flags, position, rotation, scale))
                             throw new InvalidOperationException($"Invalid queued owner transform for {obj.EntityId}");
                         break;
                     case Packet.Animator:
@@ -1197,14 +1202,16 @@ namespace AtlasNet
             uint epoch = reader.ReadUInt();
             byte index = reader.ReadByte();
             byte flags = reader.ReadByte();
-            if (flags == 0 || (flags & ~3) != 0) throw new InvalidOperationException("Invalid worker transform flags");
+            if (flags == 0 || (flags & ~7) != 0) throw new InvalidOperationException("Invalid worker transform flags");
             Vector3 position = (flags & 1) != 0 ? reader.ReadVector3() : default;
             Quaternion rotation = (flags & 2) != 0 ? reader.ReadQuaternion() : default;
+            Vector3 scale = (flags & 4) != 0 ? reader.ReadVector3() : default;
             if (TryGetRetiredWorker(id, sender, epoch, out var retired) && index < retired.Schemas.Length)
             {
                 var old = retired.Schemas[index];
                 if (old.IsTransform && ((flags & 1) == 0 || (old.SyncPosition && old.PositionWriter == TransformWriter.Server)) &&
-                    ((flags & 2) == 0 || (old.SyncRotation && old.RotationWriter == TransformWriter.Server))) return;
+                    ((flags & 2) == 0 || (old.SyncRotation && old.RotationWriter == TransformWriter.Server)) &&
+                    ((flags & 4) == 0 || (old.SyncScale && old.ScaleWriter == TransformWriter.Server))) return;
             }
             if (!workerSessions.Contains(sender) || !directory.TryGetValue(id, out var entity) ||
                 entity.Worker != sender.Value || entity.Epoch != epoch)
@@ -1213,10 +1220,11 @@ namespace AtlasNet
             if (!schema.IsTransform)
                 throw new InvalidOperationException($"Missing NetworkTransform {index} for entity {id}");
             if (((flags & 1) != 0 && (!schema.SyncPosition || schema.PositionWriter != TransformWriter.Server)) ||
-                ((flags & 2) != 0 && (!schema.SyncRotation || schema.RotationWriter != TransformWriter.Server)))
+                ((flags & 2) != 0 && (!schema.SyncRotation || schema.RotationWriter != TransformWriter.Server)) ||
+                ((flags & 4) != 0 && (!schema.SyncScale || schema.ScaleWriter != TransformWriter.Server)))
                 throw new InvalidOperationException($"Worker attempted to write a client-owned transform channel for entity {id}");
             if (FindBehaviour(id, index) is NetworkTransform transform)
-                transform.AcceptServerState(flags, position, rotation);
+                transform.AcceptServerState(flags, position, rotation, scale);
             using (var packet = new NetWriter())
             {
                 packet.Write((byte)Packet.Transform);
@@ -1225,6 +1233,7 @@ namespace AtlasNet
                 packet.Write(flags);
                 if ((flags & 1) != 0) packet.Write(position);
                 if ((flags & 2) != 0) packet.Write(rotation);
+                if ((flags & 4) != 0) packet.Write(scale);
                 byte[] bytes = packet.ToArray();
                 SendToObservers(id, bytes);
                 SendToWorkers(id, bytes, sender);

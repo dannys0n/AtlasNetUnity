@@ -8,9 +8,18 @@ public sealed class BackendSmokeLauncher : MonoBehaviour
     [SerializeField] private WorldBackendProvider backendProvider;
     [SerializeField] private Camera overviewCamera;
     [SerializeField] private bool useSharedSoccerCamera;
+    [SerializeField] private bool nativeScale;
     [SerializeField] private Material spectatorRegionMaterial;
     [SerializeField] private string spectatorJoinUrl = "http://localhost:8094/";
+    [SerializeField] private bool enableLoadClients;
     private NativeSoccerSpectator spectator;
+#if UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN
+    private NativeSoccerLoadClients loadClients;
+    private int autoLoadCount;
+    private bool autoLoadStarted;
+    private float nextLoadReport;
+    private NativeSoccerLoadDriver loadDriver;
+#endif
     private Vector3 overviewPosition;
     private Quaternion overviewRotation;
 
@@ -30,6 +39,9 @@ public sealed class BackendSmokeLauncher : MonoBehaviour
     private void Awake()
     {
         manager = GetComponent<NetworkManager>();
+#if !UNITY_WEBGL || UNITY_EDITOR
+        if (nativeScale) port = "5929";
+#endif
         showRegions = useSharedSoccerCamera;
         if (TryGetComponent(out AtlasNet.Samples.Soccer.SoccerSession soccer))
             soccer.UseExternalConnection = true;
@@ -56,9 +68,14 @@ public sealed class BackendSmokeLauncher : MonoBehaviour
     {
 #if !UNITY_WEBGL || UNITY_EDITOR
         string[] args = Environment.GetCommandLineArgs();
+        int joinUrl = Array.IndexOf(args, "-atlasnet-join-url");
+        if (joinUrl >= 0 && joinUrl + 1 < args.Length)
+            spectatorJoinUrl = args[joinUrl + 1];
         traceSoccer = Array.IndexOf(args, "-atlasnet-trace-soccer") >= 0;
         if (Array.IndexOf(args, "-atlasnet-socket") >= 0)
         {
+            QualitySettings.vSyncCount = 0;
+            Application.targetFrameRate = 60;
             goalFixture = Environment.GetEnvironmentVariable("ATLASNET_SOCCER_GOAL_FIXTURE");
             if (TryGetComponent(out AtlasNet.Samples.Soccer.SoccerSession soccer))
                 soccer.TryClaimInitialBall = ClaimBall;
@@ -75,6 +92,23 @@ public sealed class BackendSmokeLauncher : MonoBehaviour
         }
         address = args[join + 1];
         port = args[join + 2];
+#if UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN
+        if (!Application.isEditor && enableLoadClients && Array.IndexOf(args, "-atlasnet-load-client") >= 0)
+        {
+            loadDriver = new NativeSoccerLoadDriver(manager, Array.IndexOf(args, "-atlasnet-parent-control") >= 0);
+            Application.targetFrameRate = 30;
+            StartSession(false);
+            return;
+        }
+#endif
+#if UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN
+        int load = Array.IndexOf(args, "-atlasnet-load-count");
+        if (load >= 0 && load + 1 < args.Length && int.TryParse(args[load + 1], out autoLoadCount))
+        {
+            StartSession(false, true);
+            return;
+        }
+#endif
         StartSession(false, Array.IndexOf(args, "-atlasnet-spectate") >= 0);
 #endif
     }
@@ -101,7 +135,13 @@ public sealed class BackendSmokeLauncher : MonoBehaviour
         return url.Uri.AbsoluteUri;
     }
 
-    private void OnDestroy() => spectator?.Dispose();
+    private void OnDestroy()
+    {
+        spectator?.Dispose();
+#if UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN
+        loadClients?.Dispose();
+#endif
+    }
 
     private static bool ClaimBall()
     {
@@ -132,13 +172,19 @@ public sealed class BackendSmokeLauncher : MonoBehaviour
                     portNumber < 1 || portNumber > 65535)
                     throw new ArgumentException("Enter an AtlasNet ingress address and a valid port.");
                 manager.ConfigureConnection(address.Trim(), portNumber);
-                if (spectate && (!useSharedSoccerCamera || !overviewCamera))
+                if (spectate && ((!useSharedSoccerCamera && !nativeScale) || !overviewCamera))
                     throw new InvalidOperationException("This scene has no Soccer spectator camera.");
                 manager.ConnectionData = spectate ? NativeShardBackend.SpectatorAdmission : Array.Empty<byte>();
             }
 
             manager.SetBackend(backendProvider);
-            if (server) manager.StartServer();
+            if (server)
+            {
+                if (useSharedSoccerCamera)
+                    manager.PlayerSpawnPosition = _ => new Vector3(
+                        UnityEngine.Random.Range(-49f, 49f), 0f, UnityEngine.Random.Range(-30f, 30f));
+                manager.StartServer();
+            }
             else
             {
                 manager.StartClient();
@@ -146,6 +192,10 @@ public sealed class BackendSmokeLauncher : MonoBehaviour
                 {
                     overviewCamera.transform.SetPositionAndRotation(overviewPosition, overviewRotation);
                     spectator = new NativeSoccerSpectator(manager, overviewCamera, spectatorRegionMaterial, ResolveJoinUrl());
+#if UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN
+                    if (enableLoadClients)
+                        loadClients = new NativeSoccerLoadClients(address.Trim(), int.Parse(port), manager.TickRate, nativeScale);
+#endif
                 }
             }
             error = null;
@@ -160,10 +210,27 @@ public sealed class BackendSmokeLauncher : MonoBehaviour
 
     private void Update()
     {
+#if UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN
+        loadDriver?.Update();
+        if (!autoLoadStarted && autoLoadCount > 0 && manager.IsConnectedClient && loadClients != null)
+        {
+            autoLoadStarted = true;
+            loadClients.SetTarget(autoLoadCount);
+        }
+        if (loadClients != null && autoLoadCount > 0 && Time.unscaledTime >= nextLoadReport)
+        {
+            nextLoadReport = Time.unscaledTime + 3;
+            Debug.Log(loadClients.Status);
+        }
+#endif
         if (spectator != null && !manager.IsRunning)
         {
             spectator.Dispose();
             spectator = null;
+#if UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN
+            loadClients?.Dispose();
+            loadClients = null;
+#endif
         }
         if (useSharedSoccerCamera && overviewCamera && !manager.IsRunning)
             overviewCamera.transform.SetPositionAndRotation(overviewPosition, overviewRotation);
@@ -211,7 +278,7 @@ public sealed class BackendSmokeLauncher : MonoBehaviour
             spectator.Update();
             return;
         }
-        if (useSharedSoccerCamera) return;
+        if (useSharedSoccerCamera || nativeScale) return;
         bool showOverview = true;
         if (manager.IsConnectedClient)
         {
@@ -230,8 +297,13 @@ public sealed class BackendSmokeLauncher : MonoBehaviour
 
     private void OnGUI()
     {
-        GUILayout.BeginArea(new Rect(12, 12, 400, 310), GUI.skin.box);
-        GUILayout.Label(spectator != null ? "AtlasNet Soccer spectator" : useSharedSoccerCamera ? "AtlasNet Soccer" : "AtlasNet backend smoke test");
+#if UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN
+        if (loadDriver != null) return;
+#endif
+        bool showRemoteManager = (useSharedSoccerCamera || nativeScale) && !manager.IsRunning;
+        float panelHeight = Mathf.Min(enableLoadClients && spectator != null ? 575 : 335, Screen.height - 24);
+        GUILayout.BeginArea(new Rect(12, 12, Mathf.Min(400, Screen.width - 24), panelHeight), GUI.skin.box);
+        GUILayout.Label(nativeScale ? "Native Interest and Scale" : spectator != null ? "AtlasNet Soccer Remote Manager" : useSharedSoccerCamera ? "AtlasNet Soccer" : "AtlasNet backend smoke test");
         if (!manager.IsRunning)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
@@ -243,8 +315,8 @@ public sealed class BackendSmokeLauncher : MonoBehaviour
             port = GUILayout.TextField(port);
             bool wasEnabled = GUI.enabled;
             GUI.enabled = wasEnabled && backendProvider != null;
-            if (GUILayout.Button("Join AtlasNet")) StartSession(false);
-            if (useSharedSoccerCamera && GUILayout.Button("Spectate")) StartSession(false, true);
+            GUILayout.Space(9);
+            if (GUILayout.Button("Join AtlasNet", GUILayout.Height(26))) StartSession(false);
             GUI.enabled = wasEnabled;
             if (!backendProvider)
                 GUILayout.Label("Assign the real backend provider in the Inspector.");
@@ -263,21 +335,42 @@ public sealed class BackendSmokeLauncher : MonoBehaviour
                 GUILayout.Label($"Position {replica.transform.position:F2}");
                 break;
             }
-            if (spectator != null) spectator.DrawControls();
+            if (spectator != null)
+            {
+                if (nativeScale)
+                {
+                    showRegions = GUILayout.Toggle(showRegions, "Shard ownership");
+                    if (showRegions) DrawRegions();
+                }
+                else spectator.DrawControls();
+#if UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN
+                loadClients?.DrawControls(manager.IsConnectedClient);
+#endif
+            }
             else
             {
                 GUILayout.Label("WASD to move");
                 showRegions = GUILayout.Toggle(showRegions, "Shard ownership");
                 if (showRegions) DrawRegions();
             }
-            if (GUILayout.Button("Disconnect")) manager.Stop();
+            GUILayout.Space(14);
+            if (GUILayout.Button("Disconnect", GUILayout.Height(26))) manager.Stop();
         }
 
         if (!string.IsNullOrEmpty(error)) GUILayout.Label(error);
         var reason = manager.DisconnectReason;
         if (!string.IsNullOrEmpty(reason)) GUILayout.Label(reason);
+        if (showRemoteManager)
+        {
+            GUILayout.FlexibleSpace();
+            bool wasEnabled = GUI.enabled;
+            GUI.enabled = wasEnabled && backendProvider != null;
+            if (GUILayout.Button("Remote Manager", GUILayout.Height(26))) StartSession(false, true);
+            GUI.enabled = wasEnabled;
+            GUILayout.Space(8);
+        }
         GUILayout.EndArea();
-        spectator?.DrawJoinCode();
+        if (!nativeScale) spectator?.DrawJoinCode();
     }
     private static void DrawRegions()
     {
@@ -285,7 +378,7 @@ public sealed class BackendSmokeLauncher : MonoBehaviour
         foreach (var entry in NativeShardBackend.DebugRegions)
         {
             var shape = entry.Value;
-            GUILayout.Label($"Worker {entry.Key} · region {shape["id"]} · gen {shape["generation"]}");
+            GUILayout.Label($"Worker {entry.Key} Â· region {shape["id"]} Â· gen {shape["generation"]}");
             GUILayout.Label($"{shape["min"]?.ToString(Newtonsoft.Json.Formatting.None)} to {shape["max"]?.ToString(Newtonsoft.Json.Formatting.None)}");
         }
     }

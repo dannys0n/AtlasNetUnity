@@ -72,7 +72,7 @@ namespace AtlasNet
         void SendVariable(NetworkBehaviour behaviour, ushort id, INetworkVariable value);
         void SendRpc(NetworkBehaviour behaviour, RpcDestination destination, SessionId target, uint method, Action<NetWriter> write);
         void SendAuthorityInteraction(NetworkObject source, NetworkBehaviour target, uint method, Action<NetWriter> write);
-        void SendTransform(NetworkTransform component, byte flags, Vector3 position, Quaternion rotation);
+        void SendTransform(NetworkTransform component, byte flags, Vector3 position, Quaternion rotation, Vector3 scale);
         void SendAnimator(NetworkAnimator component, byte[] payload);
         bool SetClientDebugRegionEnabled(NetworkObject ownedPlayer, bool enabled);
         bool RequestLocalRegionForDebug();

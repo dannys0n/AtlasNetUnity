@@ -4079,6 +4079,7 @@ MonoBehaviour:
   backendProvider: {fileID: 11400000, guid: 1980d828f2dc3d04f9a3ed56f3681411, type: 2}
   overviewCamera: {fileID: 1644333008}
   useSharedSoccerCamera: 1
+  enableLoadClients: 1
   spectatorRegionMaterial: {fileID: 2100000, guid: 555424c2063747adb8e1f2ce1510696c, type: 2}
 --- !u!114 &1241302811
 MonoBehaviour:

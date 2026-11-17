@@ -17,6 +17,55 @@ namespace AtlasNetDemo.Tests
     {
         static void Set(object o, string name, object value) => o.GetType().GetField(name, BindingFlags.NonPublic | BindingFlags.Instance).SetValue(o, value);
         [UnityTest]
+        public IEnumerator TransformScaleCanBeEnabledForSpawnAndUpdates()
+        {
+            const string root = "Assets/Samples/AtlasNet Unity/0.1.0/00 Shared/Prefabs/";
+            var prefab = AssetDatabase.LoadAssetAtPath<NetworkObject>(root + "ScaleCube.prefab");
+            var list = AssetDatabase.LoadAssetAtPath<NetworkPrefabsList>(root + "ScaleNetworkPrefabs.asset");
+            var channel = prefab.GetComponent<NetworkTransform>();
+            Assert.That(channel.SyncScale, Is.False);
+            NetworkManager Create(string name)
+            {
+                var manager = new GameObject(name).AddComponent<NetworkManager>();
+                Set(manager, "networkPrefabsLists", new[] { list });
+                manager.ConfigureConnection("127.0.0.1", 17892);
+                return manager;
+            }
+            var server = Create("Scale test server");
+            var client = Create("Scale test client");
+            try
+            {
+                Set(channel, "syncScale", true);
+                server.StartServer();
+                var spawned = server.Spawn(prefab, Vector3.zero, Quaternion.identity);
+                var beforeJoin = new Vector3(2, 3, 4);
+                spawned.transform.localScale = beforeJoin;
+                client.StartClient();
+                NetworkObject replica = null;
+                float deadline = Time.realtimeSinceStartup + 5;
+                while (Time.realtimeSinceStartup < deadline &&
+                    (!client.TryGet(spawned.EntityId, out replica) || replica.transform.localScale != beforeJoin))
+                    yield return null;
+                Assert.That(replica, Is.Not.Null);
+                Assert.That(replica.transform.localScale, Is.EqualTo(beforeJoin));
+                var next = new Vector3(4, 2, 3);
+                spawned.transform.localScale = next;
+                deadline = Time.realtimeSinceStartup + 5;
+                while (Time.realtimeSinceStartup < deadline && replica.transform.localScale != next)
+                    yield return null;
+                Assert.That(replica.transform.localScale, Is.EqualTo(next));
+            }
+            finally
+            {
+                client.Stop();
+                server.Stop();
+                Set(channel, "syncScale", false);
+                Object.DestroyImmediate(client.gameObject);
+                Object.DestroyImmediate(server.gameObject);
+            }
+        }
+
+        [UnityTest]
         public IEnumerator ScalePopulationMovesBetweenAllThreeSimulationWorkers()
         {
             const string Shared = "Assets/Samples/AtlasNet Unity/0.1.0/00 Shared/Prefabs/";

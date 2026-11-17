@@ -28,7 +28,11 @@ internal sealed class NativeSoccerSpectator
     private readonly List<ulong> staleRegions = new();
     private readonly List<Vector2> outline = new();
     private readonly Texture2D qr;
+    private enum CameraMode { Static, FollowPlayer, FollowBall }
+    private static readonly string[] CameraModes = { "Static", "Follow player", "Follow ball" };
+    private CameraMode cameraMode;
     private NetworkObject focus;
+    private NetworkObject ball;
     private bool showRegions = true;
     private double nextFocus;
     private Vector2 scroll;
@@ -63,12 +67,30 @@ internal sealed class NativeSoccerSpectator
     public void Update()
     {
         UpdateRegions();
-        if (!manager.IsConnectedClient || !focus || !focus.IsSpawned ||
-            !Includes(focus.SimulationWorker) || Time.unscaledTimeAsDouble >= nextFocus)
-            PickFocus();
-
-        if (focus)
-            SoccerCameraFraming.Follow(camera, focus.transform.position,
+        NetworkObject target = null;
+        if (manager.IsConnectedClient)
+        {
+            if (cameraMode == CameraMode.FollowPlayer)
+            {
+                if (!focus || !focus.IsSpawned || !Includes(focus.SimulationWorker) ||
+                    Time.unscaledTimeAsDouble >= nextFocus)
+                    PickFocus();
+                target = focus;
+            }
+            else if (cameraMode == CameraMode.FollowBall)
+            {
+                if (!ball || !ball.IsSpawned)
+                    foreach (var replica in manager.SpawnedObjects)
+                        if (replica.TryGetComponent<SoccerBall>(out _))
+                        {
+                            ball = replica;
+                            break;
+                        }
+                target = ball;
+            }
+        }
+        if (target && target.IsSpawned)
+            SoccerCameraFraming.Follow(camera, target.transform.position,
                 new Vector3(0, 35, -28), Quaternion.Euler(51, 0, 0));
         else
             camera.transform.SetPositionAndRotation(startPosition, startRotation);
@@ -156,8 +178,10 @@ internal sealed class NativeSoccerSpectator
 
     public void DrawControls()
     {
-        if (focus) GUILayout.Label($"Following {focus.EntityId} · shard {focus.SimulationWorker}");
-        if (GUILayout.Button("Follow another player")) PickFocus();
+        if (cameraMode == CameraMode.FollowPlayer && focus) GUILayout.Label($"Following {focus.EntityId} · shard {focus.SimulationWorker}");
+        GUILayout.Space(8);
+        cameraMode = (CameraMode)GUILayout.Toolbar((int)cameraMode, CameraModes, GUILayout.Height(26));
+        GUILayout.Space(8);
         showRegions = GUILayout.Toggle(showRegions, "Show authority regions");
         scroll = GUILayout.BeginScrollView(scroll, GUILayout.MaxHeight(136));
         foreach (var entry in regions)

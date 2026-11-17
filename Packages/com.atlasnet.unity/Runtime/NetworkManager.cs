@@ -172,7 +172,7 @@ namespace AtlasNet
         internal void SendVariable(NetworkBehaviour behaviour, ushort id, INetworkVariable value) => Backend.SendVariable(behaviour, id, value);
         internal void SendRpc(NetworkBehaviour behaviour, RpcDestination destination, SessionId target, uint method, Action<NetWriter> write) => Backend.SendRpc(behaviour, destination, target, method, write);
         internal void SendAuthorityInteraction(NetworkObject source, NetworkBehaviour target, uint method, Action<NetWriter> write) => Backend.SendAuthorityInteraction(source, target, method, write);
-        internal void SendTransform(NetworkTransform component, byte flags, Vector3 position, Quaternion rotation) => Backend.SendTransform(component, flags, position, rotation);
+        internal void SendTransform(NetworkTransform component, byte flags, Vector3 position, Quaternion rotation, Vector3 scale) => Backend.SendTransform(component, flags, position, rotation, scale);
         internal void SendAnimator(NetworkAnimator component, byte[] payload) => Backend.SendAnimator(component, payload);
         public bool TryGet(EntityId id, out NetworkObject obj) => Replicas.TryGetValue(id, out obj);
 
@@ -223,10 +223,10 @@ namespace AtlasNet
             => GetReplicaBehaviour<NetworkBehaviour>(id, behaviour)?.ReadVariable(variable, payload);
 
         /// <summary>Apply a pose relayed by the authoritative backend.</summary>
-        public void DispatchBackendTransform(EntityId id, byte behaviour, byte flags, Vector3 position, Quaternion rotation)
+        public void DispatchBackendTransform(EntityId id, byte behaviour, byte flags, Vector3 position, Quaternion rotation, Vector3 scale = default)
         {
-            if ((flags & ~3) != 0) throw new ArgumentOutOfRangeException(nameof(flags));
-            GetReplicaBehaviour<NetworkTransform>(id, behaviour)?.AcceptServerState(flags, position, rotation);
+            if ((flags & ~7) != 0) throw new ArgumentOutOfRangeException(nameof(flags));
+            GetReplicaBehaviour<NetworkTransform>(id, behaviour)?.AcceptServerState(flags, position, rotation, scale);
         }
 
         /// <summary>Apply animation data relayed by the authoritative backend.</summary>

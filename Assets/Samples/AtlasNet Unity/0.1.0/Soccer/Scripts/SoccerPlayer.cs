@@ -112,8 +112,10 @@ namespace AtlasNet.Samples.Soccer
                 SetMoveRpc(input); lastSent = input; nextInput = Time.unscaledTime + 1f / NetworkManager.TickRate;
             }
         }
-        [Rpc(SendTo.Authority, InvokePermission = RpcInvokePermission.Owner)]
-        public void SetMoveRpc(Vector2 input)
+        [Rpc(SendTo.Authority, InvokePermission = RpcInvokePermission.Owner, Delivery = RpcDelivery.UnreliableSequenced)]
+        public void SetMoveRpc(Vector2 input) => ApplyMoveInput(input);
+
+        internal void ApplyMoveInput(Vector2 input)
         {
             if (predictedMotor || ownerSimulation || !HasAuthority || !float.IsFinite(input.x) || !float.IsFinite(input.y)) return;
             MoveInput = allowMovement ? Vector2.ClampMagnitude(input, 1) : Vector2.zero; inputReceived = Time.unscaledTime;

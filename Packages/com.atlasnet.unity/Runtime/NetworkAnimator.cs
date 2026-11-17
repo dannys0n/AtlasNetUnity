@@ -13,6 +13,9 @@ namespace AtlasNet
         [SerializeField] private Animator animator;
         [SerializeField] private AnimatorWriter writer = AnimatorWriter.Server;
 
+        [SerializeField, Range(1, 30), Tooltip("Check for animation state changes once per this many network ticks.")]
+        private int sendIntervalTicks = 1;
+
         private readonly Dictionary<int, object> lastValues = new Dictionary<int, object>();
         private int[] lastStates;
 
@@ -36,6 +39,7 @@ namespace AtlasNet
         public override void OnNetworkTick()
         {
             if (writer == AnimatorWriter.Server ? !HasAuthority : !IsOwner) return;
+            if (NetworkManager.Tick % (uint)Mathf.Max(1, sendIntervalTicks) != 0) return;
             EnsureAnimator();
             using (var payload = new NetWriter())
             {
@@ -93,6 +97,13 @@ namespace AtlasNet
                 payload.Write((byte)0);
                 NetworkManager.SendAnimator(this, payload.ToArray());
             }
+        }
+
+        public byte[] CaptureState()
+        {
+            using var state = new NetWriter();
+            WriteExtraSnapshot(state);
+            return state.ToArray();
         }
 
         protected override void WriteExtraSnapshot(NetWriter output)

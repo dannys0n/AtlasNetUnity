@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using AtlasNet;
+using AtlasNet.Samples.Soccer;
 using Newtonsoft.Json.Linq;
 using UnityEngine;
 using EntityId = AtlasNet.EntityId;
@@ -12,14 +13,19 @@ internal sealed partial class NativeShardBackend : IWorldBackend, IWorldBackendT
     private readonly NetworkObject observerPrefab;
     private readonly HashSet<EntityId> frozen = new();
     private readonly Dictionary<EntityId, Vector3> positions = new();
+    private readonly HashSet<EntityId> awaitingFirstClientCommand = new();
     private readonly UnityShardMigration migration;
     private UnityShardConnection connection;
     private float accumulated;
     private bool quitting;
     private bool ownsOrigin;
     private JToken regionShape;
+    private bool regionChanged;
     private ulong nextRegistration;
     private uint nextSnapshotTick;
+    private readonly Dictionary<EntityId, double> lastRemoteContacts = new();
+    private readonly bool traceRemoteContacts =
+        Environment.GetEnvironmentVariable("ATLASNET_SOCCER_TRACE_REMOTE_CONTACT") == "1";
 
     public NativeShardBackend(NetworkManager manager, NetworkObject observerPrefab)
     {
@@ -142,20 +148,37 @@ internal sealed partial class NativeShardBackend : IWorldBackend, IWorldBackendT
                 accumulated -= interval;
                 Tick++;
                 manager.TickBackendReplicas();
+                PublishScalePoseBatches();
                 bool publishSnapshots = Tick >= nextSnapshotTick;
                 if (publishSnapshots) nextSnapshotTick = Tick + (uint)manager.TickRate;
+                if (regionChanged || (publishSnapshots && regionShape is JObject))
+                {
+                    using var region = new NetWriter();
+                    region.Write(LocalWorkerId);
+                    region.Write(regionShape.ToString(Newtonsoft.Json.Formatting.None));
+                    connection.Send(new JObject
+                    {
+                        ["type"] = "region_signal",
+                        ["payload"] = JArray.FromObject(BytesAsIntegers(region.ToArray()))
+                    });
+                    regionChanged = false;
+                }
+
                 foreach (var obj in manager.SpawnedObjects)
                 {
                     if (!CanSimulate(obj)) continue;
-                    if (publishSnapshots && regionShape != null)
-                    {
-                        using var region = new NetWriter();
-                        region.Write(LocalWorkerId);
-                        region.Write(regionShape.ToString(Newtonsoft.Json.Formatting.None));
-                        Publish(obj, 0x415508, region);
-                    }
-                    if (publishSnapshots || !positions.ContainsKey(obj.EntityId)) PublishSnapshot(obj);
+                    uint tickRate = (uint)manager.TickRate;
+                    bool snapshotDue = scaleInterestEnabled
+                        ? Tick % tickRate == ScaleSendPhase(obj.EntityId, tickRate)
+                        : publishSnapshots;
+                    if (snapshotDue || !positions.ContainsKey(obj.EntityId)) PublishSnapshot(obj);
                     Vector3 position = obj.transform.position;
+                    if (awaitingFirstClientCommand.Contains(obj.EntityId))
+                    {
+                        // Keep snapshots flowing while AtlasNet finishes registering the client actor.
+                        positions[obj.EntityId] = position;
+                        continue;
+                    }
                     if (positions.TryGetValue(obj.EntityId, out var previous) && previous == position) continue;
                     connection.Send(new JObject
                     {
@@ -185,7 +208,23 @@ internal sealed partial class NativeShardBackend : IWorldBackend, IWorldBackendT
         if (type == "region")
         {
             ownsOrigin = request.Value<bool>("ownsOrigin");
-            regionShape = request["shape"];
+            regionShape = request["shape"] ?? JValue.CreateNull();
+            regionChanged = true;
+            return;
+        }
+        if (type == "authority_interaction")
+        {
+            var entity = new EntityId(request.Value<ulong>("entity"));
+            if (manager.TryGet(entity, out var obj) && CanSimulate(obj))
+            {
+                byte behaviour = request.Value<byte>("behaviour");
+                uint method = request.Value<uint>("method");
+                byte[] arguments = request["payload"].ToObject<byte[]>();
+                if (behaviour == AdapterBehaviour && method == RemoteBallContactMethod)
+                    ApplyRemoteBallContact(obj, arguments);
+                else
+                    manager.DispatchBackendRpc(entity, behaviour, method, arguments, default, RpcDestination.Authority);
+            }
             return;
         }
         if (type == "commands")
@@ -199,6 +238,9 @@ internal sealed partial class NativeShardBackend : IWorldBackend, IWorldBackendT
                 uint method = payload.ReadUInt();
                 byte[] arguments = payload.ReadBytes();
                 if (payload.HasRemaining) throw new InvalidOperationException("Trailing shard command data.");
+                // AtlasNet forwards client commands only after registration and handshake completion.
+                if (awaitingFirstClientCommand.Remove(entity))
+                    positions.Remove(entity);
                 if (behaviour == AdapterBehaviour)
                 {
                     if (method == PingProbeMethod && arguments.Length == sizeof(uint) && obj.OwnerSession.Value != 0)
@@ -207,6 +249,23 @@ internal sealed partial class NativeShardBackend : IWorldBackend, IWorldBackendT
                         pong.WriteRaw(arguments);
                         Publish(obj, PingReplySignal, pong, obj.OwnerSession);
                     }
+                    if (method == ScalePoseMethod && arguments.Length == 12 &&
+                        obj.OwnerSession.Value != 0 && obj.TryGetComponent<ScaleMotion>(out _))
+                    {
+                        using var pose = new NetReader(arguments);
+                        Vector3 position = pose.ReadVector3();
+                        if (float.IsFinite(position.x) && float.IsFinite(position.y) && float.IsFinite(position.z) &&
+                            Mathf.Abs(position.x) <= 15 && position.y >= 0 && position.y <= 3 &&
+                            Mathf.Abs(position.z) <= 12)
+                            obj.transform.position = position;
+                    }
+                    if (method == LoadMoveMethod && arguments.Length == 8 && obj.TryGetComponent(out SoccerPlayer bot))
+                    {
+                        using var input = new NetReader(arguments);
+                        bot.ApplyMoveInput(new Vector2(input.ReadFloat(), input.ReadFloat()));
+                    }
+                    if (method == RemoteBallContactMethod && arguments.Length == sizeof(ulong) && obj.OwnerSession.Value != 0)
+                        ReportRemoteBallContact(obj, arguments);
                     continue;
                 }
                 manager.DispatchBackendRpc(entity, behaviour, method, arguments, obj.OwnerSession, RpcDestination.Authority);
@@ -243,6 +302,7 @@ internal sealed partial class NativeShardBackend : IWorldBackend, IWorldBackendT
         var placement = new Vector3(position[0].Value<float>(), position[2].Value<float>(), position[1].Value<float>());
         var spawn = spectator ? placement : PlayerSpawnPosition?.Invoke(owner) ?? placement;
         manager.CreateReplica(prefab, id, owner, spawn, Quaternion.identity, LocalWorkerId, 1);
+        awaitingFirstClientCommand.Add(id);
         if (!spectator) SessionJoined?.Invoke(owner);
         return true;
     }
@@ -275,6 +335,7 @@ internal sealed partial class NativeShardBackend : IWorldBackend, IWorldBackendT
         if (value) frozen.Add(id);
         else frozen.Remove(id);
         positions.Remove(id);
+        lastRemoteContacts.Remove(id);
         if (manager.TryGet(id, out var obj)) obj.gameObject.SetActive(!value);
     }
 
@@ -291,6 +352,8 @@ internal sealed partial class NativeShardBackend : IWorldBackend, IWorldBackendT
         var objects = new List<NetworkObject>(manager.SpawnedObjects);
         foreach (var obj in objects) manager.RemoveReplica(obj.EntityId);
         positions.Clear();
+        awaitingFirstClientCommand.Clear();
+        lastRemoteContacts.Clear();
         frozen.Clear();
         Stopped?.Invoke(wasServer, !wasServer);
     }
@@ -300,6 +363,8 @@ internal sealed partial class NativeShardBackend : IWorldBackend, IWorldBackendT
         if (!manager.TryGet(id, out _)) return true;
         manager.RemoveReplica(id);
         positions.Remove(id);
+        awaitingFirstClientCommand.Remove(id);
+        lastRemoteContacts.Remove(id);
         frozen.Remove(id);
         return true;
     }
@@ -375,6 +440,93 @@ internal sealed partial class NativeShardBackend : IWorldBackend, IWorldBackendT
     internal const uint TransformSignal = 0x415503;
     internal const uint AnimatorSignal = 0x415504;
     internal const uint RpcSignal = 0x415505;
+    internal const uint SequencedRpcSignal = 0x41550B;
+    private uint nextRpcSequence;
+
+    private readonly bool scaleInterestEnabled = Environment.GetEnvironmentVariable("ATLASNET_SCALE_INTEREST") == "1";
+    private const double ScaleInterestRadius = 24;
+    internal const uint ScalePoseBatchSignal = 0x41550A;
+    private const float ScalePoseCellSize = 8f;
+    private const int ScalePosesPerPacket = 16;
+    private readonly Dictionary<Vector2Int, List<ScalePose>> scalePoseCells = new();
+
+    private readonly struct ScalePose
+    {
+        public readonly NetworkObject Object;
+        public readonly byte Behaviour;
+        public readonly byte Flags;
+        public readonly Vector3 Position;
+        public readonly Quaternion Rotation;
+        public readonly Vector3 Scale;
+
+        public ScalePose(NetworkObject obj, byte behaviour, byte flags, Vector3 position, Quaternion rotation, Vector3 scale)
+        {
+            Object = obj;
+            Behaviour = behaviour;
+            Flags = flags;
+            Position = position;
+            Rotation = rotation;
+            Scale = scale;
+        }
+    }
+
+    private void QueueScalePose(ScalePose pose)
+    {
+        var cell = new Vector2Int(Mathf.FloorToInt(pose.Position.x / ScalePoseCellSize),
+            Mathf.FloorToInt(pose.Position.z / ScalePoseCellSize));
+        if (!scalePoseCells.TryGetValue(cell, out var poses))
+            scalePoseCells.Add(cell, poses = new List<ScalePose>(ScalePosesPerPacket));
+        poses.Add(pose);
+    }
+
+    private void PublishScalePoseBatches()
+    {
+        foreach (var entry in scalePoseCells)
+        {
+            var poses = entry.Value;
+            if (poses.Count == 0) continue;
+            var center = new Vector3((entry.Key.x + .5f) * ScalePoseCellSize, 0,
+                (entry.Key.y + .5f) * ScalePoseCellSize);
+            // Cover the original interest circle of every pose in this cell.
+            double radius = ScaleInterestRadius + ScalePoseCellSize / Mathf.Sqrt(2);
+            for (int start = 0; start < poses.Count; start += ScalePosesPerPacket)
+            {
+                int count = Mathf.Min(ScalePosesPerPacket, poses.Count - start);
+                using var writer = new NetWriter();
+                writer.Write(LocalWorkerId);
+                writer.Write(Tick);
+                writer.Write((byte)count);
+                for (int i = start; i < start + count; ++i)
+                {
+                    var pose = poses[i];
+                    writer.Write(pose.Object.EntityId);
+                    writer.Write(pose.Object.AuthorityEpoch);
+                    writer.Write(pose.Behaviour);
+                    writer.Write(pose.Flags);
+                    writer.Write(pose.Position);
+                    writer.Write(pose.Rotation);
+                    if ((pose.Flags & 4) != 0) writer.Write(pose.Scale);
+                }
+                connection.Send(new JObject
+                {
+                    ["type"] = "scale_pose_batch",
+                    ["payload"] = JArray.FromObject(BytesAsIntegers(writer.ToArray())),
+                    ["spatial_radius"] = radius,
+                    ["spatial_center"] = ToAtlasNetPosition(center)
+                });
+            }
+            poses.Clear();
+        }
+    }
+
+    private static uint ScaleSendPhase(EntityId id, uint tickRate)
+    {
+        // Mix the time and counter bits so clients admitted together spread across ticks.
+        ulong mixed = id.Value ^ (id.Value >> 13) ^ (id.Value >> 27);
+        return (uint)(mixed % tickRate);
+    }
+
+    private bool IsObserver(NetworkObject obj) => observerPrefab && obj.PrefabId == observerPrefab.PrefabId;
 
     private void PublishSnapshot(NetworkObject obj)
     {
@@ -382,10 +534,13 @@ internal sealed partial class NativeShardBackend : IWorldBackend, IWorldBackendT
         {
             using var admission = new NetWriter();
             admission.Write(obj.OwnerSession);
-            admission.Write(SessionSupportsPing);
+            admission.Write((byte)(SessionSupportsPing | SessionSupportsRemoteContact |
+                (scaleInterestEnabled && !IsObserver(obj) ? SessionSupportsScaleInterest : 0)));
+            admission.Write(obj.EntityId);
+            admission.Write(obj.TryGetComponent(out SoccerPlayer player) ? (byte)player.Team : (byte)0);
             Publish(obj, SessionSignal, admission, obj.OwnerSession);
         }
-        if (observerPrefab && obj.PrefabId == observerPrefab.PrefabId) return;
+        if (IsObserver(obj)) return;
         using var writer = new NetWriter();
         WriteEntityHeader(writer, obj);
         writer.Write(obj.PrefabId);
@@ -393,7 +548,7 @@ internal sealed partial class NativeShardBackend : IWorldBackend, IWorldBackendT
         writer.Write(obj.transform.position);
         writer.Write(obj.transform.rotation);
         writer.WriteBytes(manager.CaptureReplicaSnapshot(obj.EntityId, default));
-        Publish(obj, SnapshotSignal, writer);
+        Publish(obj, SnapshotSignal, writer, spatialRadius: scaleInterestEnabled ? ScaleInterestRadius : 0);
     }
 
     private static void WriteEntityHeader(NetWriter writer, NetworkObject obj)
@@ -403,7 +558,7 @@ internal sealed partial class NativeShardBackend : IWorldBackend, IWorldBackendT
         writer.Write(obj.AuthorityEpoch);
     }
 
-    private void Publish(NetworkObject obj, uint signal, NetWriter writer, SessionId recipient = default)
+    private void Publish(NetworkObject obj, uint signal, NetWriter writer, SessionId recipient = default, bool stateStream = false, double spatialRadius = 0, bool transientRpc = false)
     {
         byte[] bytes = writer.ToArray();
         if (bytes.Length > 4096)
@@ -411,7 +566,11 @@ internal sealed partial class NativeShardBackend : IWorldBackend, IWorldBackendT
         connection.Send(new JObject
         {
             ["type"] = "signal", ["entity"] = obj.EntityId.Value, ["signal"] = signal,
-            ["recipient"] = recipient.Value, ["payload"] = JArray.FromObject(BytesAsIntegers(bytes))
+            ["recipient"] = recipient.Value, ["payload"] = JArray.FromObject(BytesAsIntegers(bytes)),
+            ["sequence"] = stateStream ? ((ulong)obj.AuthorityEpoch << 32) | Tick : 0,
+            ["transient_rpc"] = transientRpc,
+            ["spatial_radius"] = spatialRadius,
+            ["spatial_center"] = spatialRadius > 0 ? ToAtlasNetPosition(obj.transform.position) : null
         });
     }
 
@@ -443,7 +602,7 @@ internal sealed partial class NativeShardBackend : IWorldBackend, IWorldBackendT
         if (IsClient)
         {
             if (destination == RpcDestination.Authority && obj.IsOwner)
-                SendClientCommand(behaviour.BehaviourIndex, method, write);
+                SendClientCommand(behaviour.BehaviourIndex, method, write, behaviour.GetRpcDelivery(method));
             return;
         }
         if (!CanSimulate(obj) || destination == RpcDestination.Authority) return;
@@ -453,35 +612,118 @@ internal sealed partial class NativeShardBackend : IWorldBackend, IWorldBackendT
         writer.Write(behaviour.BehaviourIndex);
         writer.Write(method);
         writer.Write((byte)destination);
+        var delivery = behaviour.GetRpcDelivery(method);
+        if (delivery == NetworkDelivery.UnreliableSequenced)
+            writer.Write(++nextRpcSequence);
         using var content = new NetWriter();
         write?.Invoke(content);
         writer.WriteBytes(content.ToArray());
-        Publish(obj, RpcSignal, writer, destination == RpcDestination.Target ? target : default);
+        Publish(obj, delivery == NetworkDelivery.UnreliableSequenced ? SequencedRpcSignal : RpcSignal,
+            writer, destination == RpcDestination.Target ? target : default,
+            transientRpc: delivery != NetworkDelivery.ReliableOrdered);
+    }
+
+    private void ReportRemoteBallContact(NetworkObject source, byte[] arguments)
+    {
+        if (!source.TryGetComponent(out SoccerPlayer player) || player.MoveInput.sqrMagnitude < .01f ||
+            !source.TryGetComponent(out CapsuleCollider capsule) ||
+            !SoccerBall.TryGetContactCapsule(capsule, out Vector3 center,
+                out float halfSegment, out float radius)) return;
+        using var input = new NetReader(arguments);
+        var target = new EntityId(input.ReadULong());
+        if (target.Value == 0 || manager.TryGet(target, out _)) return;
+
+        double now = Time.unscaledTimeAsDouble;
+        if (lastRemoteContacts.TryGetValue(source.EntityId, out double last) && now - last < .075) return;
+        lastRemoteContacts[source.EntityId] = now;
+
+        using var payload = new NetWriter();
+        payload.Write(source.EntityId.Value);
+        payload.Write(LocalWorkerId);
+        payload.Write(source.transform.position);
+        payload.Write(player.MoveInput.x);
+        payload.Write(player.MoveInput.y);
+        payload.Write(center);
+        payload.Write(halfSegment);
+        payload.Write(radius);
+        SendRemoteAuthorityInteraction(source, target, AdapterBehaviour, RemoteBallContactMethod, payload.ToArray());
+    }
+
+    private void ApplyRemoteBallContact(NetworkObject target, byte[] arguments)
+    {
+        if (!target.TryGetComponent(out SoccerBall ball)) return;
+        using var payload = new NetReader(arguments);
+        ulong player = payload.ReadULong();
+        ulong sourceWorker = payload.ReadULong();
+        Vector3 playerPosition = payload.ReadVector3();
+        Vector2 move = new(payload.ReadFloat(), payload.ReadFloat());
+        Vector3 center = payload.ReadVector3();
+        float halfSegment = payload.ReadFloat();
+        float radius = payload.ReadFloat();
+        if (payload.HasRemaining || sourceWorker == LocalWorkerId) return;
+
+        if (ball.TryRemoteContact(player, playerPosition, move, center, halfSegment, radius) && traceRemoteContacts)
+            Debug.Log($"Soccer cross-shard kick player={player} from={sourceWorker} ball={target.EntityId.Value} to={LocalWorkerId}");
     }
 
     public void SendAuthorityInteraction(NetworkObject source, NetworkBehaviour target, uint method, Action<NetWriter> write)
     {
         if (!source || !target || source.Manager != manager || target.NetworkManager != manager ||
-            !CanSimulate(source) || !CanSimulate(target.NetworkObject))
-            throw new InvalidOperationException("The interaction requires an authoritative source and target on this shard.");
+            !CanSimulate(source) || !target.IsSpawned)
+            throw new InvalidOperationException("The interaction requires a local authoritative source and a spawned target.");
 
+        var targetObject = target.NetworkObject;
         using var payload = new NetWriter();
         write(payload);
-        manager.DispatchBackendRpc(target.NetworkObject.EntityId, target.BehaviourIndex, method,
-            payload.ToArray(), default, RpcDestination.Authority);
+        var arguments = payload.ToArray();
+        if (CanSimulate(targetObject))
+        {
+            manager.DispatchBackendRpc(targetObject.EntityId, target.BehaviourIndex, method,
+                arguments, default, RpcDestination.Authority);
+            return;
+        }
+
+        SendRemoteAuthorityInteraction(source, targetObject.EntityId, target.BehaviourIndex, method, arguments);
     }
 
-    public void SendTransform(NetworkTransform component, byte flags, Vector3 position, Quaternion rotation)
+    private void SendRemoteAuthorityInteraction(NetworkObject source, EntityId target, byte behaviour, uint method, byte[] arguments)
+    {
+        if (arguments.Length > 4096)
+            throw new InvalidOperationException("Native authority interaction arguments exceed 4096 bytes.");
+        connection.Send(new JObject
+        {
+            ["type"] = "authority_interaction",
+            ["entity"] = source.EntityId.Value,
+            ["target"] = target.Value,
+            ["behaviour"] = behaviour,
+            ["method"] = method,
+            ["payload"] = new JArray(Array.ConvertAll(arguments, value => (int)value))
+        });
+    }
+
+    public void SendTransform(NetworkTransform component, byte flags, Vector3 position, Quaternion rotation, Vector3 scale)
     {
         var obj = component.NetworkObject;
         if (!CanSimulate(obj)) return;
+        bool scaleMotion = obj.TryGetComponent<ScaleMotion>(out _);
+        const uint observerRate = 20;
+        uint tickRate = (uint)manager.TickRate;
+        ulong phasedTick = (ulong)Tick + ScaleSendPhase(obj.EntityId, tickRate);
+        if (scaleMotion && phasedTick * observerRate / tickRate ==
+            (phasedTick - 1) * observerRate / tickRate) return;
+        if (scaleMotion && scaleInterestEnabled)
+        {
+            QueueScalePose(new ScalePose(obj, component.BehaviourIndex, flags, position, rotation, scale));
+            return;
+        }
         using var writer = new NetWriter();
         WriteEntityHeader(writer, obj);
         writer.Write(component.BehaviourIndex);
         writer.Write(flags);
         writer.Write(position);
         writer.Write(rotation);
-        Publish(obj, TransformSignal, writer);
+        if ((flags & 4) != 0) writer.Write(scale);
+        Publish(obj, TransformSignal, writer, stateStream: true, spatialRadius: scaleMotion ? ScaleInterestRadius : 0);
     }
 
     public void SendAnimator(NetworkAnimator component, byte[] payload)
@@ -491,7 +733,10 @@ internal sealed partial class NativeShardBackend : IWorldBackend, IWorldBackendT
         using var writer = new NetWriter();
         WriteEntityHeader(writer, obj);
         writer.Write(component.BehaviourIndex);
-        writer.WriteBytes(payload);
-        Publish(obj, AnimatorSignal, writer);
+        // Trigger payloads are discrete events. Replicate continuous state as a
+        // complete sample so a newer packet can replace an older one safely.
+        bool trigger = payload.Length == 8 && payload[6] == (byte)AnimatorControllerParameterType.Trigger;
+        writer.WriteBytes(trigger ? payload : component.CaptureState());
+        Publish(obj, AnimatorSignal, writer, stateStream: !trigger);
     }
 }

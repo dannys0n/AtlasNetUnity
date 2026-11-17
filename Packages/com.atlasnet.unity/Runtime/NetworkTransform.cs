@@ -14,6 +14,9 @@ namespace AtlasNet
         private bool inLocalSpace;
         [SerializeField] private bool syncPosition = true;
         [SerializeField] private bool syncRotation = true;
+        [SerializeField, Tooltip("Sync the target's local scale. Parent scale must match across peers.")]
+        private bool syncScale;
+        [SerializeField] private TransformWriter scaleWriter = TransformWriter.Server;
         [SerializeField] private TransformWriter positionWriter = TransformWriter.Server;
         [SerializeField] private TransformWriter rotationWriter = TransformWriter.Owner;
         [SerializeField, Range(1, 30), Tooltip("Check for changes once per this many network ticks.")]
@@ -31,18 +34,21 @@ namespace AtlasNet
         [SerializeField, Min(0), Tooltip("Distance between consecutive received positions, in units of the chosen space.")]
         private float snapDistance = 5f;
 
-        private Vector3 lastSentPosition;
+        private Vector3 lastSentPosition, lastSentScale;
         private Quaternion lastSentRotation;
         private Vector3 lastReceivedPosition;
         private readonly BufferedInterpolator<Vector3> positions = new(Vector3.Lerp);
         private readonly BufferedInterpolator<Quaternion> rotations = new(Quaternion.Slerp);
-        private bool positionBuffered, rotationBuffered;
+        private readonly BufferedInterpolator<Vector3> scales = new(Vector3.Lerp);
+        private bool positionBuffered, rotationBuffered, scaleBuffered;
 
         public int SendIntervalTicks => Mathf.Max(1, sendIntervalTicks);
         public TransformWriter PositionWriter => positionWriter;
         public TransformWriter RotationWriter => rotationWriter;
         internal bool SyncPosition => syncPosition;
         internal bool SyncRotation => syncRotation;
+        public bool SyncScale => syncScale;
+        public TransformWriter ScaleWriter => scaleWriter;
         internal Transform Target => target != null ? target : transform;
 
         private Vector3 Position
@@ -74,6 +80,7 @@ namespace AtlasNet
                 (double)Mathf.Max(interpolationBufferTicks, SendIntervalTicks * 2) / NetworkManager.TickRate;
             if (positionBuffered) Position = positions.Evaluate(displayTime);
             if (rotationBuffered) Rotation = rotations.Evaluate(displayTime);
+            if (scaleBuffered) Target.localScale = scales.Evaluate(displayTime);
         }
 
         public override void OnNetworkTick()
@@ -93,27 +100,36 @@ namespace AtlasNet
                 flags |= 2;
                 lastSentRotation = rotation;
             }
-            if (flags != 0) NetworkObject.Manager.SendTransform(this, flags, position, rotation);
+            Vector3 scale = Target.localScale;
+            if (syncScale && CanWrite(scaleWriter) && (scale - lastSentScale).sqrMagnitude > 0.000001f)
+            {
+                flags |= 4;
+                lastSentScale = scale;
+            }
+            if (flags != 0) NetworkObject.Manager.SendTransform(this, flags, position, rotation, scale);
         }
 
         private bool CanWrite(TransformWriter writer) => writer == TransformWriter.Owner ? IsOwner : HasAuthority;
 
-        internal bool AcceptOwnerState(SessionId sender, byte flags, Vector3 position, Quaternion rotation)
+        internal bool AcceptOwnerState(SessionId sender, byte flags, Vector3 position, Quaternion rotation, Vector3 scale)
         {
-            if (sender != OwnerSession || sender.Value == 0 || (flags & ~3) != 0) return false;
+            if (sender != OwnerSession || sender.Value == 0 || (flags & ~7) != 0) return false;
             if ((flags & 1) != 0 && positionWriter != TransformWriter.Owner) return false;
             if ((flags & 2) != 0 && rotationWriter != TransformWriter.Owner) return false;
             if ((flags & 1) != 0 && !syncPosition) return false;
             if ((flags & 2) != 0 && !syncRotation) return false;
+            if ((flags & 4) != 0 && (!syncScale || scaleWriter != TransformWriter.Owner)) return false;
             if ((flags & 1) != 0) Position = position;
             if ((flags & 2) != 0) Rotation = rotation;
+            if ((flags & 4) != 0) Target.localScale = scale;
             return true;
         }
 
-        internal void AcceptServerState(byte flags, Vector3 position, Quaternion rotation)
+        internal void AcceptServerState(byte flags, Vector3 position, Quaternion rotation, Vector3 scale)
         {
             bool applyPosition = (flags & 1) != 0 && !(IsOwner && positionWriter == TransformWriter.Owner);
             bool applyRotation = (flags & 2) != 0 && !(IsOwner && rotationWriter == TransformWriter.Owner);
+            bool applyScale = syncScale && (flags & 4) != 0 && !(IsOwner && scaleWriter == TransformWriter.Owner);
             bool buffer = interpolate && !NetworkManager.IsServer;
             float distance = Mathf.Max(0, snapDistance);
             bool snap = buffer && applyPosition && snapOnLargeMove &&
@@ -141,18 +157,30 @@ namespace AtlasNet
                     rotations.Reset(now, rotation);
                 }
             }
+            if (applyScale)
+            {
+                scaleBuffered = buffer && !snap;
+                if (scaleBuffered) scales.Add(now, scale);
+                else
+                {
+                    Target.localScale = scale;
+                    scales.Reset(now, scale);
+                }
+            }
         }
 
         protected override void WriteExtraSnapshot(NetWriter writer)
         {
             writer.Write(Position);
             writer.Write(Rotation);
+            if (syncScale) writer.Write(Target.localScale);
         }
 
         protected override void ReadExtraSnapshot(NetReader reader)
         {
             Position = reader.ReadVector3();
             Rotation = reader.ReadQuaternion();
+            if (syncScale) Target.localScale = reader.ReadVector3();
             ResetPose();
         }
 
@@ -163,7 +191,9 @@ namespace AtlasNet
             double now = Time.unscaledTimeAsDouble;
             positions.Reset(now, lastSentPosition);
             rotations.Reset(now, lastSentRotation);
-            positionBuffered = rotationBuffered = false;
+            lastSentScale = Target.localScale;
+            scales.Reset(now, lastSentScale);
+            positionBuffered = rotationBuffered = scaleBuffered = false;
         }
 
         internal override void WriteExtraOwnerState(NetWriter writer)
@@ -171,9 +201,11 @@ namespace AtlasNet
             byte flags = 0;
             if (syncPosition && positionWriter == TransformWriter.Owner) flags |= 1;
             if (syncRotation && rotationWriter == TransformWriter.Owner) flags |= 2;
+            if (syncScale && scaleWriter == TransformWriter.Owner) flags |= 4;
             writer.Write(flags);
             if ((flags & 1) != 0) writer.Write(Position);
             if ((flags & 2) != 0) writer.Write(Rotation);
+            if ((flags & 4) != 0) writer.Write(Target.localScale);
         }
 
         internal override void ReadExtraOwnerState(NetReader reader)
@@ -182,6 +214,7 @@ namespace AtlasNet
             byte expected = 0;
             if (syncPosition && positionWriter == TransformWriter.Owner) expected |= 1;
             if (syncRotation && rotationWriter == TransformWriter.Owner) expected |= 2;
+            if (syncScale && scaleWriter == TransformWriter.Owner) expected |= 4;
             if (flags != expected) throw new System.InvalidOperationException("Owner transform channels differ across workers");
             if ((flags & 1) != 0)
             {
@@ -196,6 +229,12 @@ namespace AtlasNet
                 lastSentRotation = Rotation;
                 rotations.Reset(Time.unscaledTimeAsDouble, lastSentRotation);
                 rotationBuffered = false;
+            }
+            if ((flags & 4) != 0)
+            {
+                lastSentScale = Target.localScale = reader.ReadVector3();
+                scales.Reset(Time.unscaledTimeAsDouble, lastSentScale);
+                scaleBuffered = false;
             }
         }
     }
