@@ -360,8 +360,19 @@ internal sealed partial class NativeShardBackend : IWorldBackend, IWorldBackendT
 
     public bool TryDespawn(EntityId id)
     {
-        if (!manager.TryGet(id, out _)) return true;
-        manager.RemoveReplica(id);
+        if (!manager.TryGet(id, out var replica)) return true;
+        var ownerSession = replica.OwnerSession.Value;
+        var authorityEpoch = replica.AuthorityEpoch;
+        try
+        {
+            manager.RemoveReplica(id);
+        }
+        catch (Exception error)
+        {
+            Debug.LogError($"[AtlasNet] Unity despawn failed for entity {id.Value}, owner session {ownerSession}, " +
+                $"worker {LocalWorkerId}, authority epoch {authorityEpoch}: {error.GetType().Name}: {error.Message}");
+            throw;
+        }
         positions.Remove(id);
         awaitingFirstClientCommand.Remove(id);
         lastRemoteContacts.Remove(id);
