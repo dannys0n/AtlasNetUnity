@@ -22,6 +22,7 @@ internal sealed class NativeSoccerLoadClients : IDisposable
     private readonly Thread worker;
     private volatile int target, connected, moving, failed;
     private volatile bool stopping;
+    private volatile bool patrol;
     private volatile string error;
     private string count = "1";
 
@@ -41,6 +42,8 @@ internal sealed class NativeSoccerLoadClients : IDisposable
     {
         GUILayout.Space(14);
         GUILayout.Label(Status);
+        if (!scaleMode)
+            patrol = GUILayout.Toggle(patrol, "Patrol (off: Soccer AI)");
         GUILayout.BeginHorizontal();
         GUILayout.Label("Clients per action");
         count = GUILayout.TextField(count, 3, GUILayout.Width(45));
@@ -76,16 +79,17 @@ internal sealed class NativeSoccerLoadClients : IDisposable
                 double now = time.Elapsed.TotalSeconds;
                 int desired = target;
                 int active = 0;
+                bool usePatrol = patrol;
                 for (int i = bots.Count - 1; i >= 0; --i)
                 {
                     var bot = bots[i];
-                    if (i >= desired || !bot.Update(buffer, time))
+                    if (i >= desired || !bot.Update(buffer, time, usePatrol))
                     {
                         bot.Dispose();
                         bots.RemoveAt(i);
                         continue;
                     }
-                    if (bot.Active) active++;
+                    if (bot.IsActive(usePatrol)) active++;
                 }
                 connected = bots.Count;
                 moving = active;
@@ -146,6 +150,7 @@ internal sealed class NativeSoccerLoadClients : IDisposable
         private readonly bool scaleMode;
         private readonly Vector3 scaleOrigin;
         private readonly double joinedAt;
+        private readonly float patrolPhase;
         private ulong ownEntity, ball;
         private int team;
         private Vector3 position, ballPosition;
@@ -162,6 +167,7 @@ internal sealed class NativeSoccerLoadClients : IDisposable
             this.speed = speed;
             this.scaleMode = scaleMode;
             joinedAt = now;
+            patrolPhase = ordinal * 2.39996323f;
             this.moveInterval = moveInterval;
             nextMove = now + moveInterval * (ordinal * .61803398875 % 1);
             scaleOrigin = new Vector3(Mathf.Lerp(-14, 14, (ordinal % 15) / 14f), 1,
@@ -169,13 +175,13 @@ internal sealed class NativeSoccerLoadClients : IDisposable
             joinDeadline = now + 10;
         }
 
-        public bool Active => ownEntity != 0 && hasPosition && (scaleMode || ball != 0);
+        public bool IsActive(bool patrol) => ownEntity != 0 && hasPosition && (scaleMode || patrol || ball != 0);
 
-        public bool Update(byte[] buffer, Stopwatch time)
+        public bool Update(byte[] buffer, Stopwatch time, bool patrol)
         {
             double now = time.Elapsed.TotalSeconds;
             // A busy receive queue must not block this client's next input.
-            if (Active && !SendDueInput(now)) return false;
+            if (IsActive(patrol) && !SendDueInput(now, patrol)) return false;
             for (int i = 0; i < 96; i++)
             {
                 var result = NativeClient.anu_receive(handle, buffer, (uint)buffer.Length, out uint size);
@@ -191,10 +197,10 @@ internal sealed class NativeSoccerLoadClients : IDisposable
                     return false;
                 readySent = true;
             }
-            return Active || now < joinDeadline;
+            return (ownEntity != 0 && hasPosition) || now < joinDeadline;
         }
 
-        private bool SendDueInput(double now)
+        private bool SendDueInput(double now, bool patrol)
         {
             if (scaleMode)
             {
@@ -207,13 +213,16 @@ internal sealed class NativeSoccerLoadClients : IDisposable
             if (now >= nextMove)
             {
                 AdvanceMoveDeadline(now);
-                Vector2 movement = NativeSoccerLoadDriver.Steer(position, ballPosition, team == 0 ? 52 : -52) * speed;
+                Vector2 direction = patrol
+                    ? PatrolDirection(now)
+                    : NativeSoccerLoadDriver.Steer(position, ballPosition, team == 0 ? 52 : -52);
+                Vector2 movement = direction * speed;
                 using var writer = new NetWriter();
                 writer.Write(movement.x);
                 writer.Write(movement.y);
                 if (!Send(NativeShardBackend.LoadMoveMethod, writer, NetworkDelivery.UnreliableSequenced)) return false;
             }
-            if (now >= nextContact && (position - ballPosition).sqrMagnitude < 25)
+            if (!patrol && now >= nextContact && (position - ballPosition).sqrMagnitude < 25)
             {
                 nextContact = now + .1;
                 using var writer = new NetWriter();
@@ -221,6 +230,13 @@ internal sealed class NativeSoccerLoadClients : IDisposable
                 if (!Send(NativeShardBackend.RemoteBallContactMethod, writer, NetworkDelivery.UnreliableSequenced)) return false;
             }
             return true;
+        }
+
+        private Vector2 PatrolDirection(double now)
+        {
+            float angle = patrolPhase + (float)(now - joinedAt) * speed * .075f;
+            Vector2 waypoint = new(Mathf.Cos(angle) * 32f, Mathf.Sin(angle) * 18f);
+            return Vector2.ClampMagnitude((waypoint - new Vector2(position.x, position.z)) * .5f, 1f);
         }
 
         private void AdvanceMoveDeadline(double now)
