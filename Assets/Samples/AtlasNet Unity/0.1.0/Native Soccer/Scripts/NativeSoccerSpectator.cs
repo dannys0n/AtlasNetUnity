@@ -27,7 +27,10 @@ internal sealed class NativeSoccerSpectator
     private readonly List<NetworkObject> candidates = new();
     private readonly List<ulong> staleRegions = new();
     private readonly List<Vector2> outline = new();
-    private readonly Texture2D qr;
+    private Texture2D qr;
+    private GUIStyle joinUrlLabel;
+    private readonly string directJoinUrl;
+    private readonly string httpsJoinUrl;
     private enum CameraMode { Static, FollowPlayer, FollowBall }
     private static readonly string[] CameraModes = { "Static", "Follow player", "Follow ball" };
     private CameraMode cameraMode;
@@ -38,13 +41,23 @@ internal sealed class NativeSoccerSpectator
     private Vector2 scroll;
     private int nextColor;
 
-    public NativeSoccerSpectator(NetworkManager manager, Camera camera, Material regionMaterial, string joinUrl)
+    public NativeSoccerSpectator(NetworkManager manager, Camera camera, Material regionMaterial, string joinUrl, string publicJoinUrl)
     {
         this.manager = manager;
         this.camera = camera;
         this.regionMaterial = regionMaterial;
         startPosition = camera.transform.position;
         startRotation = camera.transform.rotation;
+        directJoinUrl = joinUrl;
+        if (Uri.TryCreate(publicJoinUrl, UriKind.Absolute, out Uri uri) && uri.Scheme == Uri.UriSchemeHttps)
+            httpsJoinUrl = uri.AbsoluteUri;
+        SetJoinUrl(httpsJoinUrl ?? directJoinUrl);
+    }
+
+    private void SetJoinUrl(string joinUrl)
+    {
+        if (qr) UnityEngine.Object.Destroy(qr);
+        qr = null;
         JoinUrl = joinUrl;
         if (string.IsNullOrEmpty(joinUrl)) return;
 
@@ -61,7 +74,7 @@ internal sealed class NativeSoccerSpectator
         qr.Apply(false, true);
     }
 
-    public string JoinUrl { get; }
+    public string JoinUrl { get; private set; }
     private bool Includes(ulong worker) => !hiddenShards.Contains(worker);
 
     public void Update()
@@ -204,7 +217,8 @@ internal sealed class NativeSoccerSpectator
         float scale = Mathf.Sqrt(Screen.width / 1600f * (Screen.height / 900f));
         float size = Mathf.Min(Mathf.Round(340 * scale), Screen.width - 56);
         float panelWidth = size + 32;
-        GUILayout.BeginArea(new Rect(Screen.width - panelWidth - 12, 12, panelWidth, size + 50), GUI.skin.box);
+        float panelHeight = size + 92;
+        GUILayout.BeginArea(new Rect(Screen.width - panelWidth - 12, 12, panelWidth, panelHeight), GUI.skin.box);
         GUILayout.Label("Join Native Soccer");
         GUILayout.BeginHorizontal();
         GUILayout.FlexibleSpace();
@@ -212,7 +226,14 @@ internal sealed class NativeSoccerSpectator
         GUI.DrawTexture(qrRect, qr, ScaleMode.ScaleToFit);
         GUILayout.FlexibleSpace();
         GUILayout.EndHorizontal();
-        GUILayout.Label(JoinUrl);
+        joinUrlLabel ??= new GUIStyle(GUI.skin.label) { wordWrap = true };
+        GUILayout.Label(JoinUrl, joinUrlLabel);
+        if (!string.IsNullOrEmpty(directJoinUrl) && !string.IsNullOrEmpty(httpsJoinUrl) && directJoinUrl != httpsJoinUrl)
+        {
+            bool showingHttps = JoinUrl == httpsJoinUrl;
+            if (GUILayout.Button(showingHttps ? "Show direct address" : "Show HTTPS address"))
+                SetJoinUrl(showingHttps ? directJoinUrl : httpsJoinUrl);
+        }
         GUILayout.EndArea();
     }
 

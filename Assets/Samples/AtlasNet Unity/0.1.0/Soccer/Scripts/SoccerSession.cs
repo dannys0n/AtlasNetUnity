@@ -29,7 +29,9 @@ namespace AtlasNet.Samples.Soccer
         string lastLink;
         SoccerMatch match;
         bool createdBall;
+        float nextBallSpawnAttempt;
         public Func<bool> TryClaimInitialBall { get; set; }
+        public Action ReleaseInitialBallClaim { get; set; }
         public bool UseExternalConnection { get; set; }
         Camera view;
         NetworkObject local;
@@ -79,18 +81,30 @@ namespace AtlasNet.Samples.Soccer
             connectionPanel.SetActive(!UseExternalConnection && !manager.IsRunning);
             joinPanel.SetActive(manager.IsRunning && manager.IsServer && !string.IsNullOrWhiteSpace(webBaseUrl));
             waveButton.SetActive(manager.IsClient && local && local.IsSpawned);
-            if (!manager.IsRunning) { match = null; local = null; localMotor = null; createdBall = false; return; }
+            if (!manager.IsRunning) { match = null; local = null; localMotor = null; createdBall = false; nextBallSpawnAttempt = 0f; return; }
             if (!match)
                 foreach (var obj in manager.SpawnedObjects)
                     if (obj.TryGetComponent(out SoccerMatch found)) { match = found; break; }
-            if (manager.IsServer && !manager.IsWorker && !createdBall)
+            if (manager.IsServer && !manager.IsWorker && !match && !createdBall &&
+                Time.unscaledTime >= nextBallSpawnAttempt)
             {
-                if (TryClaimInitialBall == null || TryClaimInitialBall())
+                nextBallSpawnAttempt = Time.unscaledTime + 1f;
+                bool claimed = false;
+                try
                 {
-                    float radius = ballPrefab.GetComponent<SoccerBall>().ContactRadius;
-                    match = manager.Spawn(ballPrefab, new Vector3(0, radius, 0), Quaternion.identity).GetComponent<SoccerMatch>();
+                    claimed = TryClaimInitialBall?.Invoke() ?? false;
+                    if (TryClaimInitialBall == null || claimed)
+                    {
+                        float radius = ballPrefab.GetComponent<SoccerBall>().ContactRadius;
+                        match = manager.Spawn(ballPrefab, new Vector3(0, radius, 0), Quaternion.identity).GetComponent<SoccerMatch>();
+                        createdBall = true;
+                    }
                 }
-                createdBall = true;
+                catch (Exception error)
+                {
+                    Debug.LogException(error, this);
+                    if (claimed) ReleaseInitialBallClaim?.Invoke();
+                }
             }
             blueScore.text = match ? match.BlueScore.Value.ToString() : "0";
             orangeScore.text = match ? match.OrangeScore.Value.ToString() : "0";

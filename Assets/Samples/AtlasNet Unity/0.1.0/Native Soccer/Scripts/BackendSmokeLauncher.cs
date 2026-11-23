@@ -10,6 +10,7 @@ public sealed class BackendSmokeLauncher : MonoBehaviour
     [SerializeField] private bool useSharedSoccerCamera;
     [SerializeField] private bool nativeScale;
     [SerializeField] private Material spectatorRegionMaterial;
+    [SerializeField] private string spectatorHttpsJoinUrl;
     [SerializeField] private string spectatorJoinUrl = "http://localhost:8094/";
     [SerializeField] private bool enableLoadClients;
     private NativeSoccerSpectator spectator;
@@ -55,9 +56,18 @@ public sealed class BackendSmokeLauncher : MonoBehaviour
         if (Uri.TryCreate(Application.absoluteURL, UriKind.Absolute, out Uri page))
         {
             address = page.GetLeftPart(UriPartial.Authority);
+            foreach (string option in page.Query.TrimStart('?').Split('&'))
+            {
+                string[] pair = option.Split(new[] { '=' }, 2);
+                if (pair.Length != 2) continue;
+                if (pair[0] == "directJoinUrl") spectatorJoinUrl = Uri.UnescapeDataString(pair[1]);
+                if (pair[0] == "httpsJoinUrl") spectatorHttpsJoinUrl = Uri.UnescapeDataString(pair[1]);
+            }
             if (page.Scheme == "https")
             {
                 address += "/atlasnet";
+                if (string.IsNullOrWhiteSpace(spectatorHttpsJoinUrl))
+                    spectatorHttpsJoinUrl = page.GetLeftPart(UriPartial.Path);
                 port = page.Port.ToString();
             }
         }
@@ -71,6 +81,9 @@ public sealed class BackendSmokeLauncher : MonoBehaviour
         int joinUrl = Array.IndexOf(args, "-atlasnet-join-url");
         if (joinUrl >= 0 && joinUrl + 1 < args.Length)
             spectatorJoinUrl = args[joinUrl + 1];
+        int httpsJoinUrl = Array.IndexOf(args, "-atlasnet-https-join-url");
+        if (httpsJoinUrl >= 0 && httpsJoinUrl + 1 < args.Length)
+            spectatorHttpsJoinUrl = args[httpsJoinUrl + 1];
         traceSoccer = Array.IndexOf(args, "-atlasnet-trace-soccer") >= 0;
         if (Array.IndexOf(args, "-atlasnet-socket") >= 0)
         {
@@ -78,7 +91,10 @@ public sealed class BackendSmokeLauncher : MonoBehaviour
             Application.targetFrameRate = 60;
             goalFixture = Environment.GetEnvironmentVariable("ATLASNET_SOCCER_GOAL_FIXTURE");
             if (TryGetComponent(out AtlasNet.Samples.Soccer.SoccerSession soccer))
+            {
                 soccer.TryClaimInitialBall = ClaimBall;
+                soccer.ReleaseInitialBallClaim = ReleaseBallClaim;
+            }
             StartSession(true);
             return;
         }
@@ -143,6 +159,12 @@ public sealed class BackendSmokeLauncher : MonoBehaviour
 #endif
     }
 
+    private static void ReleaseBallClaim()
+    {
+        string path = Environment.GetEnvironmentVariable("ATLASNET_SOCCER_MATCH_CLAIM");
+        System.IO.File.Delete(path);
+    }
+
     private static bool ClaimBall()
     {
         string path = Environment.GetEnvironmentVariable("ATLASNET_SOCCER_MATCH_CLAIM");
@@ -191,7 +213,7 @@ public sealed class BackendSmokeLauncher : MonoBehaviour
                 if (spectate)
                 {
                     overviewCamera.transform.SetPositionAndRotation(overviewPosition, overviewRotation);
-                    spectator = new NativeSoccerSpectator(manager, overviewCamera, spectatorRegionMaterial, ResolveJoinUrl());
+                    spectator = new NativeSoccerSpectator(manager, overviewCamera, spectatorRegionMaterial, ResolveJoinUrl(), spectatorHttpsJoinUrl);
 #if UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN
                     if (enableLoadClients)
                         loadClients = new NativeSoccerLoadClients(address.Trim(), int.Parse(port), manager.TickRate, nativeScale);
