@@ -66,13 +66,15 @@ public sealed class ScaleMotion : NetworkBehaviour
         if (HasAuthority && moving)
         {
             phase += 3f / NetworkManager.TickRate;
-            transform.position = new Vector3(
-                Mathf.PingPong(phase + origin.x + 15f, 30f) - 15f,
-                origin.y + 0.5f + Mathf.Sin(phase * 2f + origin.x) * 0.5f,
-                Mathf.PingPong(phase * 0.7f + origin.z + 12f, 24f) - 12f);
+            transform.position = Evaluate(origin, phase);
         }
         UpdateServerVisual();
     }
+
+    internal static Vector3 Evaluate(Vector3 origin, float phase) => new Vector3(
+                Mathf.PingPong(phase + origin.x + 15f, 30f) - 15f,
+                origin.y + 0.5f + Mathf.Sin(phase * 2f + origin.x) * 0.5f,
+                Mathf.PingPong(phase * 0.7f + origin.z + 12f, 24f) - 12f);
     protected override void WriteHandoffState(NetWriter writer)
     {
         writer.Write(moving);

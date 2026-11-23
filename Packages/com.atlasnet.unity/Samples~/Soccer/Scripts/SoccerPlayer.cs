@@ -32,11 +32,6 @@ namespace AtlasNet.Samples.Soccer
                 if (session.Value < owner.Value) index++;
             return index;
         }
-        public override void OnNetworkTick()
-        {
-            // The admitted roster is shared with workers. A departure rebalances both sides.
-            if (HasAuthority && !colorByOwnership) TeamIndex.Value = RosterIndex(NetworkManager, OwnerSession) & 1;
-        }
         Rigidbody body;
         PredictedSoccerMotor predictedMotor;
         bool ownerSimulation, wasSimulating;
@@ -62,7 +57,7 @@ namespace AtlasNet.Samples.Soccer
             indicator = GetComponent<SoccerNetworkIndicator>();
             TeamIndex.Changed += TeamChanged;
             ApplyAuthority();
-            if (HasAuthority && !colorByOwnership) TeamIndex.Value = RosterIndex(NetworkManager, OwnerSession) & 1;
+            if (HasAuthority && !colorByOwnership && TeamIndex.Value < 0) TeamIndex.Value = RosterIndex(NetworkManager, OwnerSession) & 1;
             ApplyTeamColor();
         }
         public override void OnNetworkDespawn() => TeamIndex.Changed -= TeamChanged;
@@ -117,8 +112,10 @@ namespace AtlasNet.Samples.Soccer
                 SetMoveRpc(input); lastSent = input; nextInput = Time.unscaledTime + 1f / NetworkManager.TickRate;
             }
         }
-        [Rpc(SendTo.Authority, InvokePermission = RpcInvokePermission.Owner)]
-        public void SetMoveRpc(Vector2 input)
+        [Rpc(SendTo.Authority, InvokePermission = RpcInvokePermission.Owner, Delivery = RpcDelivery.UnreliableSequenced)]
+        public void SetMoveRpc(Vector2 input) => ApplyMoveInput(input);
+
+        internal void ApplyMoveInput(Vector2 input)
         {
             if (predictedMotor || ownerSimulation || !HasAuthority || !float.IsFinite(input.x) || !float.IsFinite(input.y)) return;
             MoveInput = allowMovement ? Vector2.ClampMagnitude(input, 1) : Vector2.zero; inputReceived = Time.unscaledTime;
