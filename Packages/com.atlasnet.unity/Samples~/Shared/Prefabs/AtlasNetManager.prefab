@@ -57,6 +57,7 @@ MonoBehaviour:
   localRegionDebugExtent: 10000
   localBoundaryMargin: 0.75
   backendProvider: {fileID: 0}
+  editorLoopback: 1
   transportProvider: {fileID: 0}
   serverTransport: 0
   clientTransport: 0

@@ -21,7 +21,7 @@ namespace AtlasNetDemo.Tests
             var list = AssetDatabase.LoadAssetAtPath<NetworkPrefabsList>(Root + "AnimatorPlayerNetworkPrefabs.asset");
             NetworkManager Create(string name, ClientTransport transport)
             {
-                var m = new GameObject(name).AddComponent<NetworkManager>();
+                var m = LegacyDemoTestManager.Create(name);
                 Set(m, "playerPrefab", player); Set(m, "networkPrefabsLists", new[] { list });
                 m.ConfigureConnection("127.0.0.1", 17869, transport);
                 return m;

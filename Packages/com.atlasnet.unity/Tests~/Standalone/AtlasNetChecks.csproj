@@ -11,10 +11,8 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="Program.cs" />
-    <Compile Include="HandoffChecks.cs" />
-    <Compile Include="PartitionChecks.cs" />
     <Compile Include="PredictionChecks.cs" />
-    <Compile Include="../../Runtime/**/*.cs" />
+    <Compile Include="../../Runtime/**/*.cs" Exclude="../../Runtime/Native/**/*.cs" />
     <Reference Include="UnityEngine.CoreModule">
       <HintPath>$(UnityEditorPath)/Editor/Data/Managed/UnityEngine/UnityEngine.CoreModule.dll</HintPath>
     </Reference>

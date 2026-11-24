@@ -28,7 +28,7 @@ namespace AtlasNetDemo.Tests
             Assert.AreEqual(AnimatorWriter.Owner,player.GetComponent<NetworkAnimator>().Writer);
             NetworkManager Create(string name,ClientTransport transport=ClientTransport.Udp)
             {
-                var m=new GameObject(name).AddComponent<NetworkManager>();Set(m,"playerPrefab",player);Set(m,"networkPrefabsLists",new[]{registry});Set(m,"automaticLocalHandoffs",true);Set(m,"localBoundaryMargin",.05f);m.ConfigureConnection("127.0.0.1",17949,transport);return m;
+                var m=LegacyDemoTestManager.Create(name);Set(m,"playerPrefab",player);Set(m,"networkPrefabsLists",new[]{registry});Set(m,"automaticLocalHandoffs",true);Set(m,"localBoundaryMargin",.05f);m.ConfigureConnection("127.0.0.1",17949,transport);return m;
             }
             var server=Create("Client soccer server");var worker=Create("Client soccer worker");var udp=Create("Client soccer UDP");var web=Create("Client soccer WebSocket",ClientTransport.WebSocket);
             var managers=new[]{server,worker,udp,web};var scenes=managers.Select(m=>SceneManager.CreateScene(m.name,new CreateSceneParameters(LocalPhysicsMode.Physics3D))).ToArray();

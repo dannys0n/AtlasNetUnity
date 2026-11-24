@@ -20,7 +20,7 @@ namespace AtlasNetDemo.Tests
     {
         static void Set(object o,string n,object v)=>o.GetType().GetField(n,BindingFlags.NonPublic|BindingFlags.Instance).SetValue(o,v);
         static NetworkManager Create(string name,int port,ClientTransport kind=ClientTransport.Udp)
-        {var m=new GameObject(name).AddComponent<NetworkManager>();m.ConfigureConnection("127.0.0.1",port,kind);return m;}
+        {var m=LegacyDemoTestManager.Create(name);m.ConfigureConnection("127.0.0.1",port,kind);return m;}
         static IEnumerator Until(Func<bool> condition,string phase)
         {float end=Time.realtimeSinceStartup+10;while(!condition()&&Time.realtimeSinceStartup<end)yield return null;Assert.IsTrue(condition(),phase);}
         [UnityTest] public IEnumerator DisconnectReasonsArriveBeforeCallbacksForUdpAndWebSocket()

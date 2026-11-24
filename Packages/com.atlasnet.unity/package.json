@@ -1,30 +1,31 @@
 {
   "name": "com.atlasnet.unity",
   "displayName": "AtlasNet Unity",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "unity": "6000.0",
-  "description": "An entity-oriented Unity networking API with a local multi-worker backend for development demos.",
+  "description": "Unity networking for AtlasNet shards with an in-editor loopback mode.",
   "author": {
     "name": "AtlasNet"
   },
   "dependencies": {
     "com.unity.nuget.mono-cecil": "1.11.6",
-    "com.unity.transport": "6.6.0"
+    "com.unity.transport": "6.6.0",
+    "com.unity.nuget.newtonsoft-json": "3.2.2"
   },
   "samples": [
     {
       "displayName": "00 Shared",
-      "description": "Import this first. Shared scripts, prefabs, masked-wave animations, URP materials, and an Editor-only single-instance worker console required by the samples.",
+      "description": "Import this first. Shared scripts, prefabs, masked-wave animations, URP materials required by the samples.",
       "path": "Samples~/Shared"
     },
     {
       "displayName": "01 Client Authority",
-      "description": "Start here after importing 00 Shared. Host or join with owner-written movement and optional worker handoffs.",
+      "description": "Start here after importing 00 Shared. Try owner-written movement with Editor Loopback.",
       "path": "Samples~/ClientAuthority"
     },
     {
       "displayName": "03 ServerAuthority",
-      "description": "Requires 00 Shared. Server-simulated movement, owner input, and development dummy-backend worker handoffs.",
+      "description": "Requires 00 Shared. Server-simulated movement, owner input, and replicated state.",
       "path": "Samples~/ServerAuthority"
     },
     {
@@ -34,7 +35,7 @@
     },
     {
       "displayName": "05 InterestAndScale",
-      "description": "Requires 00 Shared. Adjustable entity count, interest boundaries, and development worker distribution.",
+      "description": "Requires 00 Shared. Adjustable entity count, and movement across the field.",
       "path": "Samples~/InterestAndScale"
     },
     {

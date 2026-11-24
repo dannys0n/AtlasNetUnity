@@ -12,23 +12,14 @@ public sealed class SampleOwnerMarker : MonoBehaviour
     Transform marker;
     static Mesh disc;
 
-#if UNITY_EDITOR
-    AtlasNet.Demos.LocalWorkerDemo console;
-#endif
     void Awake()
     {
         entity = GetComponent<NetworkObject>();
-#if UNITY_EDITOR
-        console = FindAnyObjectByType<AtlasNet.Demos.LocalWorkerDemo>();
-#endif
     }
 
     void LateUpdate()
     {
         var viewer = entity.Manager;
-#if UNITY_EDITOR
-        if (console && console.Primary && console.Primary.IsRunning) viewer = console.Primary;
-#endif
         bool owned = entity.IsSpawned && viewer && viewer.IsClient &&
             entity.OwnerSession.Value != 0 && entity.OwnerSession == viewer.LocalSession;
         if (!owned) { if (marker) marker.gameObject.SetActive(false); return; }

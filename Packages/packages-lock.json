@@ -6,7 +6,8 @@
       "source": "embedded",
       "dependencies": {
         "com.unity.nuget.mono-cecil": "1.11.6",
-        "com.unity.transport": "6.6.0"
+        "com.unity.transport": "6.6.0",
+        "com.unity.nuget.newtonsoft-json": "3.2.2"
       }
     },
     "com.unity.ai.navigation": {

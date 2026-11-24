@@ -64,7 +64,7 @@ namespace AtlasNet.Samples.Soccer
                 manager.ConfigureConnection(address.text.Trim(), manager.Port,
                     Application.platform == RuntimePlatform.WebGLPlayer ? ClientTransport.WebSocket : manager.ClientConnection,
                     ServerTransport.UdpAndWebSocket);
-                if (role == 0) manager.StartHost(); else if (role == 1) manager.StartWorker(); else if (role == 3) manager.StartServer(); else manager.StartClient();
+                if (manager.UsesEditorLoopback || role == 0) manager.StartHost(); else if (role == 1) manager.StartWorker(); else if (role == 3) manager.StartServer(); else manager.StartClient();
                 notice.text = "";
             }
             catch (Exception ex) { notice.text = ex.Message; }
@@ -183,10 +183,13 @@ namespace AtlasNet.Samples.Soccer
             bool predicted = manager.PlayerPrefab && manager.PlayerPrefab.GetComponent<PredictedSoccerMotor>();
             Label(lobby,"Welcome",predicted ? "PREDICTED SOCCER" : "ATLASNET SOCCER",new Vector2(0,145),new Vector2(420,40),28,Color.white);
             address=Field(lobby,"Server","127.0.0.1",new Vector2(0,85),new Vector2(380,42));
-            Button(lobby,"Host",new Vector2(-100,25),new Vector2(180,44),()=>Connect(0));
-            Button(lobby,"Join",new Vector2(100,25),new Vector2(180,44),()=>Connect(2));
-            Button(lobby,"Join as worker",new Vector2(0,-35),new Vector2(380,40),()=>Connect(1));
-            Button(lobby,"Start server only",new Vector2(0,-92),new Vector2(380,42),()=>Connect(3));
+            if (manager.UsesEditorLoopback)
+                Button(lobby,"Start Local Host",new Vector2(0,25),new Vector2(380,44),()=>Connect(0));
+            else
+            {
+                Button(lobby,"Join as Client",new Vector2(0,25),new Vector2(380,44),()=>Connect(2));
+                Button(lobby,"Start Shard Worker",new Vector2(0,-35),new Vector2(380,40),()=>Connect(1));
+            }
             Label(lobby,"Controls","WASD / ARROWS OR TOUCH STICK TO MOVE",new Vector2(0,-150),new Vector2(420,30),14,Color.white);
             var join=Panel(canvas.transform,"Worker join QR",new Vector2(0,1),new Vector2(245,-290),new Vector2(450,530),new Color(.025f,.04f,.07f,.95f)); joinPanel=join.gameObject;
             Label(join,"Join title","JOIN THIS SESSION",new Vector2(0,230),new Vector2(420,38),24,Color.white);

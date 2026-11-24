@@ -297,7 +297,7 @@ namespace AtlasNetDemo.Tests
         private static NetworkManager Create(string name, int port, NetworkObject prefab,
             NetworkPrefabsList list, NetworkTransportProvider link)
         {
-            var manager = new GameObject(name).AddComponent<NetworkManager>();
+            var manager = LegacyDemoTestManager.Create(name);
             var serialized = new SerializedObject(manager);
             serialized.FindProperty("playerPrefab").objectReferenceValue = prefab;
             serialized.FindProperty("transportProvider").objectReferenceValue = link;

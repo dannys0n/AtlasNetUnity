@@ -63,7 +63,7 @@ namespace AtlasNetDemo.Tests
                 int port = TestPorts.FindAvailablePort();
                 NetworkManager Create(string name)
                 {
-                    var m = new GameObject(name).AddComponent<NetworkManager>();
+                    var m = LegacyDemoTestManager.Create(name);
                     Set(m, "networkPrefabsLists", new[] { list }); Set(m, "automaticLocalHandoffs", true);
                     Set(m, "localBoundaryMargin", 0.05f);
                     m.ConfigureConnection("127.0.0.1", port); return m;

@@ -6,5 +6,5 @@ public sealed class NativeShardBackendProvider : WorldBackendProvider
 {
     [SerializeField] private NetworkObject observerPrefab;
 
-    public override IWorldBackend CreateBackend(NetworkManager runtime) => new NativeShardBackend(runtime, observerPrefab);
+    public override IWorldBackend CreateBackend(NetworkManager runtime) => new NativeSoccerBackend(runtime, observerPrefab);
 }

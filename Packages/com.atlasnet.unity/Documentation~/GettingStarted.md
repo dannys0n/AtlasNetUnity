@@ -1,50 +1,18 @@
-# AtlasNet Unity: local backend demos
+# Get started with AtlasNet Unity
 
-This package targets Unity **6000.6.2f1** for the current example project. The project uses **Multiplayer Play Mode 3.0.0**. The networking package itself does not depend on NGO, FishNet, PurrNet, Netick, Unity online services, or a game input package.
+Install `com.atlasnet.unity` from the package Git URL in the repository README. Import **00 Shared** before importing the gameplay samples.
 
-## Install and import
+## Run locally in Play Mode
 
-The source project treats `Packages/com.atlasnet.unity` as an embedded UPM package. In a separate Unity project, use Package Manager > **Add package from disk** and select this package's `package.json`. The package has normal `Runtime/`, `Samples~/`, and `Documentation~/` directories so the same folder can later be published as a Git package.
+Open **01 Client Authority** and choose **Start Local Host**. The sample NetworkManager prefab enables **Editor Loopback**. It runs one in-process host for gameplay, spawning, and RPC iteration without WSL, Docker, or a native process. Disable it before building a player. Use AtlasNet to test remote clients, spatial interest, and handoffs.
 
-In Package Manager, select **AtlasNet Unity**, import **00 Shared** first, then import the sample you want to try. Start with **01 Client Authority**. The shared import supplies the scripts, prefabs, primitive animation clips, and URP materials; each scene import references those assets. The sample's scripts, prefabs, and scenes are editable project assets after import. The runtime package stays in `Packages`, not in the project's `Assets` directory. It uses Unity's legacy `Input` API to keep the controller readable; set **Active Input Handling** to **Both** or **Input Manager** in Player Settings. The package API itself does not require that input system.
+## Connect to an AtlasNet world
 
-## Logging
+1. Disable **Editor Loopback** and leave **Backend Override** empty to use the native adapter.
+2. Register the same network prefabs on the clients and the shard player builds. A Unity shard launched by AtlasNet starts as a server using the IPC arguments supplied by the shard module.
+3. Set the manager's **Local Address** and **Port** to the AtlasNet client endpoint, then call `StartClient()`. The bundled Windows client uses UDP. Browser builds use a WebSocket endpoint. Configure listeners in the AtlasNet deployment.
 
-Set **NetworkManager > Network Settings > Log Level** to **Full**, **Warnings**, **Errors**, or **None**. The shared prefab defaults to Warnings. Warnings includes errors; Errors includes explicit AtlasNet exception logs. Filtering is per manager and also covers the sample launcher, RPC feedback, and dummy-backend handoff messages. Suppressed verbose messages are checked before formatting. This does not mute Unity engine/package diagnostics or suppress thrown exceptions. Change the level in the Inspector during Play Mode, or set NetworkManager.LogLevel in code.
-
-## Client boundary visualization
-
-After joining as a remote client, **Show boundary walls (client debug)** starts enabled and can be switched off in the sample panel. Translucent blue vertical planes show the owned player's current backend region and update when its authority changes. This is a local-only diagnostic, enabled by default. Its shared manager prefab component exposes the viewing radius (80 units), wall height (12 units), and material. Walls have no colliders or shadows; disabling the toggle hides them and unsubscribes from region updates. No boundary subscription is active while it is off.
-
-## Sample scenes
-
-- **01 Client Authority (Quick Start)** uses owner-written transforms with optional worker handoff. Select Start World (Server) in one instance and Join as Client in another. WASD moves and F tries the RPC counter.
-- **03 ServerAuthority**: client input and server-simulated movement with development worker handoff.
-- **04 Physics**: authoritative rigidbodies and impulses.
-- **05 InterestAndScale**: interest boundaries and worker distribution, with a live 0Ã¢â‚¬â€œ200 entity-count slider on the coordinator.
-- **06 AnimatorSync**: stationary owner-colored avatars with a networked Wave button. Late joiners receive the current persistent Animator state. Its local camera follows the owning player horizontally at a fixed height; the camera is not networked. No imported character art is required.
-
-- **09 Client Prediction**: import after **00 Shared** in a URP project. Open **09_ClientPrediction** for the built-in controller or **09_CustomPrediction** for a custom dash motor. The prediction API is provisional.
-
-- **Soccer**: server-authoritative Rigidbody players, a contact-kicked ball, balanced teams, scoring, automatic waves and team-colored goal confetti. The HUD includes a local clock, a circular touch stick and a plain HTTP join QR/address. Serve the browser build separately. Import TMP Essential Resources (Window > TextMeshPro > Import TMP Essential Resources) and use URP with Unity UI available. In Tags and Layers, create a `SoccerPlayer` layer, assign it to both imported Soccer player prefabs and their children, and disable SoccerPlayer-versus-SoccerPlayer in Project Settings > Physics > Layer Collision Matrix. Keep Default-layer collisions enabled for the ball and arena. The prefab uses the built-in `Player` tag. Layer numbers are project-specific: reassign the prefab if layer 8 is already used. Open `Server Authoritative Soccer`, then use Host/Start server only, Join as worker, and Join as client as needed. Team assignment uses the admitted roster when a player first spawns and persists across authority handoffs. Interest radius is 53.33 m; its debug disc is always visible on servers, with Show On Clients off for Soccer. The ball and its score state follow normal interest culling. Open Client Predicted Soccer for the CharacterController variant with local movement prediction.
-
-QuickStart and AnimatorSync do not need a worker. The other scenes demonstrate the local dummy backend, not a connection to the native AtlasNet backend. Samples use URP materials. Transport selection is shared: the default host accepts UDP and WebSocket simultaneously; browsers use WebSocket.
-
-## Run authority, physics, and scale samples with Multiplayer Play Mode
-
-1. Open `01_ClientAuthority`, `03_ServerAuthority`, or `04_Physics` from the imported sample in every instance. Install **Multiplayer Play Mode 3.0.0** and start the main Editor Player plus at least two additional editor instances. This project has that package in its manifest. For the larger multi-worker `05_InterestAndScale` flow, see `LocalWorkers.md`.
-2. In the main Game view, click **Start Host**. In a second Game view, click **Join as Worker**. In each further Game view, click **Join as Client**. Alternatively, use **Start Server Only** in one view, a worker in another, and clients in the remaining views. All instances use `127.0.0.1:7777`; no gameplay script edits are needed.
-   The demo keeps every instance running when its window loses focus, so the host can accept joins while you interact with a client window. Keyboard and mouse input still go only to the focused Game view.
-3. In an owning player view, use WASD, mouse look, Space to jump, and F to request the RPC example. Esc releases the cursor. On the server/host, P spawns an extra visible object and O despawns it. The extra object has no controlling session.
-4. A newly joined client should receive existing visible entities and the latest persistent value. It receives every entity authored by its player's current server, plus nearby entities authored by other servers when its player has `NetworkInterestSource`. `04_Physics` now uses that same local multi-worker interest and handoff path. Disconnecting a client despawns its owned player canonically. `HideFrom` only removes a particular client's observer copy; it is not canonical deletion.
-
-For a standalone smoke test, the sample launcher also accepts `-atlas-host`, `-atlas-server`, `-atlas-worker`, or `-atlas-client`. Add `-atlas-scene=01_ClientAuthority`, `-atlas-scene=03_ServerAuthority`, `-atlas-scene=05_InterestAndScale`, or `-atlas-scene=04_Physics` to load that built scene before starting the role. `-atlas-test-rpc` makes the local player request the sample action once, and `-atlas-metrics` writes a server metric line every five seconds. These switches belong only to the sample launcher, not to the framework API.
-
-The `ClientCrossServerPlayer` prefab has owner-written position and rotation. In `ServerCrossServerPlayer`, only yaw/pitch are owner-written; the client sends movement input to the current simulation authority, which moves its CharacterController on the network tick. Both scenes enable automatic local handoff and player-radius cross-worker interest. There is deliberately **no movement prediction** in this demo, so server-authoritative movement has visible input delay. Aim remains immediate for the local owner. No artificial latency is configured.
-
-The `05_InterestAndScale` scene spawns 50 moving cubes and no stationary networked cubes. A joined client controls a green top-down player marker with WASD; a translucent green disk highlights its interest entry radius. Set the radius and exit padding on its `NetworkInterestSource` component in the `ScaleInterestPlayer` prefab. The disk deliberately excludes the exit padding. The coordinator sends the client every entity on its player's current authoring server. For entities authored by other servers, entering the radius spawns an observer copy and leaving the radius plus exit padding hides it. Network updates and RPCs follow the same observer set. Each server requests a translucent debug overlay for its simulation region; authoritative cubes are blue and interested ghosts are amber. Worker ghost delivery follows the player radius, not a fixed region-border band, while the first server retains the full canonical directory. Its metrics report server tick time, managed allocations during each tick when the runtime counter is available, aggregate bytes sent during the last tick, entity count, and remote observer copies. These are local measurements, not a capacity promise.
-
-The `04_Physics` scene uses a separate server-authoritative `PhysicsPlayer` with a dynamic Rigidbody and CapsuleCollider. The owner sends movement intent on network ticks; its simulation worker sets horizontal velocity and jumps in `FixedUpdate`. Mouse aim rotates the owner's camera/aim pivot immediately without rotating the physics body. The scene spawns three registered Rigidbody cubes in different parts of the world. Only each body's current simulation worker runs dynamic physics; other copies are kinematic. Press **R in a server/worker Game view** to kick only cubes authoritative in that window. Both players and cubes can hand off at region boundaries, carrying linear and angular velocity. The top-down server camera, region overlay, and player interest disk help inspect this. Remote ghosts remain kinematic. Cross a Voronoi boundary to exercise ordinary spatial handoffs. Independent workers do not share a collision solver. Movement prediction is not included. Use Multiplayer Play Mode for interactive movement checks; automated cross-worker handoff checks are in `CrossWorkerPhysicsTests`.
+The AtlasNet adapter currently supports the Unity shard connection, entity lifecycle, transform and Animator replication, variables, and routed entity RPCs. Named messages, client-requested spawning, and manual per-client visibility overrides remain unavailable with this adapter.
 
 ## What gameplay code looks like
 
@@ -86,26 +54,3 @@ For a server-simulated 3D physics object, place `NetworkObject`, `Rigidbody`, `N
 The IL post-processor currently supports instance `void` RPC methods on non-generic `NetworkBehaviour` types, with no `try`/`catch` in the RPC body. Unsupported signatures produce a compile error. The receive dispatcher still uses reflection and has not yet been validated in an IL2CPP build; generated dispatch or explicit preservation rules may be needed before claiming AOT/player-build support. RPC weaving does not add prediction; local handoff and worker routing are separate runtime paths.
 
 `UnityEngine` also defines an `EntityId` in this editor version, so qualify this package's type as `AtlasNet.EntityId` in code that imports both namespaces.
-
-## Boundaries of this first pass
-
-The active authority examples now use the local multi-worker backend to exercise worker ghosts, bounded worker-interest delivery, routing, and region handoffs. See `LocalWorkers.md` for the worker workflow. The older single-server authority scenes and prefabs were retired. The local backend does not provide reconnect/resume, production transport tuning, encryption, general physics rollback, lag compensation, distributed physics, or the C++ AtlasNet integration.
-
-The `04_Physics` player and cubes use server-simulated 3D Rigidbodies; the other player examples still use `CharacterController`. Rigidbody handoff and pushing are wired but await Play Mode validation. Distributed collision and predicted physics remain outside the demonstrated scope.
-
-The familiar core components are `NetworkManager`, `NetworkObject`, `NetworkBehaviour`, `NetworkTransform`, a first `NetworkAnimator`, `NetworkRigidbody`, and `NetworkPrefabsList`. AtlasNet does not yet provide NGO's scene synchronization or prefab overrides. Canonical dynamic spawning currently uses `NetworkManager.Spawn(prefab, position, rotation, owner)` rather than `Instantiate(prefab)` followed by `NetworkObject.Spawn()`. `NetworkTransform` has separate position and rotation writers because input ownership is not the same as simulation authority; this difference is intentional.
-
-Before claiming the demo complete, exercise a non-host client and a worker in both cross-server authority scenes, the three RPC destinations, late join, spawn/despawn, the scale scene, and a package install in a separate clean project. EditMode asset checks alone cannot verify Play Mode behavior.
-
-
-Worker handoffs move the server's logical entity authority without taking the Rigidbody away from the owning client or resetting its velocity. Physics between different simulation authorities remains approximate because the other copies are kinematic.
-
-## Connection diagnostics and send limits
-
-`NetworkManager.DisconnectClient(session, reason)` provides a short readable reason (maximum 512 UTF-8 bytes). The framework queues the notice and flushes outgoing data before the deferred transport close, following NGO's disconnect ordering. `DisconnectReason` is available in the client's disconnect callback and remains available until the next session starts. Unexpected transport closure supplies a transport-specific reason when available. `OnTransportFailure` reports a fatal listener/transport failure; `LastTransportError` describes it, and an active session stops. An ordinary remote disconnection is not a fatal transport failure.
-
-Named messages support at most `CustomMessagingManager.MaxPayloadSize` (60 KiB). Built-in UTP reliable sends use a bounded 4 MiB queue per peer; accepted reliable messages are retained until sent, and an overflowing new message is rejected. `TrySendNamedMessage(name, recipient, payload, out error, delivery)` returns false with `NetworkSendError.PayloadTooLarge`, `QueueFull`, or `NotConnected`. Retrying later or splitting application data is the caller's choice. Normal argument/routing errors still throw. A successful call means accepted locally, not acknowledged by the remote application. Strict sends retain their exception behavior; queue rejection uses `NetworkSendException`.
-
-Initial readable NetworkVariable values are applied before `OnNetworkSpawn`, including late joins and visibility re-entry. Apply the initial door/equipment state in that callback, then subscribe to change notifications. Transient RPCs and Animator triggers are not an event history. The dummy coordinator retains the latest reliable field deltas from remote authorities and combines them with its cached full snapshot when creating a new observer. This preserves the same initial-state contract without keeping every entity's GameObject on the coordinator.
-
-The implementation references NGO 2.13.3's `NetworkObject.SynchronizeNetworkBehaviours`, `NetworkBehaviour.WriteNetworkVariableData`, `NetworkRigidbodyBase.UpdateOwnershipAuthority`, and connection-manager/UnityTransport disconnect handling. AtlasNet uses its own wire format and dummy multi-worker directory. Protocol version 18 requires rebuilding older players. The current NetworkAnimator restores parameters, layer state hashes, and normalized times; it does not claim exact NGO transition-blend parity.

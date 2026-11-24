@@ -5,7 +5,7 @@ using System.IO;
 using System.Runtime.InteropServices;
 using UnityEngine;
 
-internal sealed partial class NativeShardBackend
+public partial class NativeShardBackend
 {
     private sealed partial class ClientConnection
     {

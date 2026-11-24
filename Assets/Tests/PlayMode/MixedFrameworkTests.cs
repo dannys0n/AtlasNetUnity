@@ -26,7 +26,7 @@ namespace AtlasNetDemo.Tests
             var list=ScriptableObject.CreateInstance<NetworkPrefabsList>();Set(list,"prefabs",new System.Collections.Generic.List<NetworkObject>{prefab});
             NetworkManager Create(string name,ClientTransport transport)
             {
-                var manager=new GameObject(name).AddComponent<NetworkManager>();Set(manager,"playerPrefab",prefab);Set(manager,"networkPrefabsLists",new[]{list});
+                var manager=LegacyDemoTestManager.Create(name);Set(manager,"playerPrefab",prefab);Set(manager,"networkPrefabsLists",new[]{list});
                 manager.ConfigureConnection("127.0.0.1",17854,transport);return manager;
             }
             var server=Create("Mixed server",ClientTransport.Udp);var udp=Create("UDP player",ClientTransport.Udp);var web=Create("Browser transport player",ClientTransport.WebSocket);

@@ -807,7 +807,7 @@ MonoBehaviour:
   logLevel: 1
   port: 7777
   localAddress: 127.0.0.1
-  automaticLocalHandoffs: 1
+  editorLoopback: 1
   localPartitionCenter: {fileID: 1551487670}
   localRegionDebugExtent: 10000
   localBoundaryMargin: 0.75

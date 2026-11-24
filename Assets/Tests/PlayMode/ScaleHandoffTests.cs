@@ -26,7 +26,7 @@ namespace AtlasNetDemo.Tests
             Assert.That(channel.SyncScale, Is.False);
             NetworkManager Create(string name)
             {
-                var manager = new GameObject(name).AddComponent<NetworkManager>();
+                var manager = LegacyDemoTestManager.Create(name);
                 Set(manager, "networkPrefabsLists", new[] { list });
                 manager.ConfigureConnection("127.0.0.1", 17892);
                 return manager;
@@ -73,7 +73,7 @@ namespace AtlasNetDemo.Tests
             var list = AssetDatabase.LoadAssetAtPath<NetworkPrefabsList>(Shared + "ScaleNetworkPrefabs.asset");
             NetworkManager Create(string name)
             {
-                var m = new GameObject(name).AddComponent<NetworkManager>();
+                var m = LegacyDemoTestManager.Create(name);
                 Set(m, "networkPrefabsLists", new[] { list }); Set(m, "automaticLocalHandoffs", true);
                 Set(m, "localRegionDebugExtent", 30f);
                 m.ConfigureConnection("127.0.0.1", 17871); return m;
@@ -135,7 +135,7 @@ namespace AtlasNetDemo.Tests
             var center = new GameObject("Configured partition origin"); center.transform.position = new Vector3(100, 0, 50);
             NetworkManager Create(string name)
             {
-                var m = new GameObject(name).AddComponent<NetworkManager>();
+                var m = LegacyDemoTestManager.Create(name);
                 Set(m, "networkPrefabsLists", new[] { list }); Set(m, "automaticLocalHandoffs", true);
                 Set(m, "localRegionDebugExtent", 1f); m.ConfigureConnection("127.0.0.1", 17873); return m;
             }
@@ -167,7 +167,7 @@ namespace AtlasNetDemo.Tests
             var list = AssetDatabase.LoadAssetAtPath<NetworkPrefabsList>(Shared + "ScaleNetworkPrefabs.asset");
             NetworkManager Create(string name)
             {
-                var m = new GameObject(name).AddComponent<NetworkManager>();
+                var m = LegacyDemoTestManager.Create(name);
                 Set(m, "networkPrefabsLists", new[] { list }); Set(m, "automaticLocalHandoffs", true);
                 m.ConfigureConnection("127.0.0.1", 17875); return m;
             }
@@ -219,7 +219,7 @@ namespace AtlasNetDemo.Tests
             var list = AssetDatabase.LoadAssetAtPath<NetworkPrefabsList>(Root + "Prefabs/ScaleNetworkPrefabs.asset");
             NetworkManager Create(string name)
             {
-                var m = new GameObject(name).AddComponent<NetworkManager>();
+                var m = LegacyDemoTestManager.Create(name);
                 Set(m, "networkPrefabsLists", new[] { list }); Set(m, "playerPrefab", player); Set(m, "automaticLocalHandoffs", true);
                 m.ConfigureConnection("127.0.0.1", 17877); return m;
             }

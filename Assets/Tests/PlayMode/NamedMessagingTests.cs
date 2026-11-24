@@ -13,7 +13,7 @@ namespace AtlasNetDemo.Tests
     {
         static NetworkManager Create(string name, int port, ClientTransport transport = ClientTransport.Udp)
         {
-            var manager = new GameObject(name).AddComponent<NetworkManager>();
+            var manager = LegacyDemoTestManager.Create(name);
             manager.ConfigureConnection("127.0.0.1", port, transport);
             return manager;
         }

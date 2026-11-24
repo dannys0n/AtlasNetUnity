@@ -157,23 +157,18 @@ public sealed class DemoLauncher : MonoBehaviour
         GUILayout.Label(animationDemo ? "Stationary avatars | Space or button: wave" : SceneManager.GetActiveScene().name=="05_InterestAndScale" ? "Presenter: adjust entity count | Clients: observe" : "WASD: move | F: RPC counter | P/O: spawn/despawn extra");
         if (!manager.IsRunning)
         {
+            if (manager.UsesEditorLoopback)
+            {
+                if (GUILayout.Button("Start Local Host")) StartSafely(manager.StartHost);
+                GUILayout.EndArea();
+                return;
+            }
             GUILayout.Label("Server address / port");
             joinAddress=GUILayout.TextField(joinAddress);joinPort=GUILayout.TextField(joinPort);
             if(Application.platform==RuntimePlatform.WebGLPlayer){joinTransport=1;GUILayout.Label("Browser: WebSocket / TCP");}
             else joinTransport=GUILayout.Toolbar(joinTransport,new[]{"UDP","WebSocket","TCP"});
-            GUILayout.Label("Default server accepts UDP + WebSocket together.");
-            if (advancedDiagnostics) GUILayout.Label("Worker handoffs use the development dummy backend.");
-            if (SceneManager.GetActiveScene().name == "05_InterestAndScale")
-            {
-                if (GUILayout.Button("Start World (Server)")) StartSafely(manager.StartServer);
-            }
-            else
-            {
-                if (GUILayout.Button("Start Host")) StartSafely(manager.StartHost);
-                if (GUILayout.Button("Start Server Only")) StartSafely(manager.StartServer);
-            }
             if (GUILayout.Button("Join as Client")) StartSafely(manager.StartClient);
-            if (advancedDiagnostics && GUILayout.Button("Join as Worker")) StartSafely(manager.StartWorker);
+            if (advancedDiagnostics && GUILayout.Button("Start Shard Worker")) StartSafely(manager.StartWorker);
         }
         else
         {
@@ -182,11 +177,6 @@ public sealed class DemoLauncher : MonoBehaviour
             if (advancedDiagnostics)
             {
                 GUILayout.Label($"Worker: {manager.LocalWorkerId}   Workers: {manager.WorkerCount}");
-                if (manager.AutomaticLocalHandoffs)
-                {
-                    GUILayout.Label($"Region handoffs: {(manager.AutomaticLocalHandoffs ? "automatic" : "off")}");
-                    GUILayout.Label($"Debug region vertices: {manager.LocalRegion.Count}");
-                }
                 if (localPlayer != null && localPlayer.IsSpawned)
                 {
                     GUILayout.Label($"Player: {localPlayer.EntityId}   Prefab: {localPlayer.PrefabId}");
@@ -199,8 +189,6 @@ public sealed class DemoLauncher : MonoBehaviour
                 }
                 GUILayout.Label($"Tracked IDs: {manager.TrackedEntityCount}   Local replicas: {manager.SpawnedCount}   Observers: {manager.ObserverCopies}");
                 GUILayout.Label($"Simulating here: {manager.LocalAuthorityCount}   Ghosts: {manager.GhostCount}");
-                if (manager.AutomaticLocalHandoffs && manager.IsServer)
-                    GUILayout.Label($"Interested ghost visuals: {InterestedGhosts()}");
                 foreach (var obj in manager.SpawnedObjects)
                     if (obj != null && obj.AuthorityEpoch > 0)
                     {
@@ -254,12 +242,6 @@ public sealed class DemoLauncher : MonoBehaviour
     private string AllocationText() => manager.AllocatedBytesLastTick < 0
         ? "unavailable" : $"{manager.AllocatedBytesLastTick} B";
 
-    private int InterestedGhosts()
-    {
-        int count = 0;
-        foreach (var obj in manager.SpawnedObjects)
-            if (obj != null && !obj.HasAuthority && manager.ShouldRenderWorkerCopyForDebug(obj)) count++;
-        return count;
-    }
+
 
 }

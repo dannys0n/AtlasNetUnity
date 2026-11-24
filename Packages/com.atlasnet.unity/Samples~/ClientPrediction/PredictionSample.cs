@@ -79,16 +79,19 @@ namespace AtlasNet.Samples
             }
             else
             {
-                GUILayout.BeginHorizontal();
-                address = GUILayout.TextField(address, GUILayout.Width(165));
-                port = GUILayout.TextField(port, GUILayout.Width(65));
-                GUILayout.EndHorizontal();
-                GUILayout.BeginHorizontal();
-                if (GUILayout.Button("Host")) StartSession(manager.StartHost);
-                if (GUILayout.Button("Server")) StartSession(manager.StartServer);
-                if (GUILayout.Button("Join")) StartSession(manager.StartClient);
-                if (GUILayout.Button("Worker")) StartSession(manager.StartWorker);
-                GUILayout.EndHorizontal();
+                if (manager.UsesEditorLoopback)
+                {
+                    if (GUILayout.Button("Start Local Host")) StartSession(manager.StartHost);
+                }
+                else
+                {
+                    GUILayout.BeginHorizontal();
+                    address = GUILayout.TextField(address, GUILayout.Width(165));
+                    port = GUILayout.TextField(port, GUILayout.Width(65));
+                    GUILayout.EndHorizontal();
+                    if (GUILayout.Button("Join as Client")) StartSession(manager.StartClient);
+                    if (GUILayout.Button("Start Shard Worker")) StartSession(manager.StartWorker);
+                }
             }
             if (!string.IsNullOrEmpty(error)) GUILayout.Label(error);
             else if (!string.IsNullOrEmpty(manager.DisconnectReason)) GUILayout.Label(manager.DisconnectReason);

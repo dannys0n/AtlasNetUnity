@@ -42,7 +42,7 @@ namespace AtlasNetDemo.Tests
             Set(list, "prefabs", new List<NetworkObject> { prefab });
             NetworkManager Create(string name,ClientTransport kind=ClientTransport.Udp)
             {
-                var m=new GameObject(name).AddComponent<NetworkManager>();Set(m,"playerPrefab",prefab);Set(m,"networkPrefabsLists",new[]{list});
+                var m=LegacyDemoTestManager.Create(name);Set(m,"playerPrefab",prefab);Set(m,"networkPrefabsLists",new[]{list});
                 Set(m,"automaticLocalHandoffs",true);Set(m,"localBoundaryMargin",0.05f);
                 m.ConfigureConnection("127.0.0.1",17883,kind);return m;
             }

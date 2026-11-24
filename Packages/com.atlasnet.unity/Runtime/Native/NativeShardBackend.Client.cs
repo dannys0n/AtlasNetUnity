@@ -7,23 +7,23 @@ using UnityEngine;
 using NativeClient = AtlasNet.Native.AtlasNetNativeClient;
 using EntityId = AtlasNet.EntityId;
 
-internal sealed partial class NativeShardBackend
+public partial class NativeShardBackend
 {
     private const uint PacketMagic = 0x41544C43;
     private const int HeaderSize = 21;
-    internal const uint SessionSignal = 0x415506;
+    public const uint SessionSignal = 0x415506;
     private const uint PingReplySignal = 0x415509;
-    internal const byte AdapterBehaviour = byte.MaxValue;
+    public const byte AdapterBehaviour = byte.MaxValue;
     private const uint PingProbeMethod = 1;
     private const byte SessionSupportsPing = 1;
     private const byte SessionSupportsRemoteContact = 2;
     private const byte SessionSupportsScaleInterest = 4;
     private bool scaleInterestSupported;
     private readonly System.Collections.Generic.HashSet<EntityId> visibleScaleEntities = new();
-    internal const uint RemoteBallContactMethod = 2;
-    internal const uint LoadMoveMethod = 3;
-    internal const uint ScalePoseMethod = 4;
-    internal const uint ReadyMethod = 5;
+    public const uint RemoteBallContactMethod = 2;
+    public const uint LoadMoveMethod = 3;
+    public const uint ScalePoseMethod = 4;
+    public const uint ReadyMethod = 5;
     private bool remoteContactSupported;
     private double nextBallContactProbe;
     private const double PingInterval = 1;
@@ -75,7 +75,7 @@ internal sealed partial class NativeShardBackend
     }
 
     private ClientConnection client;
-    internal static readonly System.Collections.Generic.Dictionary<ulong, Newtonsoft.Json.Linq.JObject> DebugRegions = new();
+    public static readonly System.Collections.Generic.Dictionary<ulong, Newtonsoft.Json.Linq.JObject> DebugRegions = new();
     private readonly System.Collections.Generic.Dictionary<ulong, Newtonsoft.Json.Linq.JObject> pendingRegions = new();
     private readonly System.Collections.Generic.Dictionary<ulong, double> regionLastSeen = new();
     private readonly System.Collections.Generic.List<ulong> expiredRegions = new();
@@ -159,7 +159,11 @@ internal sealed partial class NativeShardBackend
         double now = Time.realtimeSinceStartupAsDouble;
         UpdateDebugRegions(now);
         SamplePing(now);
-        ProbeRemoteBallContact(now);
+        if (remoteContactSupported && now >= nextBallContactProbe)
+        {
+            nextBallContactProbe = now + .08;
+            ProbeSampleContact();
+        }
 
         float interval = 1f / manager.TickRate;
         accumulated = Mathf.Min(accumulated + deltaTime, interval * 4);
@@ -169,30 +173,6 @@ internal sealed partial class NativeShardBackend
             Tick++;
             manager.TickBackendReplicas();
         }
-    }
-
-    private void ProbeRemoteBallContact(double now)
-    {
-        if (!remoteContactSupported || now < nextBallContactProbe) return;
-        nextBallContactProbe = now + .08;
-        AtlasNet.Samples.Soccer.SoccerBall ball = null;
-        NetworkObject player = null;
-        foreach (var obj in manager.SpawnedObjects)
-        {
-            if (obj.IsOwner && obj.TryGetComponent<AtlasNet.Samples.Soccer.SoccerPlayer>(out _))
-                player = obj;
-            if (obj.TryGetComponent(out AtlasNet.Samples.Soccer.SoccerBall candidate)) ball = candidate;
-        }
-        if (!player || !ball || player.SimulationWorker == ball.NetworkObject.SimulationWorker ||
-            !player.TryGetComponent(out CapsuleCollider capsule)) return;
-
-        if (!AtlasNet.Samples.Soccer.SoccerBall.TryGetContactCapsule(capsule,
-                out Vector3 center, out float halfSegment, out float radius)) return;
-        // The local player's collider can be disabled for physics on a native
-        // replica. Query its geometry directly and retry while contact is plausible.
-        if (!ball.IsWithinContactReach(center, halfSegment, radius, .65f) ||
-            client.Outgoing.Count >= 64) return;
-        SendClientCommand(AdapterBehaviour, RemoteBallContactMethod, writer => writer.Write(ball.NetworkObject.EntityId.Value));
     }
 
     private void SamplePing(double now)
@@ -232,7 +212,9 @@ internal sealed partial class NativeShardBackend
 
     private ulong nextCommand;
 
-    private void SendClientCommand(byte behaviour, uint method, Action<NetWriter> write,
+    protected bool CanSendSampleCommand => client.Outgoing.Count < 64;
+
+    protected void SendClientCommand(byte behaviour, uint method, Action<NetWriter> write,
         NetworkDelivery delivery = NetworkDelivery.ReliableOrdered)
     {
         using var content = new NetWriter();
@@ -252,7 +234,7 @@ internal sealed partial class NativeShardBackend
         client.Outgoing.Enqueue(packet);
     }
 
-    internal static byte[] EncodeGameplayCommand(byte behaviour, uint method, byte[] contents,
+    public static byte[] EncodeGameplayCommand(byte behaviour, uint method, byte[] contents,
         ulong sequence, NetworkDelivery delivery)
     {
         bool reliable = delivery == NetworkDelivery.ReliableOrdered;
@@ -268,7 +250,7 @@ internal sealed partial class NativeShardBackend
         return EncodeClientPacket(12, 1, payload.ToArray());
     }
 
-    internal static byte[] EncodeClientPacket(ushort instruction, uint channel, byte[] body)
+    public static byte[] EncodeClientPacket(ushort instruction, uint channel, byte[] body)
     {
         using var writer = new NetWriter();
         writer.Write(PacketMagic);
@@ -433,7 +415,7 @@ internal sealed partial class NativeShardBackend
         {
             // Scale poses carry their authoritative worker and epoch. An
             // existing cube can resume movement before the full snapshot arrives.
-            if (signal != TransformSignal || !replica.TryGetComponent<ScaleMotion>(out _)) return;
+            if (signal != TransformSignal || !UsesSpatialPoseBatch(replica)) return;
             streamInstances.Remove((entity, TransformSignal));
             lastTransformAt.Remove(entity);
             manager.SetBackendReplicaAuthority(entity, worker, epoch);
@@ -500,7 +482,7 @@ internal sealed partial class NativeShardBackend
             }
             else
             {
-                if (!replica.TryGetComponent<ScaleMotion>(out _)) continue;
+                if (!UsesSpatialPoseBatch(replica)) continue;
                 streamInstances.Remove((entity, TransformSignal));
                 manager.SetBackendReplicaAuthority(entity, worker, epoch);
             }

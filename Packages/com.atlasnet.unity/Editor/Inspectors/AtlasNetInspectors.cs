@@ -24,30 +24,26 @@ namespace AtlasNet.Editor
                 EditorGUILayout.PropertyField(serializedObject.FindProperty("tickRate"), new GUIContent("Tick Rate"));
                 EditorGUILayout.PropertyField(serializedObject.FindProperty("localAddress"), new GUIContent("Local Address"));
                 EditorGUILayout.PropertyField(serializedObject.FindProperty("port"), new GUIContent("Port"));
-                EditorGUILayout.PropertyField(serializedObject.FindProperty("serverTransport"),new GUIContent("Server Transport"));
-                EditorGUILayout.PropertyField(serializedObject.FindProperty("clientTransport"),new GUIContent("Native Client Transport","Connection type used by non-browser clients. Web builds always use WebSocket. This does not change the server listeners."));
-                EditorGUILayout.PropertyField(serializedObject.FindProperty("listenAddress"),new GUIContent("Listen Address"));
-                EditorGUILayout.PropertyField(serializedObject.FindProperty("transportProvider"),new GUIContent("Transport Override","Optional custom adapter; leave empty for built-in transport selection."));
-                EditorGUILayout.PropertyField(serializedObject.FindProperty("backendProvider"),new GUIContent("Backend Override","Leave empty for the dummy backend. This is an adapter extension, not a gameplay prefab requirement."));
-                showTransportTuning = EditorGUILayout.Foldout(showTransportTuning, "Advanced Transport", true);
-                if (showTransportTuning)
+                EditorGUILayout.PropertyField(serializedObject.FindProperty("editorLoopback"), new GUIContent("Editor Loopback", "Run one in-process host without backend services. Editor only."));
+                var provider = serializedObject.FindProperty("backendProvider");
+                EditorGUILayout.PropertyField(provider, new GUIContent("Backend Override", "Leave empty to use AtlasNet unless Editor Loopback is enabled."));
+                if (provider.objectReferenceValue != null)
                 {
-                    using (new EditorGUI.IndentLevelScope())
+                    showTransportTuning = EditorGUILayout.Foldout(showTransportTuning, "Custom Backend Transport", true);
+                    if (showTransportTuning)
                     {
-                        var udp = serializedObject.FindProperty("udpDisconnectTimeoutMS");
-                        var web = serializedObject.FindProperty("webSocketDisconnectTimeoutMS");
-                        EditorGUILayout.PropertyField(udp, new GUIContent("UDP Idle Timeout (ms)", udp.tooltip));
-                        EditorGUILayout.PropertyField(web, new GUIContent("WebSocket Idle Timeout (ms)", web.tooltip));
+                        using (new EditorGUI.IndentLevelScope())
+                        {
+                            EditorGUILayout.PropertyField(serializedObject.FindProperty("serverTransport"));
+                            EditorGUILayout.PropertyField(serializedObject.FindProperty("clientTransport"));
+                            EditorGUILayout.PropertyField(serializedObject.FindProperty("listenAddress"));
+                            EditorGUILayout.PropertyField(serializedObject.FindProperty("transportProvider"));
+                            EditorGUILayout.PropertyField(serializedObject.FindProperty("udpDisconnectTimeoutMS"));
+                            EditorGUILayout.PropertyField(serializedObject.FindProperty("webSocketDisconnectTimeoutMS"));
+                        }
                     }
                 }
-                EditorGUILayout.HelpBox("Default server accepts UDP and WebSocket clients simultaneously on the same port number. TCP-only mode is optional. Browsers use WebSocket. An empty backend override uses the local dummy.",MessageType.None);
-
-                EditorGUILayout.Space();
-                EditorGUILayout.LabelField("Dummy Backend Partitioning", EditorStyles.boldLabel);
-                EditorGUILayout.PropertyField(serializedObject.FindProperty("automaticLocalHandoffs"), new GUIContent("Automatic Handoffs"));
-                EditorGUILayout.PropertyField(serializedObject.FindProperty("localPartitionCenter"), new GUIContent("Partition Center", "The coordinating server samples this Transform at session start."));
-                EditorGUILayout.PropertyField(serializedObject.FindProperty("localRegionDebugExtent"), new GUIContent("Debug View Extent", "Rendering crop only. Authority regions extend indefinitely."));
-                EditorGUILayout.PropertyField(serializedObject.FindProperty("localBoundaryMargin"), new GUIContent("Boundary Margin"));
+                EditorGUILayout.HelpBox("AtlasNet listeners are configured by the backend deployment. Editor Loopback starts a single local host.", MessageType.None);
                 EditorGUILayout.Space();
                 EditorGUILayout.LabelField("Prefab Settings", EditorStyles.boldLabel);
                 var player = serializedObject.FindProperty("playerPrefab");
@@ -89,10 +85,15 @@ namespace AtlasNet.Editor
             {
                 using (new EditorGUILayout.HorizontalScope())
                 {
-                    if (GUILayout.Button("Start Host")) manager.StartHost();
-                    if (GUILayout.Button("Start Server")) manager.StartServer();
-                    if (GUILayout.Button("Start Client")) manager.StartClient();
-                    if (GUILayout.Button("Join Worker")) manager.StartWorker();
+                    if (manager.UsesEditorLoopback)
+                    {
+                        if (GUILayout.Button("Start Host")) manager.StartHost();
+                    }
+                    else
+                    {
+                        if (GUILayout.Button("Start Shard Worker")) manager.StartWorker();
+                        if (GUILayout.Button("Join as Client")) manager.StartClient();
+                    }
                 }
             }
         }
@@ -133,9 +134,9 @@ namespace AtlasNet.Editor
             using (new EditorGUI.DisabledScope(true))
             {
                 EditorGUILayout.Toggle("Is Spawned", networkObject.IsSpawned);
-                EditorGUILayout.TextField("Entity ID", networkObject.IsSpawned ? networkObject.EntityId.ToString() : "—");
-                EditorGUILayout.TextField("Owner Session", networkObject.IsSpawned ? networkObject.OwnerSession.ToString() : "—");
-                EditorGUILayout.TextField("Simulation Worker", networkObject.IsSpawned ? networkObject.SimulationWorker.ToString() : "—");
+                EditorGUILayout.TextField("Entity ID", networkObject.IsSpawned ? networkObject.EntityId.ToString() : "â€”");
+                EditorGUILayout.TextField("Owner Session", networkObject.IsSpawned ? networkObject.OwnerSession.ToString() : "â€”");
+                EditorGUILayout.TextField("Simulation Worker", networkObject.IsSpawned ? networkObject.SimulationWorker.ToString() : "â€”");
                 EditorGUILayout.LongField("Authority Epoch", networkObject.IsSpawned ? networkObject.AuthorityEpoch : 0);
                 EditorGUILayout.Toggle("Is Owner", networkObject.IsOwner);
                 EditorGUILayout.Toggle("Has Simulation Authority", networkObject.HasAuthority);

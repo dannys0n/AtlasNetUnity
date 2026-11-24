@@ -28,7 +28,7 @@ namespace AtlasNetDemo.Tests
             Assert.AreEqual(AnimatorWriter.Server,player.GetComponent<NetworkAnimator>().Writer);
             NetworkManager Create(string name,ClientTransport transport=ClientTransport.Udp)
             {
-                var manager=new GameObject(name).AddComponent<NetworkManager>();
+                var manager=LegacyDemoTestManager.Create(name);
                 Set(manager,"playerPrefab",player);Set(manager,"networkPrefabsLists",new[]{registry});Set(manager,"automaticLocalHandoffs",true);Set(manager,"localBoundaryMargin",.05f);
                 manager.ConfigureConnection("127.0.0.1",17941,transport);return manager;
             }
@@ -123,7 +123,7 @@ namespace AtlasNetDemo.Tests
             var player=AssetDatabase.LoadAssetAtPath<NetworkObject>(root+"SoccerPlayer.prefab");
             var ballPrefab=AssetDatabase.LoadAssetAtPath<NetworkObject>(root+"SoccerBall.prefab");
             var registry=AssetDatabase.LoadAssetAtPath<NetworkPrefabsList>(root+"SoccerNetworkPrefabs.asset");
-            var manager=new GameObject("Soccer crowded ball test").AddComponent<NetworkManager>();Set(manager,"networkPrefabsLists",new[]{registry});manager.ConfigureConnection("127.0.0.1",17943,ClientTransport.Udp);
+            var manager=LegacyDemoTestManager.Create("Soccer crowded ball test");Set(manager,"networkPrefabsLists",new[]{registry});manager.ConfigureConnection("127.0.0.1",17943,ClientTransport.Udp);
             var scene=SceneManager.CreateScene("Soccer crowded ball physics",new CreateSceneParameters(LocalPhysicsMode.Physics3D));
             var floor=GameObject.CreatePrimitive(PrimitiveType.Cube);floor.transform.position=new Vector3(0,-.5f,0);floor.transform.localScale=new Vector3(105,1,68);SceneManager.MoveGameObjectToScene(floor,scene);
             var roof=GameObject.CreatePrimitive(PrimitiveType.Cube);roof.transform.position=new Vector3(0,8.25f,0);roof.transform.localScale=new Vector3(105,.5f,68);SceneManager.MoveGameObjectToScene(roof,scene);
@@ -163,7 +163,7 @@ namespace AtlasNetDemo.Tests
         public IEnumerator HandoffRestoresHistoricalScoresWithoutReplayingCelebration()
         {
             const string root="Assets/Samples/AtlasNet Unity/0.1.0/Soccer/Prefabs/";
-            var manager=new GameObject("Soccer celebration snapshot test").AddComponent<NetworkManager>();
+            var manager=LegacyDemoTestManager.Create("Soccer celebration snapshot test");
             Set(manager,"networkPrefabsLists",new[]{AssetDatabase.LoadAssetAtPath<NetworkPrefabsList>(root+"SoccerNetworkPrefabs.asset")});
             manager.ConfigureConnection("127.0.0.1",17945);
             var flags=BindingFlags.NonPublic|BindingFlags.Instance;
@@ -215,7 +215,7 @@ namespace AtlasNetDemo.Tests
             transport.WorkerCommitDelaySeconds = .35f;
             NetworkManager Create(string name)
             {
-                var manager = new GameObject(name).AddComponent<NetworkManager>();
+                var manager = LegacyDemoTestManager.Create(name);
                 Set(manager, "playerPrefab", player);
                 Set(manager, "networkPrefabsLists", new[] { registry });
                 Set(manager, "automaticLocalHandoffs", true);

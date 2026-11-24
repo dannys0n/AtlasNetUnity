@@ -39,19 +39,16 @@ namespace AtlasNet
         }
         [SerializeField] internal int port = 7777;
         [SerializeField] internal string localAddress = "127.0.0.1";
-        [SerializeField, Tooltip("Development-only: hand off server-owned objects between joined local workers by X/Z region.")]
-        internal bool automaticLocalHandoffs;
-        [SerializeField, Tooltip("Dummy backend only. Its position is sampled when the coordinating server starts; null uses world zero.")] internal Transform localPartitionCenter;
-        [SerializeField, Min(1), Tooltip("Half-size of the debug polygon window. This does not limit ownership or interest.")] internal float localRegionDebugExtent = 10000f;
-        [SerializeField, Min(0)] internal float localBoundaryMargin = 0.75f;
-
         internal readonly Dictionary<EntityId, NetworkObject> Replicas = new Dictionary<EntityId, NetworkObject>();
         [SerializeField] private WorldBackendProvider backendProvider;
+        [SerializeField] private bool editorLoopback;
+        public bool UsesEditorLoopback => editorLoopback;
         [SerializeField] internal NetworkTransportProvider transportProvider;
         [SerializeField] internal ServerTransport serverTransport=ServerTransport.UdpAndWebSocket;
         [SerializeField] internal ClientTransport clientTransport=ClientTransport.Udp;
         [SerializeField] internal string listenAddress="0.0.0.0";
         private IWorldBackend backend;
+        private bool backendUsesEditorLoopback;
         [SerializeField, Min(0), Tooltip("WebSocket inactivity timeout in milliseconds. Zero disables idle disconnects; configure before starting networking.")]
         private int webSocketDisconnectTimeoutMS = 30000;
         public int WebSocketDisconnectTimeoutMS
@@ -99,10 +96,28 @@ namespace AtlasNet
         {
             get
             {
-                if (backend == null)
+                if (backend == null || (!backend.IsRunning && backendUsesEditorLoopback != editorLoopback))
                 {
-                    backend = backendProvider?backendProvider.CreateBackend(this):new LocalWorldBackend(this);
+                    var spawnPosition = backend?.PlayerSpawnPosition;
+                    backendUsesEditorLoopback = editorLoopback;
+                    if (editorLoopback)
+                    {
+#if UNITY_EDITOR
+                        backend = new EditorLoopbackBackend(this);
+#else
+                        throw new InvalidOperationException("Editor Loopback is unavailable in player builds.");
+#endif
+                    }
+                    else if (backendProvider)
+                        backend = backendProvider.CreateBackend(this);
+                    else
+#if ATLASNET_STANDALONE
+                        throw new InvalidOperationException("Set a backend provider before starting standalone tests.");
+#else
+                        backend = new NativeShardBackend(this, null);
+#endif
                     if(backend==null)throw new InvalidOperationException("Backend provider returned null.");
+                    if (spawnPosition != null) backend.PlayerSpawnPosition = spawnPosition;
                     backend.SessionJoined += HandleSessionJoined;
                     backend.SessionLeft += HandleSessionLeft;
                     backend.ServerStarted += () => OnServerStarted?.Invoke();
@@ -137,7 +152,6 @@ namespace AtlasNet
         public double LastTickMilliseconds => Backend.LastTickMilliseconds;
         public int TickRate => tickRate;
         internal float TickInterpolation => Backend is IWorldBackendTelemetry telemetry ? Mathf.Clamp01(telemetry.TickInterpolation) : 1f;
-        public bool AutomaticLocalHandoffs => automaticLocalHandoffs;
         public NetworkObject PlayerPrefab => playerPrefab;
         public int SpawnedCount => Replicas.Count;
         public IEnumerable<NetworkObject> SpawnedObjects => Replicas.Values;

@@ -1,15 +1,14 @@
 using System;
 using System.Collections.Generic;
 using AtlasNet;
-using AtlasNet.Samples.Soccer;
 using Newtonsoft.Json.Linq;
 using UnityEngine;
 using EntityId = AtlasNet.EntityId;
 
-internal sealed partial class NativeShardBackend : IWorldBackend, IWorldBackendTelemetry
+public partial class NativeShardBackend : IWorldBackend, IWorldBackendTelemetry
 {
-    internal static readonly byte[] SpectatorAdmission = { 0x41, 0x54, 0x4C, 0x53, 1 };
-    private readonly NetworkManager manager;
+    public static readonly byte[] SpectatorAdmission = { 0x41, 0x54, 0x4C, 0x53, 1 };
+    protected readonly NetworkManager manager;
     private readonly NetworkObject observerPrefab;
     private readonly HashSet<EntityId> frozen = new();
     private readonly Dictionary<EntityId, Vector3> positions = new();
@@ -23,10 +22,6 @@ internal sealed partial class NativeShardBackend : IWorldBackend, IWorldBackendT
     private bool regionChanged;
     private ulong nextRegistration;
     private uint nextSnapshotTick;
-    private readonly Dictionary<EntityId, double> lastRemoteContacts = new();
-    private readonly bool traceRemoteContacts =
-        Environment.GetEnvironmentVariable("ATLASNET_SOCCER_TRACE_REMOTE_CONTACT") == "1";
-
     public NativeShardBackend(NetworkManager manager, NetworkObject observerPrefab)
     {
         this.manager = manager;
@@ -75,7 +70,7 @@ internal sealed partial class NativeShardBackend : IWorldBackend, IWorldBackendT
         }
     }
 
-    internal static void BuildRegionOutline(JObject shape, List<Vector2> outline)
+    public static void BuildRegionOutline(JObject shape, List<Vector2> outline)
     {
         outline.Clear();
         if (shape?["min"] is not JArray min || shape["max"] is not JArray max) return;
@@ -94,7 +89,7 @@ internal sealed partial class NativeShardBackend : IWorldBackend, IWorldBackendT
         foreach (var plane in planes)
         {
             if (plane["normal"] is not JArray normal || normal.Count <= z) continue;
-            BackendSmokeLauncher.Clip(outline, new Vector2((float)normal[0], (float)normal[z]),
+            Clip(outline, new Vector2((float)normal[0], (float)normal[z]),
                 plane.Value<float>("offset"));
         }
     }
@@ -220,8 +215,8 @@ internal sealed partial class NativeShardBackend : IWorldBackend, IWorldBackendT
                 byte behaviour = request.Value<byte>("behaviour");
                 uint method = request.Value<uint>("method");
                 byte[] arguments = request["payload"].ToObject<byte[]>();
-                if (behaviour == AdapterBehaviour && method == RemoteBallContactMethod)
-                    ApplyRemoteBallContact(obj, arguments);
+                if (behaviour == AdapterBehaviour)
+                    ReceiveSampleAuthorityCommand(obj, method, arguments);
                 else
                     manager.DispatchBackendRpc(entity, behaviour, method, arguments, default, RpcDestination.Authority);
             }
@@ -249,23 +244,7 @@ internal sealed partial class NativeShardBackend : IWorldBackend, IWorldBackendT
                         pong.WriteRaw(arguments);
                         Publish(obj, PingReplySignal, pong, obj.OwnerSession);
                     }
-                    if (method == ScalePoseMethod && arguments.Length == 12 &&
-                        obj.OwnerSession.Value != 0 && obj.TryGetComponent<ScaleMotion>(out _))
-                    {
-                        using var pose = new NetReader(arguments);
-                        Vector3 position = pose.ReadVector3();
-                        if (float.IsFinite(position.x) && float.IsFinite(position.y) && float.IsFinite(position.z) &&
-                            Mathf.Abs(position.x) <= 15 && position.y >= 0 && position.y <= 3 &&
-                            Mathf.Abs(position.z) <= 12)
-                            obj.transform.position = position;
-                    }
-                    if (method == LoadMoveMethod && arguments.Length == 8 && obj.TryGetComponent(out SoccerPlayer bot))
-                    {
-                        using var input = new NetReader(arguments);
-                        bot.ApplyMoveInput(new Vector2(input.ReadFloat(), input.ReadFloat()));
-                    }
-                    if (method == RemoteBallContactMethod && arguments.Length == sizeof(ulong) && obj.OwnerSession.Value != 0)
-                        ReportRemoteBallContact(obj, arguments);
+                    ReceiveSampleClientCommand(obj, method, arguments);
                     continue;
                 }
                 manager.DispatchBackendRpc(entity, behaviour, method, arguments, obj.OwnerSession, RpcDestination.Authority);
@@ -335,7 +314,7 @@ internal sealed partial class NativeShardBackend : IWorldBackend, IWorldBackendT
         if (value) frozen.Add(id);
         else frozen.Remove(id);
         positions.Remove(id);
-        lastRemoteContacts.Remove(id);
+        OnReplicaRemoved(id);
         if (manager.TryGet(id, out var obj)) obj.gameObject.SetActive(!value);
     }
 
@@ -353,7 +332,7 @@ internal sealed partial class NativeShardBackend : IWorldBackend, IWorldBackendT
         foreach (var obj in objects) manager.RemoveReplica(obj.EntityId);
         positions.Clear();
         awaitingFirstClientCommand.Clear();
-        lastRemoteContacts.Clear();
+        OnStopped();
         frozen.Clear();
         Stopped?.Invoke(wasServer, !wasServer);
     }
@@ -375,7 +354,7 @@ internal sealed partial class NativeShardBackend : IWorldBackend, IWorldBackendT
         }
         positions.Remove(id);
         awaitingFirstClientCommand.Remove(id);
-        lastRemoteContacts.Remove(id);
+        OnReplicaRemoved(id);
         frozen.Remove(id);
         return true;
     }
@@ -393,7 +372,7 @@ internal sealed partial class NativeShardBackend : IWorldBackend, IWorldBackendT
     // These require the native gameplay signal codec and coordinator entity registration.
     private static NotSupportedException Missing() => new("Native shard replication is not wired yet.");
 
-    public void StartHost() => throw Missing();
+    public void StartHost() => throw new NotSupportedException("AtlasNet shards and clients start separately. Enable Editor Loopback to start a local host in Play Mode.");
     public void StartWorker() => StartServer();
     public NetworkObject Spawn(string prefabId, Vector3 position, Quaternion rotation, SessionId owner = default)
     {
@@ -446,17 +425,17 @@ internal sealed partial class NativeShardBackend : IWorldBackend, IWorldBackendT
     public void HideFrom(NetworkObject obj, SessionId session) => throw Missing();
     public void ShowTo(NetworkObject obj, SessionId session) => throw Missing();
     // Private adapter protocol, carried by AtlasNet client signals.
-    internal const uint SnapshotSignal = 0x415501;
-    internal const uint VariableSignal = 0x415502;
-    internal const uint TransformSignal = 0x415503;
-    internal const uint AnimatorSignal = 0x415504;
-    internal const uint RpcSignal = 0x415505;
-    internal const uint SequencedRpcSignal = 0x41550B;
+    public const uint SnapshotSignal = 0x415501;
+    public const uint VariableSignal = 0x415502;
+    public const uint TransformSignal = 0x415503;
+    public const uint AnimatorSignal = 0x415504;
+    public const uint RpcSignal = 0x415505;
+    public const uint SequencedRpcSignal = 0x41550B;
     private uint nextRpcSequence;
 
     private readonly bool scaleInterestEnabled = Environment.GetEnvironmentVariable("ATLASNET_SCALE_INTEREST") == "1";
     private const double ScaleInterestRadius = 24;
-    internal const uint ScalePoseBatchSignal = 0x41550A;
+    public const uint ScalePoseBatchSignal = 0x41550A;
     private const float ScalePoseCellSize = 8f;
     private const int ScalePosesPerPacket = 16;
     private readonly Dictionary<Vector2Int, List<ScalePose>> scalePoseCells = new();
@@ -548,7 +527,7 @@ internal sealed partial class NativeShardBackend : IWorldBackend, IWorldBackendT
             admission.Write((byte)(SessionSupportsPing | SessionSupportsRemoteContact |
                 (scaleInterestEnabled && !IsObserver(obj) ? SessionSupportsScaleInterest : 0)));
             admission.Write(obj.EntityId);
-            admission.Write(obj.TryGetComponent(out SoccerPlayer player) ? (byte)player.Team : (byte)0);
+            admission.Write(GetAdmissionTeam(obj));
             Publish(obj, SessionSignal, admission, obj.OwnerSession);
         }
         if (IsObserver(obj)) return;
@@ -634,49 +613,6 @@ internal sealed partial class NativeShardBackend : IWorldBackend, IWorldBackendT
             transientRpc: delivery != NetworkDelivery.ReliableOrdered);
     }
 
-    private void ReportRemoteBallContact(NetworkObject source, byte[] arguments)
-    {
-        if (!source.TryGetComponent(out SoccerPlayer player) || player.MoveInput.sqrMagnitude < .01f ||
-            !source.TryGetComponent(out CapsuleCollider capsule) ||
-            !SoccerBall.TryGetContactCapsule(capsule, out Vector3 center,
-                out float halfSegment, out float radius)) return;
-        using var input = new NetReader(arguments);
-        var target = new EntityId(input.ReadULong());
-        if (target.Value == 0 || manager.TryGet(target, out _)) return;
-
-        double now = Time.unscaledTimeAsDouble;
-        if (lastRemoteContacts.TryGetValue(source.EntityId, out double last) && now - last < .075) return;
-        lastRemoteContacts[source.EntityId] = now;
-
-        using var payload = new NetWriter();
-        payload.Write(source.EntityId.Value);
-        payload.Write(LocalWorkerId);
-        payload.Write(source.transform.position);
-        payload.Write(player.MoveInput.x);
-        payload.Write(player.MoveInput.y);
-        payload.Write(center);
-        payload.Write(halfSegment);
-        payload.Write(radius);
-        SendRemoteAuthorityInteraction(source, target, AdapterBehaviour, RemoteBallContactMethod, payload.ToArray());
-    }
-
-    private void ApplyRemoteBallContact(NetworkObject target, byte[] arguments)
-    {
-        if (!target.TryGetComponent(out SoccerBall ball)) return;
-        using var payload = new NetReader(arguments);
-        ulong player = payload.ReadULong();
-        ulong sourceWorker = payload.ReadULong();
-        Vector3 playerPosition = payload.ReadVector3();
-        Vector2 move = new(payload.ReadFloat(), payload.ReadFloat());
-        Vector3 center = payload.ReadVector3();
-        float halfSegment = payload.ReadFloat();
-        float radius = payload.ReadFloat();
-        if (payload.HasRemaining || sourceWorker == LocalWorkerId) return;
-
-        if (ball.TryRemoteContact(player, playerPosition, move, center, halfSegment, radius) && traceRemoteContacts)
-            Debug.Log($"Soccer cross-shard kick player={player} from={sourceWorker} ball={target.EntityId.Value} to={LocalWorkerId}");
-    }
-
     public void SendAuthorityInteraction(NetworkObject source, NetworkBehaviour target, uint method, Action<NetWriter> write)
     {
         if (!source || !target || source.Manager != manager || target.NetworkManager != manager ||
@@ -697,7 +633,7 @@ internal sealed partial class NativeShardBackend : IWorldBackend, IWorldBackendT
         SendRemoteAuthorityInteraction(source, targetObject.EntityId, target.BehaviourIndex, method, arguments);
     }
 
-    private void SendRemoteAuthorityInteraction(NetworkObject source, EntityId target, byte behaviour, uint method, byte[] arguments)
+    protected void SendRemoteAuthorityInteraction(NetworkObject source, EntityId target, byte behaviour, uint method, byte[] arguments)
     {
         if (arguments.Length > 4096)
             throw new InvalidOperationException("Native authority interaction arguments exceed 4096 bytes.");
@@ -716,7 +652,7 @@ internal sealed partial class NativeShardBackend : IWorldBackend, IWorldBackendT
     {
         var obj = component.NetworkObject;
         if (!CanSimulate(obj)) return;
-        bool scaleMotion = obj.TryGetComponent<ScaleMotion>(out _);
+        bool scaleMotion = UsesSpatialPoseBatch(obj);
         const uint observerRate = 20;
         uint tickRate = (uint)manager.TickRate;
         ulong phasedTick = (ulong)Tick + ScaleSendPhase(obj.EntityId, tickRate);
@@ -749,5 +685,31 @@ internal sealed partial class NativeShardBackend : IWorldBackend, IWorldBackendT
         bool trigger = payload.Length == 8 && payload[6] == (byte)AnimatorControllerParameterType.Trigger;
         writer.WriteBytes(trigger ? payload : component.CaptureState());
         Publish(obj, AnimatorSignal, writer, stateStream: !trigger);
+    }
+
+    protected virtual bool UsesSpatialPoseBatch(NetworkObject obj) => false;
+    protected virtual byte GetAdmissionTeam(NetworkObject obj) => 0;
+    protected virtual void ReceiveSampleAuthorityCommand(NetworkObject obj, uint method, byte[] arguments) { }
+    protected virtual void ReceiveSampleClientCommand(NetworkObject obj, uint method, byte[] arguments) { }
+    protected virtual void ProbeSampleContact() { }
+    protected virtual void OnReplicaRemoved(EntityId id) { }
+    protected virtual void OnStopped() { }
+
+    private static void Clip(System.Collections.Generic.List<Vector2> polygon, Vector2 normal, float offset)
+    {
+        if (polygon.Count == 0) return;
+        var input = polygon.ToArray();
+        polygon.Clear();
+        var previous = input[input.Length - 1];
+        float distance = Vector2.Dot(normal, previous) - offset;
+        foreach (var current in input)
+        {
+            float next = Vector2.Dot(normal, current) - offset;
+            if ((distance <= 0) != (next <= 0))
+                polygon.Add(Vector2.Lerp(previous, current, distance / (distance - next)));
+            if (next <= 0) polygon.Add(current);
+            previous = current;
+            distance = next;
+        }
     }
 }
